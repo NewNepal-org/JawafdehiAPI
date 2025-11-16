@@ -9,6 +9,7 @@ class DocumentSource(models.Model):
         ("government", "Government"),
         ("ngo", "NGO"),
         ("social_media", "Social Media"),
+        ("media", "Media"),
         ("crowdsourced", "Crowdsourced"),
         ("other", "Other"),
     ]
@@ -61,10 +62,8 @@ class Allegation(models.Model):
     description = models.TextField()
     key_allegations = models.TextField()
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, blank=True, null=True)
-    timeline = models.JSONField(default=list)
     created_at = models.DateTimeField(auto_now_add=True)
     first_public_date = models.DateTimeField(null=True, blank=True)
-    modification_trail = models.JSONField(default=list)
     
     class Meta:
         ordering = ["-created_at"]
@@ -73,10 +72,49 @@ class Allegation(models.Model):
         return self.title
 
 
+class Timeline(models.Model):
+    allegation = models.ForeignKey(Allegation, on_delete=models.CASCADE, related_name="timelines")
+    date = models.DateField()
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    order = models.PositiveIntegerField(default=0)
+    
+    class Meta:
+        ordering = ["order", "date"]
+    
+    def __str__(self):
+        return f"{self.allegation.title} - {self.title}"
+
+
+class Modification(models.Model):
+    ACTION_CHOICES = [
+        ("created", "Created"),
+        ("submitted", "Submitted"),
+        ("reviewed", "Reviewed"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+        ("updated", "Updated"),
+        ("response_added", "Response Added"),
+    ]
+    
+    allegation = models.ForeignKey(Allegation, on_delete=models.CASCADE, related_name="modifications")
+    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    notes = models.TextField(blank=True)
+    
+    class Meta:
+        ordering = ["timestamp"]
+    
+    def __str__(self):
+        return f"{self.action} - {self.allegation.title} at {self.timestamp}"
+
+
 class Evidence(models.Model):
     evidence_id = models.CharField(max_length=100, unique=True, editable=False)
     allegation = models.ForeignKey(Allegation, on_delete=models.CASCADE, related_name="evidences")
     source = models.ForeignKey(DocumentSource, on_delete=models.CASCADE, related_name="evidences")
+    description = models.TextField(blank=True)
     order = models.PositiveIntegerField(default=0)
     
     def save(self, *args, **kwargs):

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django import forms
-from .models import Allegation, Response, DocumentSource, Evidence
+from .models import Allegation, Response, DocumentSource, Evidence, Modification, Timeline
 
 
 class DocumentSourceAdminForm(forms.ModelForm):
@@ -69,8 +69,22 @@ class AllegationAdminForm(forms.ModelForm):
 class EvidenceInline(admin.TabularInline):
     model = Evidence
     extra = 1
+    fields = ["source", "description", "order", "evidence_id"]
     readonly_fields = ["evidence_id"]
     autocomplete_fields = ["source"]
+
+
+class TimelineInline(admin.TabularInline):
+    model = Timeline
+    extra = 1
+    fields = ["date", "title", "description", "order"]
+
+
+class ModificationInline(admin.TabularInline):
+    model = Modification
+    extra = 0
+    readonly_fields = ["timestamp"]
+    can_delete = False
 
 
 @admin.register(DocumentSource)
@@ -93,7 +107,7 @@ class EvidenceAdmin(admin.ModelAdmin):
 @admin.register(Allegation)
 class AllegationAdmin(admin.ModelAdmin):
     form = AllegationAdminForm
-    inlines = [EvidenceInline]
+    inlines = [TimelineInline, EvidenceInline, ModificationInline]
     list_display = ["title", "allegation_type", "state", "status", "created_at"]
     list_filter = ["allegation_type", "state", "status"]
     search_fields = ["title", "description", "key_allegations"]
@@ -103,8 +117,7 @@ class AllegationAdmin(admin.ModelAdmin):
         ("Entities", {"fields": ["alleged_entities_text", "related_entities_text", "location_id"]}),
         ("Content", {"fields": ["description", "key_allegations"]}),
         ("Status", {"fields": ["status", "first_public_date"]}),
-        ("Timeline", {"fields": ["timeline"]}),
-        ("Audit", {"fields": ["created_at", "modification_trail"]}),
+        ("Audit", {"fields": ["created_at"]}),
     ]
 
 
