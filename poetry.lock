@@ -79,13 +79,13 @@ files = [
 
 [[package]]
 name = "click"
-version = "8.3.0"
+version = "8.3.1"
 description = "Composable command line interface toolkit"
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "click-8.3.0-py3-none-any.whl", hash = "sha256:9b9f285302c6e3064f4330c05f05b81945b2a39544279343e6e7c5f27a9baddc"},
-    {file = "click-8.3.0.tar.gz", hash = "sha256:e7b8232224eba16f4ebe410c25ced9f7875cb5f3263ffc93cc3e8da705e229c4"},
+    {file = "click-8.3.1-py3-none-any.whl", hash = "sha256:981153a64e25f12d547d3426c367a4857371575ee7ad18df2a6183ab0545b2a6"},
+    {file = "click-8.3.1.tar.gz", hash = "sha256:12ff4785d337a1bb490bb7e9c2b1ee5da3112e94a8622f26a6c77f5d2fc6842a"},
 ]
 
 [package.dependencies]
@@ -637,7 +637,7 @@ description = "🇳🇵 Open Source, open data, and open API for managing Nepali
 optional = false
 python-versions = "^3.12"
 files = []
-develop = true
+develop = false
 
 [package.dependencies]
 click = "^8.1.0"
@@ -655,8 +655,10 @@ api = ["fastapi[standard] (>=0.120.4,<0.121.0)", "markdown (>=3.5.0,<4.0.0)", "p
 scraping = ["google-auth (>=2.23.0,<3.0.0)", "google-cloud-aiplatform (>=1.38.0,<2.0.0)", "wikipedia (>=1.4.0,<2.0.0)"]
 
 [package.source]
-type = "directory"
-url = "../NepalEntityService"
+type = "git"
+url = "https://github.com/NewNepal-org/NepalEntityService.git"
+reference = "HEAD"
+resolved_reference = "5a4f2905b91206f6669bd576e300cc8df14d73ef"
 
 [[package]]
 name = "nepali-date-utils"
@@ -1863,4 +1865,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "96c0871083b101af9fb763f3816e9c853e5c8623d24b6aba760115dd4b1bd059"
+content-hash = "a533ab4486e0eb23eb4ef23b133dd14af0efee3d00fa1039447e7d59d656812c"
