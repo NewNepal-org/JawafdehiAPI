@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
+    "django_filters",
     "corsheaders",
     "allegations",
 ]
@@ -136,13 +138,18 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Jawafdehi API",
+    "DESCRIPTION": "API for managing allegations and accountability data",
+    "VERSION": "1.0.0",
 }
 
 # CORS
-CORS_ALLOWED_ORIGINS = os.getenv(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:5173"
-).split(",")
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS"]
 
 # NES API Configuration
 NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
