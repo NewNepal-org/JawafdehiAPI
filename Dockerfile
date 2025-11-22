@@ -14,6 +14,6 @@ COPY allegations ./allegations
 RUN python manage.py migrate && \
     echo "yes" | python manage.py seed_allegations
 
-EXPOSE 8000
+EXPOSE 8080
 
-CMD ["python", "manage.py", "runserver", "--noreload", "0.0.0.0:8000"]
+CMD ["python", "manage.py", "runserver", "--noreload", "0.0.0.0:8080"]
