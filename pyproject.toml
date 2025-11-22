@@ -16,6 +16,7 @@ nepal-entity-service = {git = "https://github.com/NewNepal-org/NepalEntityServic
 # nepal-entity-service = {path = "../NepalEntityService", extras = ["api"], develop = true}
 django-filter = "^25.2"
 drf-spectacular = "^0.29.0"
+dj-database-url = "^3.0.1"
 
 
 [build-system]
