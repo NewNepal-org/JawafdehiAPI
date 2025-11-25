@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("allegations", "0003_remove_timeline_event_timeline_description_and_more"),
+        ("cases", "0003_remove_timeline_event_timeline_description_and_more"),
     ]
 
     operations = [

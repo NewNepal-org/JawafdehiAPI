@@ -7,7 +7,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         (
-            "allegations",
+            "cases",
             "0002_remove_allegation_timeline_remove_modification_actor_and_more",
         ),
     ]

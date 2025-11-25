@@ -38,6 +38,7 @@ CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if os.ge
 # Application definition
 
 INSTALLED_APPS = [
+    "jazzmin",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -48,7 +49,8 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "django_filters",
     "corsheaders",
-    "allegations",
+    "tinymce",
+    "cases",
 ]
 
 MIDDLEWARE = [

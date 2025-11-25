@@ -1,7 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from datetime import datetime
 import uuid
+from nes.core.identifiers.validators import validate_entity_id
 
 
 class DocumentSource(models.Model):
@@ -20,6 +22,10 @@ class DocumentSource(models.Model):
     url = models.URLField(blank=True, null=True)
     source_type = models.CharField(max_length=50, choices=SOURCE_TYPE_CHOICES)
     related_entity_ids = models.JSONField(default=list)
+    
+    def clean(self):
+        for entity_id in self.related_entity_ids:
+            validate_entity_id(entity_id)
     
     def save(self, *args, **kwargs):
         if not self.source_id:
@@ -49,7 +55,7 @@ class Allegation(models.Model):
     STATE_CHOICES = [
         ("draft", "Draft"),
         ("under_review", "Under Review"),
-        ("current", "Current"),
+        ("published", "Published"),
         ("closed", "Closed"),
     ]
     
@@ -60,30 +66,27 @@ class Allegation(models.Model):
     related_entities = models.JSONField(default=list)
     location_id = models.CharField(max_length=200, blank=True, null=True)
     description = models.TextField()
-    key_allegations = models.TextField()
-    status = models.CharField(max_length=50, choices=STATUS_CHOICES, blank=True, null=True)
+    key_allegations = models.JSONField(default=list)
+    timeline = models.JSONField(default=list)
+    evidence = models.JSONField(default=list)
+    case_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    first_public_date = models.DateTimeField(null=True, blank=True)
     
     class Meta:
         ordering = ["-created_at"]
     
+    def clean(self):
+        if not self.alleged_entities:
+            raise ValidationError({"alleged_entities": "At least one alleged entity is required."})
+        for entity_id in self.alleged_entities:
+            validate_entity_id(entity_id)
+        for entity_id in self.related_entities:
+            validate_entity_id(entity_id)
+        if not self.key_allegations or len(self.key_allegations) < 1:
+            raise ValidationError({"key_allegations": "At least one key allegation is required."})
+    
     def __str__(self):
         return self.title
-
-
-class Timeline(models.Model):
-    allegation = models.ForeignKey(Allegation, on_delete=models.CASCADE, related_name="timelines")
-    date = models.DateField()
-    title = models.CharField(max_length=200)
-    description = models.TextField()
-    order = models.PositiveIntegerField(default=0)
-    
-    class Meta:
-        ordering = ["order", "date"]
-    
-    def __str__(self):
-        return f"{self.allegation.title} - {self.title}"
 
 
 class Modification(models.Model):
@@ -101,35 +104,13 @@ class Modification(models.Model):
     action = models.CharField(max_length=50, choices=ACTION_CHOICES)
     timestamp = models.DateTimeField(auto_now_add=True)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    notes = models.TextField(blank=True)
+    notes = models.TextField()
     
     class Meta:
         ordering = ["timestamp"]
     
     def __str__(self):
         return f"{self.action} - {self.allegation.title} at {self.timestamp}"
-
-
-class Evidence(models.Model):
-    evidence_id = models.CharField(max_length=100, unique=True, editable=False)
-    allegation = models.ForeignKey(Allegation, on_delete=models.CASCADE, related_name="evidences")
-    source = models.ForeignKey(DocumentSource, on_delete=models.CASCADE, related_name="evidences")
-    description = models.TextField(blank=True)
-    order = models.PositiveIntegerField(default=0)
-    
-    def save(self, *args, **kwargs):
-        if not self.evidence_id:
-            date_str = datetime.now().strftime("%Y%m%d")
-            uuid_str = str(uuid.uuid4())[:8]
-            self.evidence_id = f"evidence:{date_str}:{uuid_str}"
-        super().save(*args, **kwargs)
-    
-    class Meta:
-        ordering = ["order"]
-        unique_together = ["allegation", "source"]
-    
-    def __str__(self):
-        return f"{self.allegation.title} - {self.source.title}"
 
 
 class Response(models.Model):

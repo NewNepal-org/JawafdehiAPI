@@ -152,7 +152,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="modifications",
-                        to="allegations.allegation",
+                        to="cases.allegation",
                     ),
                 ),
             ],
@@ -181,7 +181,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="responses",
-                        to="allegations.allegation",
+                        to="cases.allegation",
                     ),
                 ),
                 (
@@ -220,7 +220,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="evidences",
-                        to="allegations.allegation",
+                        to="cases.allegation",
                     ),
                 ),
                 (
@@ -228,7 +228,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="evidences",
-                        to="allegations.documentsource",
+                        to="cases.documentsource",
                     ),
                 ),
             ],

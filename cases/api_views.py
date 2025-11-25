@@ -1,9 +1,9 @@
 from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Allegation, DocumentSource, Evidence, Timeline, Modification, Response
+from .models import Allegation, DocumentSource, Modification, Response
 from .serializers import (
-    AllegationSerializer, DocumentSourceSerializer, EvidenceSerializer,
-    TimelineSerializer, ModificationSerializer, ResponseSerializer
+    AllegationSerializer, DocumentSourceSerializer,
+    ModificationSerializer, ResponseSerializer
 )
 
 
@@ -22,20 +22,6 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['source_type']
     search_fields = ['title', 'description']
-
-
-class EvidenceViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Evidence.objects.all()
-    serializer_class = EvidenceSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['allegation']
-
-
-class TimelineViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Timeline.objects.all()
-    serializer_class = TimelineSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['allegation']
 
 
 class ModificationViewSet(viewsets.ReadOnlyModelViewSet):

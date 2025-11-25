@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class AllegationsConfig(AppConfig):
+class CasesConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "allegations"
+    name = "cases"
