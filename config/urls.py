@@ -17,14 +17,15 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
-from allegations.views import index, docs
+from cases.views import index, docs
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 urlpatterns = [
     path("", index, name="index"),
     path("docs/", docs, name="docs"),
     path("admin/", admin.site.urls),
+    path("tinymce/", include("tinymce.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/swagger/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
-    path("", include("allegations.urls")),
+    path("api/", include("cases.urls")),
 ]
