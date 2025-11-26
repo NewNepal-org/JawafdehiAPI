@@ -5,19 +5,20 @@ from datetime import datetime
 
 
 class Command(BaseCommand):
-    help = "Seed example allegations data"
+    help = "Seed example cases data"
 
     def handle(self, *args, **options):
         from cases.models import (
-            Allegation,
+            Case,
+            CaseType,
+            CaseState,
             DocumentSource,
-            Modification,
         )
 
         db_settings = connection.settings_dict
         self.stdout.write(
             self.style.WARNING(
-                "WARNING: This will delete all existing allegations and document sources!"
+                "WARNING: This will delete all existing cases and document sources!"
             )
         )
         self.stdout.write(f'Database: {db_settings["NAME"]}')
@@ -28,15 +29,15 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR("Aborted."))
             return
 
-        Allegation.objects.all().delete()
+        Case.objects.all().delete()
         DocumentSource.objects.all().delete()
 
-        self.stdout.write("Creating allegations...")
+        self.stdout.write("Creating cases...")
 
         # 1. Lalita Niwas
-        lalita = Allegation.objects.create(
-            allegation_type="corruption",
-            state="published",
+        lalita = Case.objects.create(
+            case_type=CaseType.CORRUPTION,
+            state=CaseState.PUBLISHED,
             title="Lalita Niwas Land Grab Scandal",
             alleged_entities=[
                 "entity:person/balakrishna-khand",
@@ -46,7 +47,7 @@ class Command(BaseCommand):
                 "entity:organization/government/nepal-government",
                 "entity:organization/government/land-revenue-office-dillibazar",
             ],
-            location_id="entity:location/district/kathmandu",
+            locations=["entity:location/district/kathmandu"],
             description="""<h1>Lalita Niwas Land Grab Case</h1>
 
 <h2>Overview</h2>
@@ -75,24 +76,20 @@ class Command(BaseCommand):
                 {"source_id": "source:20180310:ciaa001", "description": "CIAA investigation report documenting forged land ownership certificates", "order": 1},
                 {"source_id": "source:20180310:court001", "description": "Supreme Court and District Court case files", "order": 2},
             ],
-            case_date=datetime(2018, 3, 15).date(),
+            case_start_date=datetime(2018, 3, 15).date(),
             created_at=timezone.make_aware(datetime(2018, 3, 10)),
         )
 
-        Modification.objects.create(
-            allegation=lalita, action="created", notes="Initial allegation created"
-        )
-
         # 2. Rabi Lamichhane
-        rabi = Allegation.objects.create(
-            allegation_type="corruption",
-            state="published",
+        rabi = Case.objects.create(
+            case_type=CaseType.CORRUPTION,
+            state=CaseState.PUBLISHED,
             title="Rabi Lamichhane Cooperative Fraud and Citizenship Controversy",
             alleged_entities=["entity:person/rabi-lamichhane"],
             related_entities=[
                 "entity:organization/political_party/rastriya-swatantra-party"
             ],
-            location_id="entity:location/district/chitwan",
+            locations=["entity:location/district/chitwan"],
             description="""<h1>Rabi Lamichhane Controversies</h1>
 
 <h2>Overview</h2>
@@ -127,18 +124,14 @@ class Command(BaseCommand):
                 {"source_id": "source:20230520:coop001", "description": "Police complaint filed by cooperative victims", "order": 1},
                 {"source_id": "source:20230520:testimony001", "description": "Cooperative victims' testimonies and financial records", "order": 2},
             ],
-            case_date=datetime(2023, 5, 18).date(),
+            case_start_date=datetime(2023, 5, 18).date(),
             created_at=timezone.make_aware(datetime(2023, 5, 20)),
         )
 
-        Modification.objects.create(
-            allegation=rabi, action="created", notes="Initial allegation created"
-        )
-
         # 3. Melamchi
-        melamchi = Allegation.objects.create(
-            allegation_type="breach_of_trust",
-            state="published",
+        melamchi = Case.objects.create(
+            case_type=CaseType.CORRUPTION,
+            state=CaseState.PUBLISHED,
             title="Melamchi Water Supply Project Delays and Cost Overruns",
             alleged_entities=[
                 "entity:organization/government/nepal-government",
@@ -147,7 +140,7 @@ class Command(BaseCommand):
             related_entities=[
                 "entity:organization/government/ministry-of-water-supply"
             ],
-            location_id="entity:location/region/kathmandu-valley",
+            locations=["entity:location/region/kathmandu-valley"],
             description="""<h1>Melamchi Water Supply Project Failure</h1>
 
 <h2>Overview</h2>
@@ -183,25 +176,21 @@ class Command(BaseCommand):
                 {"source_id": "source:20200101:audit001", "description": "Government audit reports showing cost escalations", "order": 1},
                 {"source_id": "source:20200101:media001", "description": "News reports documenting repeated delays and failures", "order": 2},
             ],
-            case_date=datetime(1998, 6, 1).date(),
+            case_start_date=datetime(1998, 6, 1).date(),
             created_at=timezone.make_aware(datetime(2020, 1, 1)),
         )
 
-        Modification.objects.create(
-            allegation=melamchi, action="created", notes="Initial allegation created"
-        )
-
         # 4. KP Oli
-        oli = Allegation.objects.create(
-            allegation_type="broken_promise",
-            state="published",
+        oli = Case.objects.create(
+            case_type=CaseType.PROMISES,
+            state=CaseState.PUBLISHED,
             title="KP Sharma Oli's Unfulfilled 2017 Election Promises",
             alleged_entities=["entity:person/kp-sharma-oli"],
             related_entities=[
                 "entity:organization/political_party/nepal-communist-party",
                 "entity:organization/government/nepal-government",
             ],
-            location_id="entity:location/country/nepal",
+            locations=["entity:location/country/nepal"],
             description="""<h1>KP Sharma Oli's Broken Election Promises</h1>
 
 <h2>Overview</h2>
@@ -238,22 +227,18 @@ class Command(BaseCommand):
                 {"source_id": "source:20210715:campaign001", "description": "Video recordings of election campaign speeches", "order": 1},
                 {"source_id": "source:20210715:economic001", "description": "Economic data showing lack of promised development", "order": 2},
             ],
-            case_date=datetime(2017, 11, 15).date(),
+            case_start_date=datetime(2017, 11, 15).date(),
             created_at=timezone.make_aware(datetime(2021, 7, 15)),
         )
 
-        Modification.objects.create(
-            allegation=oli, action="created", notes="Initial allegation created"
-        )
-
         # 5. Media Trial
-        media = Allegation.objects.create(
-            allegation_type="media_trial",
-            state="published",
+        media = Case.objects.create(
+            case_type=CaseType.CORRUPTION,
+            state=CaseState.PUBLISHED,
             title="Sandeep Lamichhane Case: Media Trial and Public Opinion",
             alleged_entities=["entity:organization/political_party/national-independent-party"],
             related_entities=["entity:person/sandeep-lamichhane"],
-            location_id="entity:location/district/kathmandu",
+            locations=["entity:location/district/kathmandu"],
             description="""<h1>Media Trial of Sandeep Lamichhane</h1>
 
 <h2>Overview</h2>
@@ -292,14 +277,10 @@ class Command(BaseCommand):
                 {"source_id": "source:20220910:media001", "description": "Collection of news articles with prejudicial language", "order": 1},
                 {"source_id": "source:20220910:ethics001", "description": "Analysis by media ethics organizations", "order": 2},
             ],
-            case_date=datetime(2022, 9, 8).date(),
+            case_start_date=datetime(2022, 9, 8).date(),
             created_at=timezone.make_aware(datetime(2022, 9, 10)),
         )
 
-        Modification.objects.create(
-            allegation=media, action="created", notes="Initial allegation created"
-        )
-
         self.stdout.write(self.style.SUCCESS(f"Successfully created:"))
-        self.stdout.write(f"  - {Allegation.objects.count()} allegations")
-        self.stdout.write(f"  - {Modification.objects.count()} modifications")
+        self.stdout.write(f"  - {Case.objects.count()} cases")
+        self.stdout.write(f"  - {DocumentSource.objects.count()} document sources")
