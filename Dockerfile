@@ -16,6 +16,10 @@ RUN poetry config virtualenvs.create false && poetry install --only main --no-in
 COPY manage.py ./
 COPY config ./config
 COPY cases ./cases
+COPY static ./static
+
+# Collect static files
+RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 

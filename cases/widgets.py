@@ -168,7 +168,10 @@ class MultiEntityIDField(Field):
     def validate(self, value):
         super().validate(value)
         for entity_id in value:
-            validate_entity_id(entity_id)
+            try:
+                validate_entity_id(entity_id)
+            except ValueError as e:
+                raise ValidationError(str(e))
     
     def prepare_value(self, value):
         if isinstance(value, list):
@@ -178,7 +181,12 @@ class MultiEntityIDField(Field):
 
 class MultiTextWidget(BaseMultiWidget):
     input_class = 'text-input'
-    button_label = 'Add Key Allegation'
+    button_label = 'Add Item'
+    
+    def __init__(self, attrs=None, button_label=None):
+        super().__init__(attrs)
+        if button_label:
+            self.button_label = button_label
     
     def get_row_html(self, value, widget_id):
         return f'<div class="input-row" draggable="true" style="margin-bottom: 8px; display: flex; align-items: center;"><span class="drag-handle" style="cursor: move; padding: 4px 8px; margin-right: 4px;">⋮⋮</span><input type="text" value="{value}" style="width: 500px; margin-right: 8px;" class="text-input"><button type="button" class="btn btn-sm btn-danger remove-input" style="padding: 2px 8px;"><i class="fas fa-times"></i></button></div>'
@@ -188,7 +196,10 @@ class MultiTextWidget(BaseMultiWidget):
 
 
 class MultiTextField(Field):
-    widget = MultiTextWidget
+    def __init__(self, *args, button_label='Add Item', **kwargs):
+        self.button_label = button_label
+        super().__init__(*args, **kwargs)
+        self.widget = MultiTextWidget(button_label=button_label)
     
     def to_python(self, value):
         if value in self.empty_values:
@@ -202,8 +213,9 @@ class MultiTextField(Field):
     
     def validate(self, value):
         super().validate(value)
-        if not value or len(value) < 1:
-            raise ValidationError("At least one key allegation is required.")
+        # Only validate non-empty if field is required
+        if self.required and (not value or len(value) < 1):
+            raise ValidationError("This field is required.")
     
     def prepare_value(self, value):
         if isinstance(value, list):

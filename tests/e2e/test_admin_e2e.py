@@ -295,6 +295,72 @@ class TestDjangoAdminWorkflows:
             "Contributor2 should now have permission to change the case"
 
     
+    def test_contributor_can_see_own_created_case_in_list(self):
+        """
+        E2E Test: Verify contributor can see their own created case in list view.
+        
+        Workflow:
+        1. Contributor creates a new draft case via admin
+        2. Verify creator is automatically added to contributors
+        3. Contributor performs list query
+        4. Verify the created case appears in their list
+        5. Verify another contributor cannot see the case
+        
+        Validates: Requirements 3.1, 3.2
+        """
+        # Step 1: Contributor creates a new draft case via admin
+        admin_instance = CaseAdmin(Case, None)
+        from django.test import RequestFactory
+        factory = RequestFactory()
+        
+        request_contrib1 = factory.get('/')
+        request_contrib1.user = self.contributor1
+        
+        case = Case(
+            title="Contributor's New Case",
+            alleged_entities=["entity:person/test-official"],
+            key_allegations=["Test allegation"],
+            case_type=CaseType.CORRUPTION,
+            description="Case created by contributor1",
+            state=CaseState.DRAFT
+        )
+        
+        # Simulate admin save (which should auto-add creator to contributors)
+        admin_instance.save_model(request_contrib1, case, None, change=False)
+        
+        # Step 2: Verify creator is automatically added to contributors
+        assert self.contributor1 in case.contributors.all(), \
+            "Creator should be automatically added to contributors when creating a case"
+        
+        # Step 3: Contributor performs list query
+        queryset = admin_instance.get_queryset(request_contrib1)
+        
+        # Step 4: Verify the created case appears in their list
+        assert case in queryset, \
+            "Contributor should see their own created case in list view (Requirement 3.1)"
+        
+        # Verify contributor has access to view and edit
+        has_view_permission = admin_instance.has_view_permission(request_contrib1, case)
+        assert has_view_permission, \
+            "Contributor should have view permission for their own case"
+        
+        has_change_permission = admin_instance.has_change_permission(request_contrib1, case)
+        assert has_change_permission, \
+            "Contributor should have change permission for their own case"
+        
+        # Step 5: Verify another contributor cannot see the case
+        request_contrib2 = factory.get('/')
+        request_contrib2.user = self.contributor2
+        
+        queryset2 = admin_instance.get_queryset(request_contrib2)
+        assert case not in queryset2, \
+            "Other contributors should NOT see unassigned cases in list view (Requirement 3.2)"
+        
+        has_view_permission2 = admin_instance.has_view_permission(request_contrib2, case)
+        assert not has_view_permission2, \
+            "Other contributors should NOT have view permission for unassigned cases"
+
+    
     def test_state_transitions_with_validation(self):
         """
         E2E Test: Verify state transitions are validated correctly.
@@ -886,3 +952,494 @@ class TestDjangoAdminWorkflows:
         active_sources = DocumentSource.objects.filter(is_deleted=False)
         assert deleted_source not in active_sources, \
             "Deleted source should not appear in active sources filter"
+    
+    def test_contributor_login_create_minimal_case_and_view_workflow(self):
+        """
+        E2E Test: Contributor logs in, creates a minimal case, and sees it in their list.
+        
+        Workflow:
+        1. Contributor logs into Django Admin
+        2. Contributor creates a new case with only title and case type
+        3. Verify case is created successfully in DRAFT state
+        4. Verify creator is automatically assigned as contributor
+        5. Contributor views their case list
+        6. Verify the new case appears in their list
+        7. Contributor can access and view the case details
+        
+        Validates: Requirements 1.1, 3.1, 3.2
+        """
+        # Step 1: Contributor logs into Django Admin
+        login_success = self.client.login(
+            username='contributor1',
+            password='testpass123'
+        )
+        assert login_success, "Contributor should be able to log in"
+        
+        # Verify contributor can access admin
+        response = self.client.get('/admin/')
+        assert response.status_code == 200, \
+            "Contributor should be able to access admin interface"
+        
+        # Step 2: Contributor creates a new case with minimal data (title + case type)
+        admin_instance = CaseAdmin(Case, None)
+        from django.test import RequestFactory
+        factory = RequestFactory()
+        
+        request_contrib = factory.post('/admin/cases/case/add/')
+        request_contrib.user = self.contributor1
+        
+        # Create minimal case - only title and case type required
+        minimal_case = Case(
+            title="Minimal Case - Quick Start",
+            case_type=CaseType.CORRUPTION,
+            alleged_entities=["entity:person/placeholder"]  # Required field
+        )
+        
+        # Step 3: Save via admin (simulating form submission)
+        admin_instance.save_model(request_contrib, minimal_case, None, change=False)
+        
+        # Verify case is created successfully
+        assert minimal_case.id is not None, \
+            "Case should be saved to database"
+        assert minimal_case.state == CaseState.DRAFT, \
+            "New case should start in DRAFT state (Requirement 1.1)"
+        assert minimal_case.version == 1, \
+            "New case should start at version 1"
+        
+        # Step 4: Verify creator is automatically assigned as contributor
+        minimal_case.refresh_from_db()
+        assert self.contributor1 in minimal_case.contributors.all(), \
+            "Creator should be automatically assigned as contributor"
+        
+        # Step 5: Contributor views their case list
+        request_list = factory.get('/admin/cases/case/')
+        request_list.user = self.contributor1
+        
+        queryset = admin_instance.get_queryset(request_list)
+        
+        # Step 6: Verify the new case appears in their list
+        assert minimal_case in queryset, \
+            "Contributor should see their newly created case in list (Requirement 3.1)"
+        
+        # Verify case count
+        contributor_cases = queryset.filter(contributors=self.contributor1)
+        assert contributor_cases.count() >= 1, \
+            "Contributor should have at least one case assigned"
+        
+        # Step 7: Contributor can access and view the case details
+        has_view_permission = admin_instance.has_view_permission(
+            request_list,
+            minimal_case
+        )
+        assert has_view_permission, \
+            "Contributor should have view permission for their own case"
+        
+        has_change_permission = admin_instance.has_change_permission(
+            request_list,
+            minimal_case
+        )
+        assert has_change_permission, \
+            "Contributor should have change permission for their own case"
+        
+        # Verify case details are accessible
+        response = self.client.get(f'/admin/cases/case/{minimal_case.id}/change/')
+        assert response.status_code == 200, \
+            "Contributor should be able to access case detail page"
+        
+        # Verify other contributor cannot see this case
+        request_other = factory.get('/admin/cases/case/')
+        request_other.user = self.contributor2
+        
+        queryset_other = admin_instance.get_queryset(request_other)
+        assert minimal_case not in queryset_other, \
+            "Other contributors should NOT see unassigned cases (Requirement 3.2)"
+        
+        has_view_permission_other = admin_instance.has_view_permission(
+            request_other,
+            minimal_case
+        )
+        assert not has_view_permission_other, \
+            "Other contributors should NOT have view permission for unassigned cases"
+    
+    def test_new_case_must_be_draft_state(self):
+        """
+        E2E Test: Verify that new cases can only be created in DRAFT state.
+        
+        Workflow:
+        1. Attempt to create a new case with state=PUBLISHED (should fail)
+        2. Attempt to create a new case with state=IN_REVIEW (should fail)
+        3. Attempt to create a new case with state=CLOSED (should fail)
+        4. Create a new case with state=DRAFT (should succeed)
+        5. Verify case is created successfully in DRAFT state
+        
+        Validates: Requirements 1.1
+        """
+        admin_instance = CaseAdmin(Case, None)
+        from django.test import RequestFactory
+        factory = RequestFactory()
+        
+        request_contrib = factory.post('/admin/cases/case/add/')
+        request_contrib.user = self.contributor1
+        
+        # Step 1: Attempt to create a new case with state=PUBLISHED (should fail)
+        case_published = Case(
+            title="New Case - Published State",
+            case_type=CaseType.CORRUPTION,
+            alleged_entities=["entity:person/test"],
+            key_allegations=["Test allegation"],
+            description="Test description",
+            state=CaseState.PUBLISHED
+        )
+        
+        with pytest.raises(ValidationError) as exc_info:
+            admin_instance.save_model(request_contrib, case_published, None, change=False)
+        
+        error_message = str(exc_info.value)
+        assert "New cases must be created in DRAFT state" in error_message, \
+            "Should not allow creating new case with PUBLISHED state (Requirement 1.1)"
+        
+        # Step 2: Attempt to create a new case with state=IN_REVIEW (should fail)
+        case_in_review = Case(
+            title="New Case - In Review State",
+            case_type=CaseType.CORRUPTION,
+            alleged_entities=["entity:person/test"],
+            key_allegations=["Test allegation"],
+            description="Test description",
+            state=CaseState.IN_REVIEW
+        )
+        
+        with pytest.raises(ValidationError) as exc_info:
+            admin_instance.save_model(request_contrib, case_in_review, None, change=False)
+        
+        error_message = str(exc_info.value)
+        assert "New cases must be created in DRAFT state" in error_message, \
+            "Should not allow creating new case with IN_REVIEW state"
+        
+        # Step 3: Attempt to create a new case with state=CLOSED (should fail)
+        case_closed = Case(
+            title="New Case - Closed State",
+            case_type=CaseType.CORRUPTION,
+            alleged_entities=["entity:person/test"],
+            state=CaseState.CLOSED
+        )
+        
+        with pytest.raises(ValidationError) as exc_info:
+            admin_instance.save_model(request_contrib, case_closed, None, change=False)
+        
+        error_message = str(exc_info.value)
+        assert "New cases must be created in DRAFT state" in error_message, \
+            "Should not allow creating new case with CLOSED state"
+        
+        # Step 4: Create a new case with state=DRAFT (should succeed)
+        case_draft = Case(
+            title="New Case - Draft State",
+            case_type=CaseType.CORRUPTION,
+            alleged_entities=["entity:person/test"]
+        )
+        
+        # Should not raise any exception
+        admin_instance.save_model(request_contrib, case_draft, None, change=False)
+        
+        # Step 5: Verify case is created successfully in DRAFT state
+        case_draft.refresh_from_db()
+        assert case_draft.id is not None, \
+            "Case should be saved to database"
+        assert case_draft.state == CaseState.DRAFT, \
+            "New case should be in DRAFT state (Requirement 1.1)"
+        assert case_draft.version == 1, \
+            "New case should start at version 1"
+    
+    def test_admin_entity_id_validation_on_create(self):
+        """
+        E2E Test: Verify entity ID validation in admin panel when creating a case.
+        
+        Tests that the admin form properly validates entity IDs using the
+        MultiEntityIDField widget which calls NES validate_entity_id().
+        
+        Workflow:
+        1. Test invalid entity ID format (missing 'entity:' prefix)
+        2. Test invalid entity type (unsupported type)
+        3. Test invalid slug format
+        4. Test empty entity ID
+        5. Test valid entity IDs (person, organization, location)
+        6. Test mixed valid and invalid entity IDs
+        
+        Validates: Entity ID validation in admin panel
+        """
+        from cases.widgets import MultiEntityIDField
+        
+        # Test the field directly to isolate entity ID validation
+        field = MultiEntityIDField(required=True)
+        
+        # Step 1: Test invalid entity ID format (missing 'entity:' prefix)
+        with pytest.raises(ValidationError) as exc_info:
+            field.clean('["invalid-format"]')
+        
+        error_message = str(exc_info.value)
+        assert 'Invalid entity ID format' in error_message, \
+            f"Error should mention invalid format. Got: {error_message}"
+        
+        # Step 2: Test invalid entity type (unsupported type)
+        with pytest.raises(ValidationError) as exc_info:
+            field.clean('["entity:invalid-type/test-slug"]')
+        
+        error_message = str(exc_info.value)
+        assert 'entity type' in error_message.lower() or 'unsupported' in error_message.lower(), \
+            f"Error should mention invalid entity type. Got: {error_message}"
+        
+        # Step 3: Test invalid slug format (contains invalid characters)
+        with pytest.raises(ValidationError) as exc_info:
+            field.clean('["entity:person/Invalid Slug With Spaces"]')
+        
+        error_message = str(exc_info.value)
+        assert 'slug' in error_message.lower() or 'format' in error_message.lower(), \
+            f"Error should mention invalid slug format. Got: {error_message}"
+        
+        # Step 4: Test empty entity ID
+        with pytest.raises(ValidationError) as exc_info:
+            field.clean('[""]')
+        
+        error_message = str(exc_info.value)
+        assert 'Invalid entity ID format' in error_message or 'empty' in error_message.lower(), \
+            f"Error should mention empty entity ID. Got: {error_message}"
+        
+        # Step 5: Test valid entity IDs
+        # Valid person entity
+        result = field.clean('["entity:person/john-doe"]')
+        assert result == ["entity:person/john-doe"], \
+            "Should accept valid person entity ID"
+        
+        # Valid organization entity
+        result = field.clean('["entity:organization/test-org"]')
+        assert result == ["entity:organization/test-org"], \
+            "Should accept valid organization entity ID"
+        
+        # Valid location entity
+        result = field.clean('["entity:location/kathmandu"]')
+        assert result == ["entity:location/kathmandu"], \
+            "Should accept valid location entity ID"
+        
+        # Multiple valid entity IDs
+        result = field.clean('["entity:person/jane-doe", "entity:organization/ministry", "entity:location/district"]')
+        assert len(result) == 3, \
+            "Should accept multiple valid entity IDs"
+        assert "entity:person/jane-doe" in result
+        assert "entity:organization/ministry" in result
+        assert "entity:location/district" in result
+        
+        # Step 6: Test mixed valid and invalid entity IDs
+        with pytest.raises(ValidationError) as exc_info:
+            field.clean('["entity:person/valid-person", "invalid-format"]')
+        
+        error_message = str(exc_info.value)
+        assert 'Invalid entity ID format' in error_message, \
+            "Should reject when mixing valid and invalid entity IDs"
+    
+    def test_admin_entity_id_validation_on_update(self):
+        """
+        E2E Test: Verify entity ID validation when updating an existing case.
+        
+        Workflow:
+        1. Create a case with valid entity IDs
+        2. Attempt to update with invalid entity ID via model
+        3. Verify validation error is raised
+        4. Update with valid entity IDs
+        5. Verify update succeeds
+        
+        Validates: Entity ID validation on case updates
+        """
+        # Step 1: Create a case with valid entity IDs
+        case = Case.objects.create(
+            title="Original Case",
+            case_type=CaseType.CORRUPTION,
+            alleged_entities=["entity:person/original-person"],
+            state=CaseState.DRAFT
+        )
+        case.contributors.add(self.contributor1)
+        case.save()
+        
+        original_id = case.id
+        
+        # Step 2: Attempt to update with invalid entity ID
+        case.alleged_entities = ["not-valid-format"]
+        
+        # Step 3: Verify validation error is raised at field level
+        with pytest.raises(ValidationError) as exc_info:
+            case.full_clean()
+        
+        error_dict = exc_info.value.message_dict
+        assert 'alleged_entities' in error_dict, \
+            f"Error should be associated with alleged_entities field. Got: {error_dict}"
+        
+        # Step 4: Update with valid entity IDs
+        case.alleged_entities = ["entity:person/updated-person", "entity:organization/new-org"]
+        case.full_clean()  # Should not raise
+        case.save()
+        
+        # Step 5: Verify update succeeds
+        case.refresh_from_db()
+        
+        assert case.id == original_id, \
+            "Should be the same case instance"
+        assert len(case.alleged_entities) == 2, \
+            "Case should have 2 entity IDs after update"
+        assert "entity:person/updated-person" in case.alleged_entities, \
+            "Updated entity ID should be saved"
+        assert "entity:organization/new-org" in case.alleged_entities, \
+            "New entity ID should be saved"
+    
+    def test_admin_related_entities_validation(self):
+        """
+        E2E Test: Verify entity ID validation for related_entities and locations fields.
+        
+        Workflow:
+        1. Test invalid entity IDs in related_entities field
+        2. Test invalid entity IDs in locations field
+        3. Test valid entity IDs in all entity fields
+        4. Verify all fields are properly validated
+        
+        Validates: Entity ID validation across all entity fields
+        """
+        from cases.widgets import MultiEntityIDField
+        
+        field = MultiEntityIDField(required=False)
+        
+        # Step 1: Test invalid entity IDs in related_entities field
+        with pytest.raises(ValidationError) as exc_info:
+            field.clean('["invalid-related"]')
+        
+        error_message = str(exc_info.value)
+        assert 'Invalid entity ID format' in error_message, \
+            f"Error should mention invalid format. Got: {error_message}"
+        
+        # Step 2: Test invalid entity IDs in locations field
+        with pytest.raises(ValidationError) as exc_info:
+            field.clean('["invalid-location"]')
+        
+        error_message = str(exc_info.value)
+        assert 'Invalid entity ID format' in error_message, \
+            f"Error should mention invalid format. Got: {error_message}"
+        
+        # Step 3: Test valid entity IDs in all entity fields
+        result = field.clean('["entity:person/witness", "entity:organization/related-org"]')
+        assert len(result) == 2, \
+            "Should accept multiple valid entity IDs"
+        
+        result = field.clean('["entity:location/kathmandu", "entity:location/pokhara"]')
+        assert len(result) == 2, \
+            "Should accept multiple valid location entity IDs"
+        
+        # Step 4: Test empty list is valid for optional fields
+        result = field.clean('[]')
+        assert result == [], \
+            "Empty list should be valid for optional entity fields"
+
+    def test_alleged_entities_optional_for_draft_required_for_review(self):
+        """
+        E2E Test: Verify alleged_entities is optional for DRAFT but required for IN_REVIEW.
+        
+        Workflow:
+        1. Create a draft case without alleged_entities (should succeed)
+        2. Attempt to submit for review without alleged_entities (should fail)
+        3. Add alleged_entities and submit (should succeed)
+        4. Verify case transitions to IN_REVIEW
+        
+        Validates: alleged_entities validation based on state
+        """
+        # Step 1: Create a draft case without alleged_entities
+        case = Case.objects.create(
+            title="Draft Without Entities",
+            case_type=CaseType.CORRUPTION,
+            alleged_entities=[],  # Empty list
+            state=CaseState.DRAFT
+        )
+        case.contributors.add(self.contributor1)
+        case.save()
+        
+        # Verify case was created successfully
+        assert case.id is not None, \
+            "Draft case should be created without alleged_entities"
+        assert case.state == CaseState.DRAFT
+        assert len(case.alleged_entities) == 0
+        
+        # Step 2: Attempt to submit for review without alleged_entities
+        case.state = CaseState.IN_REVIEW
+        
+        with pytest.raises(ValidationError) as exc_info:
+            case.validate()
+        
+        error_dict = exc_info.value.message_dict
+        assert 'alleged_entities' in error_dict, \
+            f"Should require alleged_entities for IN_REVIEW. Got errors: {error_dict}"
+        error_message = str(error_dict['alleged_entities'])
+        assert 'IN_REVIEW or PUBLISHED' in error_message, \
+            f"Error message should mention IN_REVIEW/PUBLISHED requirement. Got: {error_message}"
+        
+        # Reset state
+        case.state = CaseState.DRAFT
+        case.save()
+        
+        # Step 3: Add alleged_entities and required fields for submission
+        case.alleged_entities = ["entity:person/corrupt-official"]
+        case.key_allegations = ["Test allegation"]
+        case.description = "Test description"
+        case.save()
+        
+        # Now submit should work
+        case.submit()
+        
+        # Step 4: Verify case transitions to IN_REVIEW
+        case.refresh_from_db()
+        assert case.state == CaseState.IN_REVIEW, \
+            "Case should transition to IN_REVIEW with alleged_entities"
+        assert len(case.alleged_entities) == 1
+        assert case.versionInfo.get('action') == 'submitted'
+    
+    def test_alleged_entities_required_for_published(self):
+        """
+        E2E Test: Verify alleged_entities is required for PUBLISHED state.
+        
+        Workflow:
+        1. Create a draft case with alleged_entities
+        2. Remove alleged_entities and attempt to publish (should fail)
+        3. Add alleged_entities back and publish (should succeed)
+        
+        Validates: alleged_entities validation for PUBLISHED state
+        """
+        # Step 1: Create a draft case with alleged_entities
+        case = Case.objects.create(
+            title="Case for Publishing",
+            case_type=CaseType.CORRUPTION,
+            alleged_entities=["entity:person/test-official"],
+            key_allegations=["Test allegation"],
+            description="Test description",
+            state=CaseState.DRAFT
+        )
+        case.contributors.add(self.contributor1)
+        case.save()
+        
+        # Step 2: Remove alleged_entities and attempt to publish
+        case.alleged_entities = []
+        case.state = CaseState.PUBLISHED
+        
+        with pytest.raises(ValidationError) as exc_info:
+            case.validate()
+        
+        error_dict = exc_info.value.message_dict
+        assert 'alleged_entities' in error_dict, \
+            f"Should require alleged_entities for PUBLISHED. Got errors: {error_dict}"
+        
+        # Reset state
+        case.state = CaseState.DRAFT
+        case.save()
+        
+        # Step 3: Add alleged_entities back and publish
+        case.alleged_entities = ["entity:person/test-official"]
+        case.save()
+        
+        case.publish()
+        
+        case.refresh_from_db()
+        assert case.state == CaseState.PUBLISHED, \
+            "Case should be published with alleged_entities"
+        assert len(case.alleged_entities) == 1

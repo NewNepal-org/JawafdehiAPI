@@ -87,6 +87,7 @@ class Case(models.Model):
     
     # Entity fields (using custom list fields)
     alleged_entities = EntityListField(
+        blank=True,
         help_text="List of entity IDs for entities being accused"
     )
     related_entities = EntityListField(
@@ -165,7 +166,7 @@ class Case(models.Model):
         """
         Validate case data based on current state.
         
-        - DRAFT: Lenient validation (only title and alleged_entities required)
+        - DRAFT: Lenient validation (only title required)
         - IN_REVIEW/PUBLISHED: Strict validation (all required fields must be complete)
         """
         errors = {}
@@ -174,12 +175,12 @@ class Case(models.Model):
         if not self.title or not self.title.strip():
             errors['title'] = "Title is required"
         
-        # Always require at least one alleged entity
-        if not self.alleged_entities or len(self.alleged_entities) == 0:
-            errors['alleged_entities'] = "At least one alleged entity is required"
-        
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
+            # Require at least one alleged entity for published cases
+            if not self.alleged_entities or len(self.alleged_entities) == 0:
+                errors['alleged_entities'] = "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+            
             if not self.key_allegations or len(self.key_allegations) == 0:
                 errors['key_allegations'] = "At least one key allegation is required for IN_REVIEW or PUBLISHED state"
             

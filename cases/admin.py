@@ -27,7 +27,7 @@ class CaseAdminForm(forms.ModelForm):
     
     # Override fields with custom widgets
     alleged_entities = MultiEntityIDField(
-        required=True,
+        required=False,
         label="Alleged Entities",
         help_text="Entity IDs for entities being accused"
     )
@@ -46,12 +46,14 @@ class CaseAdminForm(forms.ModelForm):
     
     key_allegations = MultiTextField(
         required=False,
+        button_label="Add Key Allegation",
         label="Key Allegations",
         help_text="List of key allegation statements"
     )
     
     tags = MultiTextField(
         required=False,
+        button_label="Add Tag",
         label="Tags",
         help_text="Tags for categorization"
     )
@@ -159,10 +161,10 @@ class CaseAdmin(admin.ModelAdmin):
         ('Basic Information', {
             'fields': (
                 'case_id',
-                'version',
                 'title',
                 'case_type',
                 'state',
+                'alleged_entities',
             )
         }),
         ('Dates', {
@@ -173,21 +175,20 @@ class CaseAdmin(admin.ModelAdmin):
         }),
         ('Entities', {
             'fields': (
-                'alleged_entities',
                 'related_entities',
                 'locations',
             )
         }),
         ('Content', {
             'fields': (
-                'description',
                 'key_allegations',
+                'timeline',
+                'description',
                 'tags',
             )
         }),
-        ('Timeline & Evidence', {
+        ('Evidence', {
             'fields': (
-                'timeline',
                 'evidence',
             )
         }),
@@ -198,6 +199,7 @@ class CaseAdmin(admin.ModelAdmin):
         }),
         ('Metadata', {
             'fields': (
+                'version',
                 'created_at',
                 'updated_at',
                 'version_info_display',
@@ -281,6 +283,36 @@ class CaseAdmin(admin.ModelAdmin):
         # No role - see nothing
         return qs.none()
     
+    def has_view_permission(self, request, obj=None):
+        """
+        Check if user can view a case.
+        
+        - Contributors: Can only view assigned cases
+        - Moderators/Admins: Can view all cases
+        """
+        if not super().has_view_permission(request, obj):
+            return False
+        
+        if obj is None:
+            return True
+        
+        # Admins and superusers can view everything
+        if request.user.is_superuser:
+            return True
+        
+        # Check user groups
+        user_groups = list(request.user.groups.values_list('name', flat=True))
+        
+        # Moderators and Admins can view everything
+        if 'Moderator' in user_groups or 'Admin' in user_groups:
+            return True
+        
+        # Contributors can only view assigned cases
+        if 'Contributor' in user_groups:
+            return obj.contributors.filter(id=request.user.id).exists()
+        
+        return False
+    
     def has_change_permission(self, request, obj=None):
         """
         Check if user can change a case.
@@ -314,7 +346,16 @@ class CaseAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         """
         Save the model with validation and state transition checks.
+        Automatically adds the creator to contributors when creating a new case.
         """
+        # For new cases, enforce DRAFT state
+        if not change:
+            if obj.state != CaseState.DRAFT:
+                raise ValidationError(
+                    f"New cases must be created in DRAFT state. "
+                    f"Cannot create a new case with state {obj.state}."
+                )
+        
         # Check if state is being changed
         if change:
             old_obj = Case.objects.get(pk=obj.pk)
@@ -341,6 +382,10 @@ class CaseAdmin(admin.ModelAdmin):
             raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e))
         
         super().save_model(request, obj, form, change)
+        
+        # Automatically add creator to contributors when creating a new case
+        if not change:
+            obj.contributors.add(request.user)
     
     def get_actions(self, request):
         """
@@ -768,6 +813,6 @@ admin.site.register(User, CustomUserAdmin)
 # Admin Site Configuration
 # ============================================================================
 
-admin.site.site_header = "Jawafdehi Mgmt"
+admin.site.site_header = "Jawafdehi"
 admin.site.site_title = "Jawafdehi Management Portal"
 admin.site.index_title = "Welcome to Jawafdehi Management Portal"

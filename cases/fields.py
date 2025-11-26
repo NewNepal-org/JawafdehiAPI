@@ -13,8 +13,7 @@ class EntityListField(models.JSONField):
     """
     Stores and validates a list of entity ID strings.
     
-    Entity IDs must follow the format: entity:{type}/{slug}
-    where type is one of: person, organization, location
+    Entity IDs are validated using the NES validate_entity_id() function.
     """
     
     def __init__(self, *args, **kwargs):
@@ -22,7 +21,9 @@ class EntityListField(models.JSONField):
         super().__init__(*args, **kwargs)
     
     def validate(self, value, model_instance):
-        """Validate that value is a list of valid entity IDs."""
+        """Validate that value is a list of valid entity IDs using NES validator."""
+        from nes.core.identifiers.validators import validate_entity_id
+        
         super().validate(value, model_instance)
         
         if not isinstance(value, list):
@@ -36,31 +37,15 @@ class EntityListField(models.JSONField):
                 raise ValidationError("At least one entity ID is required")
             return
         
-        valid_types = ["person", "organization", "location"]
-        
         for entity_id in value:
             if not isinstance(entity_id, str):
                 raise ValidationError(f"Entity ID must be a string: {entity_id}")
             
-            if not entity_id.startswith("entity:"):
-                raise ValidationError(f"Invalid entity ID format (must start with 'entity:'): {entity_id}")
-            
-            # Check format: entity:{type}/{slug}
-            parts = entity_id.split(":")
-            if len(parts) != 2:
-                raise ValidationError(f"Invalid entity ID format: {entity_id}")
-            
-            type_and_slug = parts[1]
-            if "/" not in type_and_slug:
-                raise ValidationError(f"Invalid entity ID format (missing '/'): {entity_id}")
-            
-            type_part, slug_part = type_and_slug.split("/", 1)
-            
-            if type_part not in valid_types:
-                raise ValidationError(f"Invalid entity type '{type_part}' (must be one of {valid_types}): {entity_id}")
-            
-            if not slug_part:
-                raise ValidationError(f"Entity ID slug cannot be empty: {entity_id}")
+            # Use NES validator for consistent validation
+            try:
+                validate_entity_id(entity_id)
+            except ValueError as e:
+                raise ValidationError(str(e))
 
 
 class TextListField(models.JSONField):

@@ -56,6 +56,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -134,6 +135,22 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Additional locations of static files
+STATICFILES_DIRS = [
+    BASE_DIR / "static",
+]
+
+# Whitenoise configuration for serving static files
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -206,6 +223,51 @@ CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS"]
 # NES API Configuration
 NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
 
-# Forms Configuration
-# Use HTTPS as default scheme for URLField (Django 6.0 compatibility)
-FORMS_URLFIELD_ASSUME_HTTPS = True
+# Jazzmin Configuration
+JAZZMIN_SETTINGS = {
+    "site_title": "Jawafdehi Admin",
+    "site_header": "Jawafdehi",
+    "site_brand": "Jawafdehi",
+    "site_logo": "corruption-db-logo.png",
+    "login_logo": "corruption-db-logo.png",
+    "site_logo_classes": "img-circle",
+    "site_icon": "corruption-db-logo.png",
+    "welcome_sign": "Welcome to Jawafdehi Management Portal",
+    "copyright": "Jawafdehi",
+    "search_model": ["cases.Case", "cases.DocumentSource"],
+    "user_avatar": None,
+    
+    # Top Menu
+    "topmenu_links": [
+        {"name": "Home", "url": "admin:index", "permissions": ["auth.view_user"]},
+        {"name": "Public API", "url": "/api/", "new_window": True},
+    ],
+    
+    # Side Menu
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "hide_apps": [],
+    "hide_models": [],
+    "order_with_respect_to": ["cases", "auth"],
+    
+    # Icons
+    "icons": {
+        "auth": "fas fa-users-cog",
+        "auth.user": "fas fa-user",
+        "auth.Group": "fas fa-users",
+        "cases.Case": "fas fa-gavel",
+        "cases.DocumentSource": "fas fa-file-alt",
+    },
+    
+    # UI Tweaks
+    "custom_css": None,
+    "custom_js": None,
+    "use_google_fonts_cdn": True,
+    "show_ui_builder": False,
+    
+    "changeform_format": "horizontal_tabs",
+    "changeform_format_overrides": {
+        "auth.user": "collapsible",
+        "auth.group": "vertical_tabs",
+    },
+}
