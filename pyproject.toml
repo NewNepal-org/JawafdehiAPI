@@ -4,6 +4,7 @@ version = "0.1.0"
 description = ""
 authors = ["Damodar Dahal <damo94761@gmail.com>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -26,9 +27,6 @@ rules = "^3.5"
 hypothesis = "^6.148.2"
 pytest = "^9.0.1"
 pytest-django = "^4.11.1"
-
-[tool.poetry.config.virtualenvs]
-in-project = true
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"
