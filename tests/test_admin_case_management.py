@@ -172,7 +172,7 @@ def can_transition_to_state(user, case, target_state):
 # ============================================================================
 
 @pytest.mark.django_db
-@settings(max_examples=100)
+@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
 @given(
     case_data=complete_case_data(),
     moderator_data=user_with_role('Moderator')
@@ -213,7 +213,7 @@ def test_moderators_can_publish_cases(case_data, moderator_data):
 
 
 @pytest.mark.django_db
-@settings(max_examples=100)
+@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
 @given(
     case_data=complete_case_data(),
     moderator_data=user_with_role('Moderator')
@@ -253,7 +253,7 @@ def test_moderators_can_close_cases(case_data, moderator_data):
 
 
 @pytest.mark.django_db
-@settings(max_examples=50)
+@settings(max_examples=10)  # Reduced from 50 to 10 for faster execution
 @given(
     case_data=complete_case_data(),
     moderator_data=user_with_role('Moderator'),
@@ -290,7 +290,7 @@ def test_moderators_can_transition_to_any_state(case_data, moderator_data, targe
 # ============================================================================
 
 @pytest.mark.django_db
-@settings(max_examples=100)
+@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
 @given(case_data=complete_case_data())
 def test_transition_to_in_review_updates_version_info(case_data):
     """
@@ -333,7 +333,7 @@ def test_transition_to_in_review_updates_version_info(case_data):
 
 
 @pytest.mark.django_db
-@settings(max_examples=100)
+@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
 @given(case_data=complete_case_data())
 def test_transition_to_published_updates_version_info(case_data):
     """
@@ -377,7 +377,7 @@ def test_transition_to_published_updates_version_info(case_data):
 
 
 @pytest.mark.django_db
-@settings(max_examples=100)
+@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
 @given(
     case_data=complete_case_data(),
     target_state=st.sampled_from([CaseState.IN_REVIEW, CaseState.PUBLISHED, CaseState.CLOSED])

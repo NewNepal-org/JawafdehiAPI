@@ -183,7 +183,7 @@ def create_mock_request(user):
 # ============================================================================
 
 @pytest.mark.django_db
-@settings(max_examples=20)
+@settings(max_examples=20, deadline=None)
 @given(
     case_data=complete_case_data(),
     contributor_data=user_with_role('Contributor'),

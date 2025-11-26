@@ -8,17 +8,86 @@ from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Max
 from django.db import connection
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 from .models import Case, CaseState, DocumentSource
-from .serializers import CaseSerializer, DocumentSourceSerializer
+from .serializers import CaseSerializer, CaseDetailSerializer, DocumentSourceSerializer
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List published cases",
+        description="""
+        Retrieve a paginated list of published accountability cases.
+        
+        Only cases with state=PUBLISHED and the highest version per case_id are returned.
+        Results are ordered by creation date (newest first).
+        
+        **Filtering:**
+        - `case_type`: Filter by case type (CORRUPTION or PROMISES)
+        - `tags`: Filter cases containing a specific tag
+        
+        **Search:**
+        - `search`: Full-text search across title, description, and key allegations
+        
+        **Pagination:**
+        - Results are paginated with 20 items per page
+        - Use `page` parameter to navigate pages
+        """,
+        parameters=[
+            OpenApiParameter(
+                name='case_type',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter by case type',
+                enum=['CORRUPTION', 'PROMISES'],
+                required=False,
+            ),
+            OpenApiParameter(
+                name='tags',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Filter cases containing this tag',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search across title, description, and key allegations',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='page',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Page number for pagination',
+                required=False,
+            ),
+        ],
+        tags=['cases'],
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve a case with audit history",
+        description="""
+        Retrieve detailed information about a specific published case.
+        
+        This endpoint includes:
+        - Complete case data (title, description, allegations, evidence, timeline)
+        - Audit history showing all published versions of this case
+        
+        Only published cases are accessible through this endpoint.
+        """,
+        tags=['cases'],
+    ),
+)
 class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Public read-only API for Cases.
     
     Provides:
     - List endpoint: GET /api/cases/
-    - Retrieve endpoint: GET /api/cases/{id}/
+    - Retrieve endpoint: GET /api/cases/{id}/ (includes audit history)
     
     Filtering:
     - case_type: Filter by case type
@@ -35,6 +104,14 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ['case_type']
     search_fields = ['title', 'description', 'key_allegations']
+    
+    def get_serializer_class(self):
+        """
+        Use CaseDetailSerializer for retrieve action to include audit history.
+        """
+        if self.action == 'retrieve':
+            return CaseDetailSerializer
+        return CaseSerializer
     
     def get_queryset(self):
         """
@@ -89,6 +166,40 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset.order_by('-created_at')
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List document sources",
+        description="""
+        Retrieve a paginated list of document sources.
+        
+        Only sources associated with published cases are accessible.
+        Soft-deleted sources (is_deleted=True) are excluded.
+        
+        **Pagination:**
+        - Results are paginated with 20 items per page
+        - Use `page` parameter to navigate pages
+        """,
+        parameters=[
+            OpenApiParameter(
+                name='page',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Page number for pagination',
+                required=False,
+            ),
+        ],
+        tags=['sources'],
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve a document source",
+        description="""
+        Retrieve detailed information about a specific document source.
+        
+        Only sources associated with at least one published case are accessible.
+        """,
+        tags=['sources'],
+    ),
+)
 class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Public read-only API for DocumentSources.

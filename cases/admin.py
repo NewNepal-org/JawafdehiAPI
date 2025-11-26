@@ -407,6 +407,14 @@ class DocumentSourceAdminForm(forms.ModelForm):
         help_text="Entity IDs related to this source"
     )
     
+    # Override url field to set assume_scheme and silence Django 6.0 warning
+    url = forms.URLField(
+        required=False,
+        max_length=500,
+        assume_scheme='https',
+        help_text="Optional URL to the source"
+    )
+    
     class Meta:
         model = DocumentSource
         fields = '__all__'
@@ -506,10 +514,12 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """Display deletion status as a colored badge."""
         if obj.is_deleted:
             return format_html(
-                '<span style="background-color: #dc3545; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">Deleted</span>'
+                '<span style="background-color: #dc3545; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">{}</span>',
+                'Deleted'
             )
         return format_html(
-            '<span style="background-color: #28a745; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">Active</span>'
+            '<span style="background-color: #28a745; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">{}</span>',
+            'Active'
         )
     deletion_status.short_description = 'Status'
     

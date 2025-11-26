@@ -151,9 +151,52 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Jawafdehi API",
-    "DESCRIPTION": "API for managing allegations and accountability data",
+    "TITLE": "Jawafdehi Public Accountability API",
+    "DESCRIPTION": """
+Public API for the Jawafdehi accountability platform.
+
+This API provides read-only access to published cases of alleged corruption, 
+misconduct, and broken promises by public entities in Nepal.
+
+## Features
+
+- **Browse Cases**: List all published cases with filtering and search
+- **View Details**: Get complete case information including evidence and timeline
+- **Audit History**: Access version history for published cases
+- **Document Sources**: Browse evidence sources associated with published cases
+
+## Access
+
+All endpoints are public and do not require authentication. Only published 
+cases (state=PUBLISHED) are accessible through this API.
+
+## Filtering & Search
+
+The cases endpoint supports:
+- Filtering by case type and tags
+- Full-text search across title, description, and key allegations
+- Pagination (20 items per page)
+    """,
     "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": "/api/",
+    "SERVERS": [
+        {"url": "http://localhost:8000", "description": "Development server"},
+    ],
+    "TAGS": [
+        {
+            "name": "cases",
+            "description": "Operations related to accountability cases"
+        },
+        {
+            "name": "sources",
+            "description": "Operations related to document sources and evidence"
+        },
+    ],
+    "ENUM_NAME_OVERRIDES": {
+        "CaseTypeEnum": "cases.models.CaseType",
+    },
 }
 
 # CORS
@@ -162,3 +205,7 @@ CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS"]
 
 # NES API Configuration
 NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
+
+# Forms Configuration
+# Use HTTPS as default scheme for URLField (Django 6.0 compatibility)
+FORMS_URLFIELD_ASSUME_HTTPS = True

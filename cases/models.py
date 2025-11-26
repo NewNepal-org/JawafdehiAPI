@@ -276,6 +276,28 @@ class Case(models.Model):
         }
         
         self.save()
+    
+    def delete(self, using=None, keep_parents=False):
+        """
+        Soft delete the case by setting state to CLOSED.
+        
+        Cases are never hard-deleted to preserve audit history.
+        Instead, the state is set to CLOSED and the record remains in the database.
+        """
+        self.state = CaseState.CLOSED
+        
+        # Update versionInfo to track the deletion
+        self.versionInfo = {
+            'version_number': self.version,
+            'action': 'deleted',
+            'datetime': timezone.now().isoformat(),
+        }
+        
+        self.save()
+        
+        # Return a tuple (num_deleted, dict) to match Django's delete() signature
+        # Since we're soft deleting, we report 0 actual deletions
+        return (0, {self._meta.label: 0})
 
 
 class DocumentSource(models.Model):

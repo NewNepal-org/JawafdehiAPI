@@ -103,7 +103,7 @@
   - **Validates: Requirements 4.1, 6.1, 6.2, 6.3, 8.1, 8.3**
   - _Requirements: 4.1, 6.1, 6.2, 6.3, 8.1, 8.3_
 
-- [-] 13. Implement public read-only API for Cases (to pass tests)
+- [x] 13. Implement public read-only API for Cases (to pass tests)
   - Create CaseViewSet with list and retrieve endpoints
   - Filter to show only published cases (highest version per case_id)
   - Implement filtering by case_type and tags
@@ -111,28 +111,28 @@
   - Include audit history (versionInfo) in retrieve endpoint
   - _Requirements: 6.1, 6.2, 6.3, 8.1, 8.3_
 
-- [ ] 14. Implement public read-only API for DocumentSources (to pass tests)
+- [x] 14. Implement public read-only API for DocumentSources (to pass tests)
   - Create DocumentSourceViewSet with list and retrieve endpoints
   - Filter to show only sources associated with published cases
   - _Requirements: 6.3_
 
-- [ ] 15. Set up OpenAPI documentation
+- [x] 15. Set up OpenAPI documentation
   - Configure drf-spectacular for API documentation
   - Document all endpoints, filters, and response formats
   - _Requirements: 8.2_
 
-- [ ] 16. Write property test for soft deletion (TDD)
+- [x] 16. Write property test for soft deletion (TDD)
   - Write test for soft delete setting state to CLOSED
   - **Property 18: Soft delete sets state to CLOSED**
   - **Validates: Requirements 7.3**
   - _Requirements: 7.3_
 
-- [ ] 17. Implement soft deletion for Cases (to pass tests)
+- [x] 17. Implement soft deletion for Cases (to pass tests)
   - Add DELETE endpoint behavior to set state=CLOSED
   - Ensure closed cases remain in database
   - _Requirements: 7.3_
 
-- [ ] 18. Add database indexes
+- [x] 18. Add database indexes
   - Add index on Case.case_id
   - Add index on Case.state
   - Add index on Case.version
@@ -140,16 +140,16 @@
   - Add composite index on (state, version)
   - _Performance optimization_
 
-- [ ] 19. Checkpoint - Ensure all property tests pass
+- [x] 19. Checkpoint - Ensure all property tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 20. Write E2E tests for public API (TDD)
+- [x] 20. Write E2E tests for public API (TDD)
   - Test browse → filter → search → view details workflow
   - Test that only published cases are accessible
   - Test audit history retrieval
   - _Requirements: 6.1, 6.2, 6.3, 8.1, 8.3_
 
-- [ ] 21. Write E2E tests for Django Admin (TDD)
+- [x] 21. Write E2E tests for Django Admin (TDD)
   - Test create draft → edit → submit → review → publish workflow
   - Test contributor assignment and access restrictions
   - Test state transitions with validation
@@ -157,5 +157,5 @@
   - Test soft deletion
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.3, 5.1, 5.2, 5.3, 7.1, 7.3_
 
-- [ ] 22. Final Checkpoint - Ensure all tests pass
+- [x] 22. Final Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.

@@ -2,8 +2,8 @@
 Property-based tests for Case model.
 
 Feature: accountability-platform-core
-Tests Properties 1, 2, 3, 3a, 4
-Validates: Requirements 1.1, 1.2, 1.3, 1.4
+Tests Properties 1, 2, 3, 3a, 4, 18
+Validates: Requirements 1.1, 1.2, 1.3, 1.4, 7.3
 """
 
 import pytest
@@ -335,3 +335,80 @@ def test_case_requires_title():
             alleged_entities=["entity:person/test-person"],
             case_type=CaseType.CORRUPTION,
         )
+
+
+# ============================================================================
+# Property 18: Soft delete sets state to CLOSED
+# ============================================================================
+
+@pytest.mark.django_db
+@settings(max_examples=100)
+@given(case_data=complete_case_data())
+def test_soft_delete_sets_state_to_closed(case_data):
+    """
+    Feature: accountability-platform-core, Property 18: Soft delete sets state to CLOSED
+    
+    For any case deleted in Django Admin, its state should be set to CLOSED
+    and the record should remain in the database.
+    Validates: Requirements 7.3
+    """
+    # Create a case in any state
+    case = Case.objects.create(**case_data)
+    original_id = case.id
+    original_case_id = case.case_id
+    
+    # Soft delete the case (this will be implemented in task 17)
+    # For now, we test the expected behavior: setting state to CLOSED
+    case.delete()
+    
+    # Verify the case still exists in the database
+    assert Case.objects.filter(id=original_id).exists(), \
+        "Soft-deleted case should still exist in database"
+    
+    # Verify the state is set to CLOSED
+    case.refresh_from_db()
+    assert case.state == CaseState.CLOSED, \
+        f"Soft-deleted case should have state CLOSED, but got {case.state}"
+    
+    # Verify the case_id is unchanged
+    assert case.case_id == original_case_id, \
+        "Soft-deleted case should retain its case_id"
+
+
+@pytest.mark.django_db
+@settings(max_examples=50)
+@given(case_data=complete_case_data())
+def test_soft_delete_preserves_all_data(case_data):
+    """
+    Feature: accountability-platform-core, Property 18: Soft delete sets state to CLOSED
+    
+    For any case deleted in Django Admin, all data should be preserved
+    (only state changes to CLOSED).
+    Validates: Requirements 7.3
+    """
+    # Create and publish a case
+    case = Case.objects.create(**case_data)
+    case.state = CaseState.PUBLISHED
+    case.save()
+    
+    original_id = case.id
+    original_title = case.title
+    original_version = case.version
+    original_alleged_entities = case.alleged_entities.copy()
+    original_key_allegations = case.key_allegations.copy()
+    
+    # Soft delete the case
+    case.delete()
+    
+    # Verify all data is preserved except state
+    case.refresh_from_db()
+    assert case.state == CaseState.CLOSED, \
+        "Soft-deleted case should have state CLOSED"
+    assert case.title == original_title, \
+        "Soft-deleted case should preserve title"
+    assert case.version == original_version, \
+        "Soft-deleted case should preserve version"
+    assert case.alleged_entities == original_alleged_entities, \
+        "Soft-deleted case should preserve alleged_entities"
+    assert case.key_allegations == original_key_allegations, \
+        "Soft-deleted case should preserve key_allegations"
