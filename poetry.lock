@@ -1603,6 +1603,17 @@ files = [
 ]
 
 [[package]]
+name = "rules"
+version = "3.5"
+description = "Awesome Django authorization, without the database"
+optional = false
+python-versions = "*"
+files = [
+    {file = "rules-3.5-py2.py3-none-any.whl", hash = "sha256:0f00fc9ee448b3f82e9aff9334ab0c56c76dce4dfa14f1598f57969f1022acc0"},
+    {file = "rules-3.5.tar.gz", hash = "sha256:f01336218f4561bab95f53672d22418b4168baea271423d50d9e8490d64cb27a"},
+]
+
+[[package]]
 name = "sentry-sdk"
 version = "2.45.0"
 description = "Python client for Sentry (https://sentry.io)"
@@ -2090,4 +2101,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "c26aca0af1a60abf0f95de7916b7b56acebccec6fb64ca6aba8e9bafb7add766"
+content-hash = "2dcf0a42f66c5831efa728832ac0de2d4129a44dc055bad3b3733654e1d1a00f"

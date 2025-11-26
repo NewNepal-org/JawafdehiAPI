@@ -22,6 +22,14 @@ class DocumentSource(models.Model):
     url = models.URLField(blank=True, null=True)
     source_type = models.CharField(max_length=50, choices=SOURCE_TYPE_CHOICES)
     related_entity_ids = models.JSONField(default=list)
+    case = models.ForeignKey('Allegation', on_delete=models.CASCADE, related_name='documents', null=True, blank=True)
+    
+    class Meta:
+        permissions = [
+            ('add_document', 'Can add document'),
+            ('change_document', 'Can change document'),
+            ('delete_document', 'Can delete document'),
+        ]
     
     def clean(self):
         for entity_id in self.related_entity_ids:
@@ -54,7 +62,7 @@ class Allegation(models.Model):
     
     STATE_CHOICES = [
         ("draft", "Draft"),
-        ("under_review", "Under Review"),
+        ("in_review", "In Review"),
         ("published", "Published"),
         ("closed", "Closed"),
     ]
@@ -70,10 +78,16 @@ class Allegation(models.Model):
     timeline = models.JSONField(default=list)
     evidence = models.JSONField(default=list)
     case_date = models.DateField(null=True, blank=True)
+    contributors = models.ManyToManyField(User, related_name='assigned_cases', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
         ordering = ["-created_at"]
+        permissions = [
+            ('publish_case', 'Can publish case'),
+            ('assign_contributor', 'Can assign contributors to case'),
+        ]
     
     def clean(self):
         if not self.alleged_entities:
@@ -84,9 +98,51 @@ class Allegation(models.Model):
             validate_entity_id(entity_id)
         if not self.key_allegations or len(self.key_allegations) < 1:
             raise ValidationError({"key_allegations": "At least one key allegation is required."})
+        for entry in self.timeline:
+            if not isinstance(entry, dict):
+                raise ValidationError({"timeline": "Each timeline entry must be an object."})
+            if 'date' not in entry or 'title' not in entry or 'description' not in entry:
+                raise ValidationError({"timeline": "Each timeline entry must have date, title, and description fields."})
+        for entry in self.evidence:
+            if not isinstance(entry, dict):
+                raise ValidationError({"evidence": "Each evidence entry must be an object."})
+            if 'source_id' not in entry or 'description' not in entry:
+                raise ValidationError({"evidence": "Each evidence entry must have source_id and description fields."})
+    
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        AllegationRevision.objects.create(
+            allegation=self,
+            content_snapshot={
+                'allegation_type': self.allegation_type,
+                'state': self.state,
+                'title': self.title,
+                'alleged_entities': self.alleged_entities,
+                'related_entities': self.related_entities,
+                'location_id': self.location_id,
+                'description': self.description,
+                'key_allegations': self.key_allegations,
+                'timeline': self.timeline,
+                'evidence': self.evidence,
+                'case_date': str(self.case_date) if self.case_date else None,
+            }
+        )
     
     def __str__(self):
         return self.title
+
+
+class AllegationRevision(models.Model):
+    allegation = models.ForeignKey(Allegation, on_delete=models.CASCADE, related_name="revisions")
+    content_snapshot = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    class Meta:
+        ordering = ["-created_at"]
+    
+    def __str__(self):
+        return f"{self.allegation.title} - {self.created_at}"
 
 
 class Modification(models.Model):

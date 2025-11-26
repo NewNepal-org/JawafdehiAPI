@@ -2,7 +2,7 @@ from django.contrib import admin
 from django import forms
 from tinymce.widgets import TinyMCE
 from .models import Allegation, Response, DocumentSource, Modification
-from .widgets import MultiEntityIDField, MultiTextField
+from .widgets import MultiEntityIDField, MultiTextField, MultiTimelineField, MultiEvidenceField
 
 admin.site.site_header = "Jawafdehi Mgmt"
 admin.site.site_title = "Jawafdehi Management Portal"
@@ -33,11 +33,24 @@ class AllegationAdminForm(forms.ModelForm):
         required=True,
         label="Key Allegations"
     )
+    timeline = MultiTimelineField(
+        required=False,
+        label="Timeline"
+    )
     description = forms.CharField(widget=TinyMCE())
     state = forms.ChoiceField(
         choices=Allegation.STATE_CHOICES,
         widget=forms.RadioSelect
     )
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        sources = [(s.source_id, f"{s.source_id} - {s.title}") for s in DocumentSource.objects.all()]
+        self.fields['evidence'] = MultiEvidenceField(
+            required=False,
+            label="Evidence",
+            sources=sources
+        )
     
     class Meta:
         model = Allegation

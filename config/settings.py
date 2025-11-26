@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "django_filters",
     "corsheaders",
     "tinymce",
+    "rules.apps.AutodiscoverRulesConfig",
     "cases",
 ]
 
@@ -108,6 +109,12 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
+]
+
+# Authentication backends
+AUTHENTICATION_BACKENDS = [
+    "rules.permissions.ObjectPermissionBackend",
+    "django.contrib.auth.backends.ModelBackend",
 ]
 
 

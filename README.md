@@ -12,6 +12,184 @@ A Django-based public accountability platform for tracking allegations of corrup
 - Integration with Nepal Entity Service (NES)
 - Admin interface powered by Jazzmin (Bootstrap 4)
 
+## Permissions Model
+
+### Case Revisions
+
+Each allegation uses a revision system to track changes:
+- **Published version** - The current live allegation visible to the public
+- **Draft revision** - Edits create a new revision in Draft status
+- Revisions maintain history of all changes to an allegation
+
+### Allegation Status Workflow
+
+#### Creating New Allegations
+1. **Draft** - Initial status when an allegation is created
+2. **In Review** - Contributor submits the draft for review (visible to Moderators)
+3. **Published/Closed** - Moderator approves and sets final status
+
+#### Editing Existing Allegations
+Editing a published allegation creates a new revision:
+1. User edits the allegation (creates a new draft revision)
+2. Submits for review (revision status: **In Review**)
+3. Moderator approves, changing revision status to **Draft**, **Published**, or **Closed**
+4. If approved as Published, the new revision becomes the live version
+
+### User Roles
+
+#### Admin
+- Manage all Moderators (create, edit, delete, assign permissions)
+- Manage all Contributors (create, edit, delete, assign to cases)
+- Full access to all Allegations, Evidence, Sources, and Responses
+- Assign Contributors to specific cases
+
+#### Moderator
+- Manage Contributors (create, edit, delete, assign to cases)
+- Full access to all Allegations, Evidence, Sources, and Responses
+- Assign Contributors to specific cases
+
+#### Contributor
+- Create new Allegations (initial status: Draft)
+- Submit drafts for review (changes status to In Review)
+- Access Evidence, Sources, and Responses only for assigned cases
+- Edit content only for assigned cases
+- Change case status only between "Draft" and "In Review"
+
+### Permission Matrix
+
+| Action | Admin | Moderator | Contributor |
+|--------|-------|-----------|-------------|
+| Manage Moderators | ✓ | ✗ | ✗ |
+| Manage Contributors | ✓ | ✓ | ✗ |
+| Create Allegations | ✓ | ✓ | ✓ |
+| Assign Contributors to Cases | ✓ | ✓ | ✗ |
+| Access All Cases | ✓ | ✓ | ✗ |
+| Access Assigned Cases | ✓ | ✓ | ✓ |
+| Manage Evidence (assigned cases) | ✓ | ✓ | ✓ |
+| Manage Sources (assigned cases) | ✓ | ✓ | ✓ |
+| Manage Responses (assigned cases) | ✓ | ✓ | ✓ |
+| Change Case Status (all statuses) | ✓ | ✓ | ✗ |
+| Change Case Status (Draft ↔ In Review) | ✓ | ✓ | ✓ |
+| Approve & Publish/Close Cases | ✓ | ✓ | ✗ |
+
+### Case Assignment
+
+Contributors must be explicitly assigned to cases by Admins or Moderators. Once assigned, Contributors gain access to:
+- View and edit the Allegation
+- Add and manage Evidence
+- Document Sources
+- Handle Responses
+
+Contributors cannot access cases they are not assigned to.
+
+## User Workflows
+
+### Public (Unauthenticated) Workflows
+
+#### Browse Cases
+```
+1. View list of published cases
+2. Apply filters (entity, category, status)
+3. Search cases by keyword
+4. Select case to view details
+```
+
+#### View Case Details
+```
+1. Read case content
+2. View associated evidence
+3. Review documented sources
+4. Read entity responses
+5. View case timeline
+```
+
+#### Access API
+```
+1. Query cases via RESTful API
+2. Access OpenAPI documentation
+3. Retrieve public data programmatically
+```
+
+### Contributor Workflows
+
+#### Create New Case
+```
+1. Create case (status ← Draft)
+2. Add evidence and sources
+3. Submit for review (status ← In Review)
+4. Wait for moderator/admin approval
+```
+
+#### Edit Assigned Case
+```
+1. Access assigned case
+2. Edit case (creates new draft revision)
+3. Modify evidence and sources
+4. Submit revision (status ← In Review)
+5. Wait for moderator/admin to approve and publish
+```
+
+#### Manage Case Content (Assigned Cases Only)
+```
+1. Add/edit evidence
+2. Document sources
+3. Toggle status between Draft and In Review
+```
+
+### Moderator Workflows
+
+#### Manage Contributors
+```
+1. Create/edit/delete contributor accounts
+2. Assign contributors to specific cases
+```
+
+#### Manage Cases
+```
+1. Create new case (status ← Draft)
+2. Edit any case (creates new revision)
+3. Review submissions (status = In Review)
+4. Approve revision (status ← Published or Closed)
+5. Access all cases regardless of assignment
+```
+
+#### Manage Content
+```
+1. Add/edit/delete evidence for any case
+2. Document sources for any case
+3. Handle responses for any case
+```
+
+### Admin Workflows
+
+#### Manage Moderators
+```
+1. Create/edit/delete moderator accounts
+2. Assign permissions to moderators
+```
+
+#### Manage Contributors
+```
+1. Create/edit/delete contributor accounts
+2. Assign contributors to specific cases
+```
+
+#### Manage Cases
+```
+1. Create new case (status ← Draft)
+2. Edit any case (creates new revision)
+3. Review submissions (status = In Review)
+4. Approve revision (status ← Published or Closed)
+5. Access all cases regardless of assignment
+```
+
+#### Manage Content
+```
+1. Add/edit/delete evidence for any case
+2. Document sources for any case
+3. Handle responses for any case
+```
+
 ## License
 
 MIT
