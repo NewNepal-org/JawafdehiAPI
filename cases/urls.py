@@ -1,16 +1,18 @@
+"""
+URL configuration for the cases app API.
+
+See: .kiro/specs/accountability-platform-core/design.md
+"""
+
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .api_views import (
-    AllegationViewSet, DocumentSourceViewSet,
-    ModificationViewSet, ResponseViewSet
-)
+from .api_views import CaseViewSet, DocumentSourceViewSet
 
+# Create a router and register our viewsets
 router = DefaultRouter()
-router.register(r'allegations', AllegationViewSet)
-router.register(r'sources', DocumentSourceViewSet)
-router.register(r'modifications', ModificationViewSet)
-router.register(r'responses', ResponseViewSet)
+router.register(r'cases', CaseViewSet, basename='case')
+router.register(r'sources', DocumentSourceViewSet, basename='documentsource')
 
 urlpatterns = [
-    path('api/', include(router.urls)),
+    path('', include(router.urls)),
 ]

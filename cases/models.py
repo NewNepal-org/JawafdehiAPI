@@ -1,184 +1,382 @@
+"""
+Models for the Jawafdehi accountability platform.
+
+See: .kiro/specs/accountability-platform-core/design.md
+"""
+
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from datetime import datetime
+from django.utils import timezone
 import uuid
-from nes.core.identifiers.validators import validate_entity_id
+
+from .fields import (
+    EntityListField,
+    TextListField,
+    TimelineListField,
+    EvidenceListField,
+)
 
 
-class DocumentSource(models.Model):
-    SOURCE_TYPE_CHOICES = [
-        ("government", "Government"),
-        ("ngo", "NGO"),
-        ("social_media", "Social Media"),
-        ("media", "Media"),
-        ("crowdsourced", "Crowdsourced"),
-        ("other", "Other"),
-    ]
-    
-    source_id = models.CharField(max_length=100, unique=True, editable=False)
-    title = models.CharField(max_length=300)
-    description = models.TextField()
-    url = models.URLField(blank=True, null=True)
-    source_type = models.CharField(max_length=50, choices=SOURCE_TYPE_CHOICES)
-    related_entity_ids = models.JSONField(default=list)
-    case = models.ForeignKey('Allegation', on_delete=models.CASCADE, related_name='documents', null=True, blank=True)
-    
-    class Meta:
-        permissions = [
-            ('add_document', 'Can add document'),
-            ('change_document', 'Can change document'),
-            ('delete_document', 'Can delete document'),
-        ]
-    
-    def clean(self):
-        for entity_id in self.related_entity_ids:
-            validate_entity_id(entity_id)
-    
-    def save(self, *args, **kwargs):
-        if not self.source_id:
-            date_str = datetime.now().strftime("%Y%m%d")
-            uuid_str = str(uuid.uuid4())[:8]
-            self.source_id = f"source:{date_str}:{uuid_str}"
-        super().save(*args, **kwargs)
-    
-    def __str__(self):
-        return self.title
+User = get_user_model()
 
 
-class Allegation(models.Model):
-    TYPE_CHOICES = [
-        ("corruption", "Corruption"),
-        ("misconduct", "Misconduct"),
-        ("breach_of_trust", "Breach of Trust"),
-        ("broken_promise", "Broken Promise"),
-        ("media_trial", "Media Trial"),
-    ]
+class CaseType(models.TextChoices):
+    """Enum for case types."""
+    CORRUPTION = "CORRUPTION", "Corruption"
+    PROMISES = "PROMISES", "Broken Promises"
+
+
+class CaseState(models.TextChoices):
+    """Enum for case states."""
+    DRAFT = "DRAFT", "Draft"
+    IN_REVIEW = "IN_REVIEW", "In Review"
+    PUBLISHED = "PUBLISHED", "Published"
+    CLOSED = "CLOSED", "Closed"
+
+
+class Case(models.Model):
+    """
+    Core model representing a case of alleged misconduct.
     
-    STATUS_CHOICES = [
-        ("under_investigation", "Under Investigation"),
-        ("closed", "Closed"),
-    ]
+    Supports versioning: multiple Case records can share the same case_id
+    to represent different versions/drafts of the same case.
+    """
     
-    STATE_CHOICES = [
-        ("draft", "Draft"),
-        ("in_review", "In Review"),
-        ("published", "Published"),
-        ("closed", "Closed"),
-    ]
+    # Versioning fields
+    case_id = models.CharField(
+        max_length=100,
+        db_index=True,
+        help_text="Unique identifier shared across versions of the same case"
+    )
+    version = models.IntegerField(
+        default=1,
+        db_index=True,
+        help_text="Version number, increments with each published update"
+    )
     
-    allegation_type = models.CharField(max_length=50, choices=TYPE_CHOICES)
-    state = models.CharField(max_length=50, choices=STATE_CHOICES, default="draft")
-    title = models.CharField(max_length=200)
-    alleged_entities = models.JSONField(default=list)
-    related_entities = models.JSONField(default=list)
-    location_id = models.CharField(max_length=200, blank=True, null=True)
-    description = models.TextField()
-    key_allegations = models.JSONField(default=list)
-    timeline = models.JSONField(default=list)
-    evidence = models.JSONField(default=list)
-    case_date = models.DateField(null=True, blank=True)
-    contributors = models.ManyToManyField(User, related_name='assigned_cases', blank=True)
+    # Core fields
+    case_type = models.CharField(
+        max_length=20,
+        choices=CaseType.choices,
+        help_text="Type of case (corruption, broken promises, etc.)"
+    )
+    state = models.CharField(
+        max_length=20,
+        choices=CaseState.choices,
+        default=CaseState.DRAFT,
+        db_index=True,
+        help_text="Current state in the workflow"
+    )
+    title = models.CharField(
+        max_length=200,
+        help_text="Case title"
+    )
+    
+    # Date fields
+    case_start_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="When the alleged incident began"
+    )
+    case_end_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="When the alleged incident ended"
+    )
+    
+    # Entity fields (using custom list fields)
+    alleged_entities = EntityListField(
+        help_text="List of entity IDs for entities being accused"
+    )
+    related_entities = EntityListField(
+        blank=True,
+        help_text="List of entity IDs for related entities"
+    )
+    locations = EntityListField(
+        blank=True,
+        help_text="List of location entity IDs"
+    )
+    
+    # Content fields
+    tags = TextListField(
+        blank=True,
+        help_text="List of tags for categorization"
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Rich text description of the case"
+    )
+    key_allegations = TextListField(
+        blank=True,
+        help_text="List of key allegation statements"
+    )
+    
+    # Structured data fields
+    timeline = TimelineListField(
+        help_text="List of timeline entries"
+    )
+    evidence = EvidenceListField(
+        help_text="List of evidence entries with source references"
+    )
+    
+    # Relationships
+    contributors = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name="assigned_cases",
+        help_text="Contributors assigned to this case"
+    )
+    
+    # Metadata
+    versionInfo = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Version metadata tracking changes"
+    )
+    
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        ordering = ["-created_at"]
-        permissions = [
-            ('publish_case', 'Can publish case'),
-            ('assign_contributor', 'Can assign contributors to case'),
+        indexes = [
+            models.Index(fields=['case_id', 'state', 'version']),
+            models.Index(fields=['state', 'version']),
         ]
+        ordering = ['-created_at']
     
-    def clean(self):
-        if not self.alleged_entities:
-            raise ValidationError({"alleged_entities": "At least one alleged entity is required."})
-        for entity_id in self.alleged_entities:
-            validate_entity_id(entity_id)
-        for entity_id in self.related_entities:
-            validate_entity_id(entity_id)
-        if not self.key_allegations or len(self.key_allegations) < 1:
-            raise ValidationError({"key_allegations": "At least one key allegation is required."})
-        for entry in self.timeline:
-            if not isinstance(entry, dict):
-                raise ValidationError({"timeline": "Each timeline entry must be an object."})
-            if 'date' not in entry or 'title' not in entry or 'description' not in entry:
-                raise ValidationError({"timeline": "Each timeline entry must have date, title, and description fields."})
-        for entry in self.evidence:
-            if not isinstance(entry, dict):
-                raise ValidationError({"evidence": "Each evidence entry must be an object."})
-            if 'source_id' not in entry or 'description' not in entry:
-                raise ValidationError({"evidence": "Each evidence entry must have source_id and description fields."})
+    def __str__(self):
+        return f"{self.case_id} v{self.version} - {self.title} ({self.state})"
     
     def save(self, *args, **kwargs):
+        """Override save to generate case_id for new cases."""
+        if not self.case_id:
+            # Generate unique case_id for new cases
+            self.case_id = f"case-{uuid.uuid4().hex[:12]}"
+        
+        # Validate title is not empty
+        if not self.title or not self.title.strip():
+            raise ValidationError("Title cannot be empty")
+        
         super().save(*args, **kwargs)
-        AllegationRevision.objects.create(
-            allegation=self,
-            content_snapshot={
-                'allegation_type': self.allegation_type,
-                'state': self.state,
-                'title': self.title,
-                'alleged_entities': self.alleged_entities,
-                'related_entities': self.related_entities,
-                'location_id': self.location_id,
-                'description': self.description,
-                'key_allegations': self.key_allegations,
-                'timeline': self.timeline,
-                'evidence': self.evidence,
-                'case_date': str(self.case_date) if self.case_date else None,
+    
+    def validate(self):
+        """
+        Validate case data based on current state.
+        
+        - DRAFT: Lenient validation (only title and alleged_entities required)
+        - IN_REVIEW/PUBLISHED: Strict validation (all required fields must be complete)
+        """
+        errors = {}
+        
+        # Always require title
+        if not self.title or not self.title.strip():
+            errors['title'] = "Title is required"
+        
+        # Always require at least one alleged entity
+        if not self.alleged_entities or len(self.alleged_entities) == 0:
+            errors['alleged_entities'] = "At least one alleged entity is required"
+        
+        # Strict validation for IN_REVIEW and PUBLISHED states
+        if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
+            if not self.key_allegations or len(self.key_allegations) == 0:
+                errors['key_allegations'] = "At least one key allegation is required for IN_REVIEW or PUBLISHED state"
+            
+            if not self.description or not self.description.strip():
+                errors['description'] = "Description is required for IN_REVIEW or PUBLISHED state"
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def submit(self):
+        """
+        Submit a draft case for review.
+        
+        Transitions state from DRAFT to IN_REVIEW after validation.
+        """
+        if self.state != CaseState.DRAFT:
+            raise ValidationError(f"Can only submit cases in DRAFT state, current state is {self.state}")
+        
+        # Validate before submission
+        self.state = CaseState.IN_REVIEW
+        self.validate()
+        
+        # Update versionInfo
+        self.versionInfo = {
+            'version_number': self.version,
+            'action': 'submitted',
+            'datetime': timezone.now().isoformat(),
+        }
+        
+        self.save()
+    
+    def create_draft(self):
+        """
+        Create a new draft version from this case.
+        
+        Creates a new Case record with:
+        - Same case_id
+        - Incremented version
+        - State set to DRAFT
+        - Copy of all content fields
+        
+        Returns the new draft Case instance.
+        """
+        # Create new draft with incremented version
+        draft = Case(
+            case_id=self.case_id,
+            version=self.version + 1,
+            case_type=self.case_type,
+            state=CaseState.DRAFT,
+            title=self.title,
+            case_start_date=self.case_start_date,
+            case_end_date=self.case_end_date,
+            alleged_entities=self.alleged_entities.copy() if self.alleged_entities else [],
+            related_entities=self.related_entities.copy() if self.related_entities else [],
+            locations=self.locations.copy() if self.locations else [],
+            tags=self.tags.copy() if self.tags else [],
+            description=self.description,
+            key_allegations=self.key_allegations.copy() if self.key_allegations else [],
+            timeline=self.timeline.copy() if self.timeline else [],
+            evidence=self.evidence.copy() if self.evidence else [],
+            versionInfo={
+                'version_number': self.version + 1,
+                'action': 'draft_created',
+                'source_version': self.version,
+                'datetime': timezone.now().isoformat(),
             }
         )
+        
+        draft.save()
+        
+        # Copy contributors
+        draft.contributors.set(self.contributors.all())
+        
+        return draft
     
-    def __str__(self):
-        return self.title
+    def publish(self):
+        """
+        Publish this case.
+        
+        Sets state to PUBLISHED and updates versionInfo.
+        """
+        if self.state not in [CaseState.IN_REVIEW, CaseState.DRAFT]:
+            raise ValidationError(f"Can only publish cases in IN_REVIEW or DRAFT state, current state is {self.state}")
+        
+        # Validate before publishing
+        self.state = CaseState.PUBLISHED
+        self.validate()
+        
+        # Update versionInfo
+        self.versionInfo = {
+            'version_number': self.version,
+            'action': 'published',
+            'datetime': timezone.now().isoformat(),
+        }
+        
+        self.save()
 
 
-class AllegationRevision(models.Model):
-    allegation = models.ForeignKey(Allegation, on_delete=models.CASCADE, related_name="revisions")
-    content_snapshot = models.JSONField()
+class DocumentSource(models.Model):
+    """
+    Represents evidence sources that can be referenced by cases.
+    
+    Sources are soft-deleted via is_deleted flag to preserve audit history.
+    A source is publicly accessible if associated with at least one published case.
+    """
+    
+    # Unique identifier
+    source_id = models.CharField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+        help_text="Unique identifier for the source"
+    )
+    
+    # Core fields
+    title = models.CharField(
+        max_length=300,
+        help_text="Source title"
+    )
+    description = models.TextField(
+        help_text="Source description"
+    )
+    url = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        help_text="Optional URL to the source"
+    )
+    
+    # Entity relationships
+    related_entity_ids = EntityListField(
+        blank=True,
+        help_text="List of entity IDs related to this source"
+    )
+    
+    # Case relationship
+    case = models.ForeignKey(
+        Case,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sources",
+        help_text="Case this source is associated with"
+    )
+    
+    # Soft deletion
+    is_deleted = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Soft deletion flag"
+    )
+    
+    # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
     
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ['-created_at']
     
     def __str__(self):
-        return f"{self.allegation.title} - {self.created_at}"
-
-
-class Modification(models.Model):
-    ACTION_CHOICES = [
-        ("created", "Created"),
-        ("submitted", "Submitted"),
-        ("reviewed", "Reviewed"),
-        ("approved", "Approved"),
-        ("rejected", "Rejected"),
-        ("updated", "Updated"),
-        ("response_added", "Response Added"),
-    ]
+        return f"{self.source_id} - {self.title}"
     
-    allegation = models.ForeignKey(Allegation, on_delete=models.CASCADE, related_name="modifications")
-    action = models.CharField(max_length=50, choices=ACTION_CHOICES)
-    timestamp = models.DateTimeField(auto_now_add=True)
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    notes = models.TextField()
+    def save(self, *args, **kwargs):
+        """Override save to generate source_id and validate required fields."""
+        if not self.source_id:
+            # Generate unique source_id for new sources
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d")
+            self.source_id = f"source:{timestamp}:{uuid.uuid4().hex[:8]}"
+        
+        # Validate required fields before saving
+        if not self.title or not self.title.strip():
+            raise ValidationError("Title is required and cannot be empty")
+        
+        if not self.description or not self.description.strip():
+            raise ValidationError("Description is required and cannot be empty")
+        
+        super().save(*args, **kwargs)
     
-    class Meta:
-        ordering = ["timestamp"]
-    
-    def __str__(self):
-        return f"{self.action} - {self.allegation.title} at {self.timestamp}"
-
-
-class Response(models.Model):
-    allegation = models.ForeignKey(Allegation, on_delete=models.CASCADE, related_name="responses")
-    response_text = models.TextField()
-    entity_id = models.CharField(max_length=200)
-    submitted_at = models.DateTimeField(auto_now_add=True)
-    verified_at = models.DateTimeField(null=True, blank=True)
-    verified_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
-    
-    class Meta:
-        ordering = ["-submitted_at"]
-    
-    def __str__(self):
-        return f"Response to {self.allegation.title}"
+    def validate(self):
+        """
+        Validate source data.
+        
+        Validates:
+        - Title is present and non-empty
+        - Description is present and non-empty
+        - Entity IDs are valid (validated by EntityListField)
+        """
+        errors = {}
+        
+        # Validate title
+        if not self.title or not self.title.strip():
+            errors['title'] = "Title is required and cannot be empty"
+        
+        # Validate description
+        if not self.description or not self.description.strip():
+            errors['description'] = "Description is required and cannot be empty"
+        
+        if errors:
+            raise ValidationError(errors)

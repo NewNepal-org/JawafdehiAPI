@@ -1,29 +1,64 @@
+"""
+Serializers for the Jawafdehi accountability platform API.
+
+See: .kiro/specs/accountability-platform-core/design.md
+"""
+
 from rest_framework import serializers
-from .models import Allegation, DocumentSource, Modification, Response
+from .models import Case, DocumentSource
+
+
+class CaseSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Case model.
+    
+    Exposes all fields except:
+    - contributors (internal only)
+    - state (internal workflow detail)
+    - version (internal versioning detail)
+    """
+    
+    class Meta:
+        model = Case
+        fields = [
+            'id',
+            'case_id',
+            'case_type',
+            'title',
+            'case_start_date',
+            'case_end_date',
+            'alleged_entities',
+            'related_entities',
+            'locations',
+            'tags',
+            'description',
+            'key_allegations',
+            'timeline',
+            'evidence',
+            'versionInfo',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = fields  # API is read-only
 
 
 class DocumentSourceSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DocumentSource
-        fields = '__all__'
-
-
-class ModificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Modification
-        fields = '__all__'
-
-
-class ResponseSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Response
-        fields = '__all__'
-
-
-class AllegationSerializer(serializers.ModelSerializer):
-    modifications = ModificationSerializer(many=True, read_only=True)
-    responses = ResponseSerializer(many=True, read_only=True)
+    """
+    Serializer for DocumentSource model.
+    
+    Used for public API access to sources associated with published cases.
+    """
     
     class Meta:
-        model = Allegation
-        fields = '__all__'
+        model = DocumentSource
+        fields = [
+            'id',
+            'source_id',
+            'title',
+            'description',
+            'url',
+            'related_entity_ids',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = fields  # API is read-only

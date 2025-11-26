@@ -2,7 +2,7 @@
 
 **Development Approach:** Follow Test-Driven Development (TDD). Write tests first, then implement the functionality to make the tests pass. This ensures all code is testable and meets requirements from the start.
 
-- [ ] 1. Write property tests for custom list field validation (TDD)
+- [x] 1. Write property tests for custom list field validation (TDD)
   - Write test for EntityListField validation
   - Write test for TextListField validation
   - Write test for TimelineListField validation
@@ -11,14 +11,14 @@
   - **Validates: Requirements 1.2**
   - _Requirements: 1.2, 4.1, 4.2_
 
-- [ ] 2. Implement custom list field types (to pass tests)
+- [x] 2. Implement custom list field types (to pass tests)
   - Create EntityListField for entity ID validation and storage
   - Create TextListField for text string lists
   - Create TimelineListField for timeline entries
   - Create EvidenceListField for evidence entries
   - _Requirements: 1.2, 4.1, 4.2_
 
-- [ ] 3. Write property tests for Case model (TDD)
+- [x] 3. Write property tests for Case model (TDD)
   - Write test for new cases starting in Draft state
   - Write test for draft validation (lenient) vs In Review validation (strict)
   - Write test for draft submission transitions
@@ -32,7 +32,7 @@
   - **Validates: Requirements 1.1, 1.2, 1.3, 1.4**
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 7.1_
 
-- [ ] 4. Implement Case model with versioning (to pass tests)
+- [x] 4. Implement Case model with versioning (to pass tests)
   - Create Case model with all fields (case_id, version, case_type enum, state enum, etc.)
   - Implement validate() method for field validation
   - Implement create_draft() method for creating draft versions
@@ -40,19 +40,19 @@
   - Add versionInfo JSONField tracking
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 7.1_
 
-- [ ] 5. Write property test for DocumentSource validation (TDD)
+- [x] 5. Write property test for DocumentSource validation (TDD)
   - Write test for source validation enforcing required fields
   - **Property 11: Source validation enforces required fields**
   - **Validates: Requirements 4.2**
   - _Requirements: 4.1, 4.2_
 
-- [ ] 6. Implement DocumentSource model (to pass tests)
+- [x] 6. Implement DocumentSource model (to pass tests)
   - Create DocumentSource model with fields (source_id, title, description, url, etc.)
   - Implement validate() method
   - Add is_deleted field for soft deletion
   - _Requirements: 4.1, 4.2_
 
-- [ ] 7. Write property tests for Django Admin Case management (TDD)
+- [x] 7. Write property tests for Django Admin Case management (TDD)
   - Write test for moderator state transitions
   - Write test for versionInfo updates on state changes
   - **Property 6: Moderators can publish and close cases**
@@ -60,19 +60,19 @@
   - **Validates: Requirements 2.1, 2.4, 7.2**
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 8. Set up Django Admin for Case management (to pass tests)
+- [x] 8. Set up Django Admin for Case management (to pass tests)
   - Create custom admin form for Case with rich text editor
   - Implement inline editors for evidence and timeline
   - Add state transition controls with validation
   - Display version history and audit trail
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 9. Set up Django Admin for DocumentSource management
+- [x] 9. Set up Django Admin for DocumentSource management
   - Create custom admin form for DocumentSource
   - Implement soft deletion interface
   - _Requirements: 4.1, 4.2_
 
-- [ ] 10. Write property tests for role-based permissions (TDD)
+- [x] 10. Write property tests for role-based permissions (TDD)
   - Write test for contributor state transitions (Draft ↔ In Review only)
   - Write test for admin permissions (full access)
   - Write test for contributor access restrictions (assigned cases only)
@@ -84,14 +84,14 @@
   - **Validates: Requirements 1.5, 3.1, 3.2, 3.3, 5.1, 5.2, 5.3**
   - _Requirements: 3.1, 3.2, 3.3, 5.1, 5.2, 5.3_
 
-- [ ] 11. Implement role-based permissions in Django Admin (to pass tests)
+- [x] 11. Implement role-based permissions in Django Admin (to pass tests)
   - Configure Admin, Moderator, and Contributor roles
   - Implement contributor assignment functionality
   - Restrict Contributor access to assigned cases only
   - Prevent Moderators from managing other Moderators
   - _Requirements: 3.1, 3.2, 3.3, 5.1, 5.2, 5.3_
 
-- [ ] 12. Write property tests for public API (TDD)
+- [x] 12. Write property tests for public API (TDD)
   - Write test for public API visibility (only published cases)
   - Write test for search and filter functionality
   - Write test for complete data display
@@ -103,7 +103,7 @@
   - **Validates: Requirements 4.1, 6.1, 6.2, 6.3, 8.1, 8.3**
   - _Requirements: 4.1, 6.1, 6.2, 6.3, 8.1, 8.3_
 
-- [ ] 13. Implement public read-only API for Cases (to pass tests)
+- [-] 13. Implement public read-only API for Cases (to pass tests)
   - Create CaseViewSet with list and retrieve endpoints
   - Filter to show only published cases (highest version per case_id)
   - Implement filtering by case_type and tags
