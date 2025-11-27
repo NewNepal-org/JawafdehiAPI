@@ -220,14 +220,25 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         """
-        Return only sources associated with published cases.
+        Return only sources referenced in evidence of published cases.
         
-        A source is accessible if its associated case is published.
+        A source is accessible if it's referenced in the evidence field
+        of at least one published case.
         """
-        # Get all sources where the associated case is published
-        # and not soft-deleted
+        # Get all published cases
+        published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+        
+        # Extract all source_ids from evidence fields
+        source_ids = set()
+        for case in published_cases:
+            if case.evidence:
+                for evidence_item in case.evidence:
+                    if isinstance(evidence_item, dict) and 'source_id' in evidence_item:
+                        source_ids.add(evidence_item['source_id'])
+        
+        # Return sources that are referenced and not soft-deleted
         return DocumentSource.objects.filter(
-            case__state=CaseState.PUBLISHED,
+            source_id__in=source_ids,
             is_deleted=False
         ).distinct()
     

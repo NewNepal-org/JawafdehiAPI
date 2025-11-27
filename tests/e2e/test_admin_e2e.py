@@ -328,6 +328,13 @@ class TestDjangoAdminWorkflows:
         # Simulate admin save (which should auto-add creator to contributors)
         admin_instance.save_model(request_contrib1, case, None, change=False)
         
+        # Simulate save_related (which adds creator to contributors)
+        class DummyForm:
+            instance = case
+            def save_m2m(self):
+                pass
+        admin_instance.save_related(request_contrib1, DummyForm(), [], change=False)
+        
         # Step 2: Verify creator is automatically added to contributors
         assert self.contributor1 in case.contributors.all(), \
             "Creator should be automatically added to contributors when creating a case"
@@ -997,6 +1004,13 @@ class TestDjangoAdminWorkflows:
         
         # Step 3: Save via admin (simulating form submission)
         admin_instance.save_model(request_contrib, minimal_case, None, change=False)
+        
+        # Simulate save_related (which adds creator to contributors)
+        class DummyForm:
+            instance = minimal_case
+            def save_m2m(self):
+                pass
+        admin_instance.save_related(request_contrib, DummyForm(), [], change=False)
         
         # Verify case is created successfully
         assert minimal_case.id is not None, \

@@ -95,6 +95,19 @@ def case_with_contributor(db, contributor_user):
     return case
 
 
+@pytest.fixture
+def source_with_contributor(db, contributor_user):
+    """Create a document source with an assigned contributor."""
+    source = DocumentSource(
+        title='Test Source',
+        description='Test description',
+        related_entity_ids=[]
+    )
+    source.save()
+    source.contributors.add(contributor_user)
+    return source
+
+
 class TestDocumentSourceAdmin:
     """Test DocumentSource admin configuration."""
     
@@ -110,19 +123,17 @@ class TestDocumentSourceAdmin:
     def test_fieldsets_configured(self, db):
         """Test that fieldsets are properly configured."""
         admin_instance = admin.site._registry[DocumentSource]
-        assert len(admin_instance.fieldsets) == 4
+        assert len(admin_instance.fieldsets) == 2
         
         # Check fieldset names
         fieldset_names = [fs[0] for fs in admin_instance.fieldsets]
         assert 'Basic Information' in fieldset_names
-        assert 'Relationships' in fieldset_names
-        assert 'Status' in fieldset_names
         assert 'Metadata' in fieldset_names
     
     def test_list_display_configured(self, db):
         """Test that list display is properly configured."""
         admin_instance = admin.site._registry[DocumentSource]
-        expected_fields = ['source_id', 'title', 'case', 'deletion_status', 'created_at']
+        expected_fields = ['source_id', 'title', 'deletion_status', 'created_at']
         assert admin_instance.list_display == expected_fields
     
     def test_soft_delete_action_exists(self, db):
@@ -160,24 +171,38 @@ class TestDocumentSourceAdmin:
         
         assert admin_instance.has_change_permission(request, document_source)
     
-    def test_contributor_can_change_assigned_case_source(
-        self, db, contributor_user, request_factory, case_with_contributor
+    def test_contributor_can_change_assigned_source(
+        self, db, contributor_user, request_factory, source_with_contributor
     ):
-        """Test that contributor can change sources for assigned cases."""
-        # Create source linked to assigned case
-        source = DocumentSource(
-            title='Test Source',
-            description='Test description',
-            case=case_with_contributor,
-            related_entity_ids=[]
-        )
-        source.save()
-        
+        """Test that contributor can change sources they're assigned to."""
         admin_instance = admin.site._registry[DocumentSource]
         request = request_factory.get('/')
         request.user = contributor_user
         
-        assert admin_instance.has_change_permission(request, source)
+        assert admin_instance.has_change_permission(request, source_with_contributor)
+    
+    def test_contributor_cannot_change_unassigned_source(
+        self, db, contributor_user, request_factory, document_source
+    ):
+        """Test that contributor cannot change sources they're not assigned to."""
+        admin_instance = admin.site._registry[DocumentSource]
+        request = request_factory.get('/')
+        request.user = contributor_user
+        
+        assert not admin_instance.has_change_permission(request, document_source)
+    
+    def test_contributor_sees_only_assigned_sources(
+        self, db, contributor_user, request_factory, source_with_contributor, document_source
+    ):
+        """Test that contributor only sees sources they're assigned to."""
+        admin_instance = admin.site._registry[DocumentSource]
+        request = request_factory.get('/')
+        request.user = contributor_user
+        
+        queryset = admin_instance.get_queryset(request)
+        
+        assert source_with_contributor in queryset
+        assert document_source not in queryset
     
     def test_soft_deletion_preserves_record(self, db, document_source):
         """Test that soft deletion preserves the record in database."""
@@ -212,6 +237,41 @@ class TestDocumentSourceAdmin:
         
         assert 'Deleted' in badge_html
         assert '#dc3545' in badge_html  # Red color
+
+
+class TestDocumentSourcePermissions:
+    """Test DocumentSource admin permissions and access control."""
+    
+    def test_creator_auto_assigned_as_contributor(
+        self, db, contributor_user, request_factory
+    ):
+        """Test that creator is automatically assigned as contributor when creating a source."""
+        from cases.admin import DocumentSourceAdmin
+        
+        admin_instance = DocumentSourceAdmin(DocumentSource, admin.site)
+        request = request_factory.post('/')
+        request.user = contributor_user
+        
+        # Create a new source
+        source = DocumentSource(
+            title='New Source',
+            description='Test description',
+            related_entity_ids=[]
+        )
+        
+        # Simulate save_model and save_related (full admin save flow)
+        admin_instance.save_model(request, source, None, change=False)
+        
+        # Simulate save_related (which adds creator to contributors)
+        class DummyForm:
+            instance = source
+            def save_m2m(self):
+                pass
+        admin_instance.save_related(request, DummyForm(), [], change=False)
+        
+        # Verify creator is in contributors
+        assert contributor_user in source.contributors.all(), \
+            "Creator should be automatically assigned as contributor"
 
 
 class TestDocumentSourceAdminForm:

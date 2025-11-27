@@ -87,8 +87,28 @@ class CaseAdminForm(forms.ModelForm):
         self.request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
         
-        # Populate evidence field with available sources
-        sources = DocumentSource.objects.filter(is_deleted=False).values_list('source_id', 'title')
+        # Populate evidence field with available sources based on user permissions
+        if self.request:
+            user = self.request.user
+            sources_queryset = DocumentSource.objects.filter(is_deleted=False)
+            
+            # Filter sources based on user role
+            if not user.is_superuser:
+                user_groups = list(user.groups.values_list('name', flat=True))
+                
+                # Contributors only see sources they're assigned to
+                if 'Moderator' not in user_groups and 'Admin' not in user_groups:
+                    if 'Contributor' in user_groups:
+                        sources_queryset = sources_queryset.filter(contributors=user)
+                    else:
+                        # No role - see nothing
+                        sources_queryset = DocumentSource.objects.none()
+            
+            sources = sources_queryset.values_list('source_id', 'title')
+        else:
+            # Fallback if no request (shouldn't happen in normal admin usage)
+            sources = DocumentSource.objects.filter(is_deleted=False).values_list('source_id', 'title')
+        
         self.fields['evidence'].sources = list(sources)
         self.fields['evidence'].widget.sources = list(sources)
         
@@ -112,6 +132,12 @@ class CaseAdminForm(forms.ModelForm):
         # Validate based on state
         if state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
             # Strict validation for IN_REVIEW and PUBLISHED
+            alleged_entities = cleaned_data.get('alleged_entities')
+            if not alleged_entities or len(alleged_entities) == 0:
+                raise ValidationError({
+                    'alleged_entities': 'At least one alleged entity is required for IN_REVIEW or PUBLISHED state'
+                })
+            
             if not cleaned_data.get('key_allegations'):
                 raise ValidationError({
                     'key_allegations': 'At least one key allegation is required for IN_REVIEW or PUBLISHED state'
@@ -506,6 +532,23 @@ class DocumentSourceAdminForm(forms.ModelForm):
         model = DocumentSource
         fields = '__all__'
     
+    def __init__(self, *args, **kwargs):
+        self.request = kwargs.pop('request', None)
+        super().__init__(*args, **kwargs)
+        
+        # Restrict contributors field visibility based on user role
+        if self.request:
+            user = self.request.user
+            user_groups = list(user.groups.values_list('name', flat=True))
+            
+            # Only Moderators and Admins can edit contributors
+            if not user.is_superuser:
+                if 'Moderator' not in user_groups and 'Admin' not in user_groups:
+                    # Contributors cannot edit the contributors field
+                    if 'contributors' in self.fields:
+                        self.fields['contributors'].disabled = True
+                        self.fields['contributors'].help_text = 'Only Moderators and Admins can assign contributors'
+    
     def clean(self):
         """
         Validate the form.
@@ -538,7 +581,6 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     list_display = [
         'source_id',
         'title',
-        'case',
         'deletion_status',
         'created_at',
     ]
@@ -567,19 +609,9 @@ class DocumentSourceAdmin(admin.ModelAdmin):
                 'title',
                 'description',
                 'url',
-            )
-        }),
-        ('Relationships', {
-            'fields': (
-                'case',
                 'related_entity_ids',
+                'contributors',
             )
-        }),
-        ('Status', {
-            'fields': (
-                'is_deleted',
-            ),
-            'description': 'Soft deletion: marking as deleted preserves the source in the database for audit purposes'
         }),
         ('Metadata', {
             'fields': (
@@ -607,7 +639,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """
         Filter queryset based on user role.
         
-        - Contributors: Only see sources for assigned cases
+        - Contributors: Only see sources they're assigned to
         - Moderators/Admins: See all sources
         """
         qs = super().get_queryset(request)
@@ -623,18 +655,48 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         if 'Moderator' in user_groups or 'Admin' in user_groups:
             return qs
         
-        # Contributors only see sources for assigned cases
+        # Contributors only see sources they're assigned to
         if 'Contributor' in user_groups:
-            return qs.filter(case__contributors=request.user)
+            return qs.filter(contributors=request.user)
         
         # No role - see nothing
         return qs.none()
+    
+    def has_view_permission(self, request, obj=None):
+        """
+        Check if user can view a source.
+        
+        - Contributors: Can only view sources they're assigned to
+        - Moderators/Admins: Can view all sources
+        """
+        if not super().has_view_permission(request, obj):
+            return False
+        
+        if obj is None:
+            return True
+        
+        # Admins and superusers can view everything
+        if request.user.is_superuser:
+            return True
+        
+        # Check user groups
+        user_groups = list(request.user.groups.values_list('name', flat=True))
+        
+        # Moderators and Admins can view everything
+        if 'Moderator' in user_groups or 'Admin' in user_groups:
+            return True
+        
+        # Contributors can only view sources they're assigned to
+        if 'Contributor' in user_groups:
+            return obj.contributors.filter(id=request.user.id).exists()
+        
+        return False
     
     def has_change_permission(self, request, obj=None):
         """
         Check if user can change a source.
         
-        - Contributors: Can only change sources for assigned cases
+        - Contributors: Can only change sources they're assigned to
         - Moderators/Admins: Can change all sources
         """
         # Check if user has staff status
@@ -655,12 +717,9 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         if 'Moderator' in user_groups or 'Admin' in user_groups:
             return True
         
-        # Contributors can only change sources for assigned cases
+        # Contributors can only change sources they're assigned to
         if 'Contributor' in user_groups:
-            if obj.case:
-                return obj.case.contributors.filter(id=request.user.id).exists()
-            # Sources without a case can be edited by any contributor
-            return True
+            return obj.contributors.filter(id=request.user.id).exists()
         
         return False
     
@@ -674,6 +733,17 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         # Disable hard deletion for all users
         return False
     
+    def get_form(self, request, obj=None, **kwargs):
+        """Pass request to form for filtering case dropdown."""
+        form_class = super().get_form(request, obj, **kwargs)
+        
+        class FormWithRequest(form_class):
+            def __new__(cls, *args, **kwargs):
+                kwargs['request'] = request
+                return form_class(*args, **kwargs)
+        
+        return FormWithRequest
+    
     def save_model(self, request, obj, form, change):
         """
         Save the model with validation.
@@ -686,6 +756,18 @@ class DocumentSourceAdmin(admin.ModelAdmin):
             raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e))
         
         super().save_model(request, obj, form, change)
+    
+    def save_related(self, request, form, formsets, change):
+        """
+        Save related objects (including many-to-many relationships).
+        Automatically adds the creator to contributors when creating a new source.
+        """
+        # First save the form's many-to-many data
+        super().save_related(request, form, formsets, change)
+        
+        # Then add creator to contributors for new sources
+        if not change:
+            form.instance.contributors.add(request.user)
     
     def get_actions(self, request):
         """

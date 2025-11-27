@@ -306,7 +306,7 @@ class DocumentSource(models.Model):
     Represents evidence sources that can be referenced by cases.
     
     Sources are soft-deleted via is_deleted flag to preserve audit history.
-    A source is publicly accessible if associated with at least one published case.
+    A source is publicly accessible if referenced in evidence of any published case.
     """
     
     # Unique identifier
@@ -339,14 +339,12 @@ class DocumentSource(models.Model):
         help_text="List of entity IDs related to this source"
     )
     
-    # Case relationship
-    case = models.ForeignKey(
-        Case,
-        on_delete=models.SET_NULL,
-        null=True,
+    # Contributors (for access control)
+    contributors = models.ManyToManyField(
+        User,
         blank=True,
-        related_name="sources",
-        help_text="Case this source is associated with"
+        related_name="assigned_sources",
+        help_text="Contributors assigned to manage this source"
     )
     
     # Soft deletion

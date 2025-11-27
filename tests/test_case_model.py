@@ -31,12 +31,13 @@ def valid_entity_id(draw):
     entity_types = ["person", "organization", "location"]
     entity_type = draw(st.sampled_from(entity_types))
     
-    # Generate valid slug (lowercase letters, numbers, hyphens)
+    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
+    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
     slug = draw(st.text(
-        alphabet=st.characters(whitelist_categories=("Ll", "Nd"), whitelist_characters="-"),
+        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
         min_size=3,
         max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-")))
+    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
     
     return f"entity:{entity_type}/{slug}"
 
@@ -311,15 +312,21 @@ def test_editing_published_cases_preserves_original(case_data):
 @pytest.mark.django_db
 def test_case_requires_at_least_one_alleged_entity():
     """
-    Edge case: Cases must have at least one alleged entity.
+    Edge case: Cases in IN_REVIEW or PUBLISHED state must have at least one alleged entity.
     Validates: Requirements 1.2
     """
-    with pytest.raises((ValidationError, ValueError)):
-        case = Case.objects.create(
-            title="Test Case",
-            alleged_entities=[],  # Empty list
-            case_type=CaseType.CORRUPTION,
-        )
+    # Draft cases can have empty alleged_entities (lenient validation)
+    case = Case.objects.create(
+        title="Test Case",
+        alleged_entities=[],  # Empty list
+        case_type=CaseType.CORRUPTION,
+    )
+    # Should not raise for DRAFT state
+    case.validate()
+    
+    # But should raise when transitioning to IN_REVIEW
+    case.state = CaseState.IN_REVIEW
+    with pytest.raises(ValidationError):
         case.validate()
 
 

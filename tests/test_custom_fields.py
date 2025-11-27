@@ -27,12 +27,13 @@ def valid_entity_id(draw):
     entity_types = ["person", "organization", "location"]
     entity_type = draw(st.sampled_from(entity_types))
     
-    # Generate valid slug (lowercase letters, numbers, hyphens)
+    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
+    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
     slug = draw(st.text(
-        alphabet=st.characters(whitelist_categories=("Ll", "Nd"), whitelist_characters="-"),
+        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
         min_size=3,
         max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-")))
+    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
     
     return f"entity:{entity_type}/{slug}"
 

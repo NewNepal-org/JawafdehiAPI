@@ -233,7 +233,6 @@ def test_evidence_requires_valid_source_references(case_data, source_data):
     
     # Create a valid DocumentSource
     source = DocumentSource(**source_data)
-    source.case = case
     source.save()
     
     # Add evidence referencing the source
@@ -455,7 +454,6 @@ def test_published_cases_display_complete_data(case_data, source_data):
     
     # Create a source
     source = DocumentSource(**source_data)
-    source.case = case
     source.save()
     
     # Add evidence referencing the source
@@ -640,42 +638,55 @@ def test_api_does_not_expose_state_field():
 
 
 @pytest.mark.django_db
-def test_document_source_api_only_shows_sources_with_published_cases():
+def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     """
-    Edge case: DocumentSource API should only show sources associated with published cases.
-    Validates: Design document - sources visible if associated with published case
+    Edge case: DocumentSource API should only show sources referenced in evidence of published cases.
+    Validates: Design document - sources visible if referenced by any published case
     """
-    # Create a draft case with a source
+    # Create a source (not linked to any case via ForeignKey)
+    draft_source = DocumentSource(
+        title="Draft Source",
+        description="Source for draft case"
+    )
+    draft_source.save()
+    
+    published_source = DocumentSource(
+        title="Published Source",
+        description="Source for published case"
+    )
+    published_source.save()
+    
+    unreferenced_source = DocumentSource(
+        title="Unreferenced Source",
+        description="Source not referenced by any case"
+    )
+    unreferenced_source.save()
+    
+    # Create a draft case that references draft_source in evidence
     draft_case = Case.objects.create(
         title="Draft Case",
         alleged_entities=["entity:person/test"],
         case_type=CaseType.CORRUPTION,
-        state=CaseState.DRAFT
+        state=CaseState.DRAFT,
+        evidence=[{
+            "source_id": draft_source.source_id,
+            "description": "Evidence from draft case"
+        }]
     )
     
-    draft_source = DocumentSource(
-        title="Draft Source",
-        description="Source for draft case",
-        case=draft_case
-    )
-    draft_source.save()
-    
-    # Create a published case with a source
+    # Create a published case that references published_source in evidence
     published_case = Case.objects.create(
         title="Published Case",
         alleged_entities=["entity:person/test"],
         key_allegations=["Test allegation"],
         case_type=CaseType.CORRUPTION,
         description="Test description",
-        state=CaseState.PUBLISHED
+        state=CaseState.PUBLISHED,
+        evidence=[{
+            "source_id": published_source.source_id,
+            "description": "Evidence from published case"
+        }]
     )
-    
-    published_source = DocumentSource(
-        title="Published Source",
-        description="Source for published case",
-        case=published_case
-    )
-    published_source.save()
     
     # Make API request to list sources
     client = APIClient()
@@ -683,10 +694,12 @@ def test_document_source_api_only_shows_sources_with_published_cases():
     
     assert response.status_code == 200
     
-    # Only published source should appear
+    # Only published source should appear (referenced by published case)
     source_ids = [s.get('source_id') for s in response.data.get('results', [])]
     
     assert published_source.source_id in source_ids, \
-        "Source associated with published case should appear in API"
+        "Source referenced by published case should appear in API"
     assert draft_source.source_id not in source_ids, \
-        "Source associated with draft case should NOT appear in API"
+        "Source referenced only by draft case should NOT appear in API"
+    assert unreferenced_source.source_id not in source_ids, \
+        "Source not referenced by any case should NOT appear in API"

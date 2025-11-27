@@ -62,8 +62,7 @@ class TestPublicAPIWorkflows:
         self.corruption_source = DocumentSource(
             title="Land Registry Document",
             description="Official land registry showing illegal transfer",
-            related_entity_ids=["entity:person/test-official"],
-            case=self.published_corruption_case
+            related_entity_ids=["entity:person/test-official"]
         )
         self.corruption_source.save()
         
@@ -413,13 +412,19 @@ class TestPublicAPIWorkflows:
         
         Validates: Requirements 4.1, 6.3
         """
-        # Create a source for the draft case (should not be visible)
+        # Create a source referenced by the draft case (should not be visible)
         draft_source = DocumentSource(
             title="Draft Source - Should Not Appear",
-            description="Source for draft case",
-            case=self.draft_case
+            description="Source for draft case"
         )
         draft_source.save()
+        
+        # Add evidence to draft case referencing this source
+        self.draft_case.evidence = [{
+            "source_id": draft_source.source_id,
+            "description": "Evidence from draft case"
+        }]
+        self.draft_case.save()
         
         # Step 1: List all sources
         response = self.client.get('/api/sources/')

@@ -111,14 +111,17 @@ Represents evidence sources that can be referenced by cases.
 - `description`: TextField
 - `url`: URLField (optional)
 - `related_entity_ids`: Custom EntityListField (list of entity IDs)
-- `case`: ForeignKey(Case, nullable) - links source to specific case
+- `contributors`: ManyToManyField(User) - contributors assigned to manage this source
 - `is_deleted`: BooleanField (default=False) - soft deletion flag
 
 **Methods:**
 - `validate()`: Validates entity IDs
 
 **Note on Public Access:**
-A DocumentSource is accessible to the public if it is associated with at least one published case (state=PUBLISHED).
+A DocumentSource is accessible to the public if it is referenced in the evidence field of at least one published case (state=PUBLISHED). Sources can be referenced by multiple cases through their evidence fields.
+
+**Note on Access Control:**
+Contributors can only view and edit sources they are assigned to via the `contributors` field. Moderators and Admins can manage all sources. When a contributor creates a source, they are automatically assigned as a contributor.
 
 **Note on Deletion:**
 Sources are soft-deleted by setting `is_deleted=True`. Hard deletion is not allowed.
@@ -181,17 +184,18 @@ All case and source management is done through the Django Admin interface with r
 ```
 User (Django Auth)
   │
-  └─── ManyToMany ───> Case (via contributors)
+  ├─── ManyToMany ───> Case (via contributors)
+  └─── ManyToMany ───> DocumentSource (via contributors)
 
 Case
   │
-  ├─── OneToMany ───> DocumentSource (documents)
   └─── ManyToMany ───> User (contributors)
-
+  
 Note: Multiple Case records can share the same case_id (different versions/drafts)
+Note: Cases reference DocumentSources through the evidence field (EvidenceListField), not via ForeignKey
 
 DocumentSource
-  └─── ForeignKey ───> Case (case)
+  └─── ManyToMany ───> User (contributors)
 ```
 
 ### State Machine

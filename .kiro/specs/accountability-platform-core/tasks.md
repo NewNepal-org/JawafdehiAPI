@@ -48,6 +48,7 @@
 
 - [x] 6. Implement DocumentSource model (to pass tests)
   - Create DocumentSource model with fields (source_id, title, description, url, etc.)
+  - Add contributors ManyToMany field for access control
   - Implement validate() method
   - Add is_deleted field for soft deletion
   - _Requirements: 4.1, 4.2_
@@ -69,6 +70,8 @@
 
 - [x] 9. Set up Django Admin for DocumentSource management
   - Create custom admin form for DocumentSource
+  - Implement contributor-based access control
+  - Auto-assign creator as contributor
   - Implement soft deletion interface
   - _Requirements: 4.1, 4.2_
 
@@ -113,7 +116,7 @@
 
 - [x] 14. Implement public read-only API for DocumentSources (to pass tests)
   - Create DocumentSourceViewSet with list and retrieve endpoints
-  - Filter to show only sources associated with published cases
+  - Filter to show only sources referenced in evidence of published cases
   - _Requirements: 6.3_
 
 - [x] 15. Set up OpenAPI documentation

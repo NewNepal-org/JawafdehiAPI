@@ -284,3 +284,35 @@ def test_document_source_soft_deletion():
     source.refresh_from_db()
     assert source.is_deleted is True, \
         "is_deleted flag should be True after soft deletion"
+
+
+@pytest.mark.django_db
+def test_document_source_has_contributors_field():
+    """
+    Edge case: DocumentSource should have a contributors ManyToMany field.
+    Validates: Design document - sources have contributors for access control
+    """
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    
+    # Create a user
+    user = User.objects.create_user(username='testuser', password='test123')
+    
+    # Create a source
+    source = DocumentSource(
+        title="Valid Title",
+        description="Valid description",
+        related_entity_ids=[]
+    )
+    source.save()
+    
+    # Add contributor
+    source.contributors.add(user)
+    
+    # Verify contributor is assigned
+    assert user in source.contributors.all(), \
+        "User should be in source contributors"
+    
+    # Verify reverse relationship
+    assert source in user.assigned_sources.all(), \
+        "Source should be in user's assigned_sources"

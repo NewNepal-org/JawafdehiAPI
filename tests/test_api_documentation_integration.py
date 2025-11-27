@@ -53,15 +53,20 @@ class TestAPIDocumentationIntegration:
     
     @pytest.fixture
     def document_source(self, published_case):
-        """Create a document source associated with a published case."""
+        """Create a document source referenced by a published case."""
         source = DocumentSource.objects.create(
             source_id="source:test:123",
             title="Test Source",
             description="Test source description",
             url="https://example.com/test.pdf",
-            related_entity_ids=["entity:person/test-person"],
-            case=published_case
+            related_entity_ids=["entity:person/test-person"]
         )
+        # Add evidence to the published case that references this source
+        published_case.evidence = [{
+            "source_id": source.source_id,
+            "description": "Test evidence"
+        }]
+        published_case.save()
         return source
     
     def test_swagger_ui_loads_with_real_data(self, published_case, document_source):
