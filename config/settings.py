@@ -199,6 +199,7 @@ The cases endpoint supports:
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": "/api/",
     "SERVERS": [
+        {"url": "https://api.jawafdehi.newnepal.org/api", "description": "Production server"},
         {"url": "http://localhost:8000", "description": "Development server"},
     ],
     "TAGS": [
@@ -240,7 +241,7 @@ JAZZMIN_SETTINGS = {
     # Top Menu
     "topmenu_links": [
         {"name": "Home", "url": "admin:index", "permissions": ["auth.view_user"]},
-        {"name": "Public API", "url": "/api/", "new_window": True},
+        {"name": "Public API", "url": "/api/swagger", "new_window": True},
     ],
     
     # Side Menu

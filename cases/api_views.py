@@ -195,6 +195,9 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         description="""
         Retrieve detailed information about a specific document source.
         
+        The endpoint accepts either the database id (numeric) or the source_id 
+        (e.g., 'source:20240115:abc123').
+        
         Only sources associated with at least one published case are accessible.
         """,
         tags=['sources'],
@@ -206,12 +209,14 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
     
     Provides:
     - List endpoint: GET /api/sources/
-    - Retrieve endpoint: GET /api/sources/{id}/
+    - Retrieve endpoint: GET /api/sources/{id_or_source_id}/
     
+    The retrieve endpoint accepts either the database id or the source_id.
     Only sources associated with published cases are accessible.
     """
     
     serializer_class = DocumentSourceSerializer
+    lookup_field = 'pk'
     
     def get_queryset(self):
         """
@@ -225,3 +230,30 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
             case__state=CaseState.PUBLISHED,
             is_deleted=False
         ).distinct()
+    
+    def get_object(self):
+        """
+        Override to support lookup by either id or source_id.
+        
+        Tries to lookup by id first (if numeric), then falls back to source_id.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_value = self.kwargs.get(self.lookup_field)
+        
+        # Try to lookup by id if the value is numeric
+        if lookup_value.isdigit():
+            try:
+                obj = queryset.get(id=int(lookup_value))
+                self.check_object_permissions(self.request, obj)
+                return obj
+            except DocumentSource.DoesNotExist:
+                pass
+        
+        # Fall back to lookup by source_id
+        try:
+            obj = queryset.get(source_id=lookup_value)
+            self.check_object_permissions(self.request, obj)
+            return obj
+        except DocumentSource.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+            raise NotFound(f"Source with id or source_id '{lookup_value}' not found.")

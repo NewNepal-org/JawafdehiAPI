@@ -99,14 +99,22 @@ curl "http://localhost:8000/api/sources/"
 
 #### Retrieve Source
 ```
-GET /api/sources/{id}/
+GET /api/sources/{id_or_source_id}/
 ```
 
 Returns detailed information about a specific document source.
 
-**Example:**
+The endpoint accepts either:
+- Database id (numeric): `/api/sources/1/`
+- Source ID (string): `/api/sources/source:20240115:abc123/`
+
+**Examples:**
 ```bash
+# Using database id
 curl "http://localhost:8000/api/sources/1/"
+
+# Using source_id
+curl "http://localhost:8000/api/sources/source:20240115:abc123/"
 ```
 
 ## Response Format

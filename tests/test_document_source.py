@@ -146,24 +146,22 @@ def test_document_source_rejects_missing_title(source_data):
 @pytest.mark.django_db
 @settings(max_examples=100)
 @given(source_data=source_data_missing_description())
-def test_document_source_rejects_missing_description(source_data):
+def test_document_source_accepts_missing_description(source_data):
     """
     Feature: accountability-platform-core, Property 11: Source validation enforces required fields
     
     For any DocumentSource creation attempt missing description,
-    the Platform should reject the operation.
+    the Platform should accept it (description is optional).
     Validates: Requirements 4.2
     """
-    # Should raise ValidationError when missing description
-    with pytest.raises(ValidationError) as exc_info:
-        source = DocumentSource(**source_data)
-        source.save()
-        source.validate()
+    # Should not raise ValidationError when missing description
+    source = DocumentSource(**source_data)
+    source.save()
     
-    # Verify error mentions description
-    error_message = str(exc_info.value).lower()
-    assert "description" in error_message, \
-        f"Validation error should mention 'description', but got: {exc_info.value}"
+    try:
+        source.validate()
+    except ValidationError as e:
+        pytest.fail(f"DocumentSource should accept missing description, but raised: {e}")
 
 
 @pytest.mark.django_db
@@ -186,18 +184,22 @@ def test_document_source_rejects_empty_title(source_data):
 @pytest.mark.django_db
 @settings(max_examples=50)
 @given(source_data=source_data_with_empty_description())
-def test_document_source_rejects_empty_description(source_data):
+def test_document_source_accepts_empty_description(source_data):
     """
     Feature: accountability-platform-core, Property 11: Source validation enforces required fields
     
     For any DocumentSource with empty description (whitespace only),
-    the Platform should reject the operation.
+    the Platform should accept it (description is optional).
     Validates: Requirements 4.2
     """
-    # Should raise ValidationError when description is empty
-    with pytest.raises(ValidationError):
-        source = DocumentSource(**source_data)
-        source.save()
+    # Should not raise ValidationError when description is empty
+    source = DocumentSource(**source_data)
+    source.save()
+    
+    try:
+        source.validate()
+    except ValidationError as e:
+        pytest.fail(f"DocumentSource should accept empty description, but raised: {e}")
 
 
 # ============================================================================
@@ -219,17 +221,22 @@ def test_document_source_requires_title():
 
 
 @pytest.mark.django_db
-def test_document_source_requires_description():
+def test_document_source_accepts_missing_description():
     """
-    Edge case: DocumentSource must have a non-empty description.
+    Edge case: DocumentSource can be created without description (description is optional).
     Validates: Requirements 4.2
     """
-    with pytest.raises(ValidationError):
-        source = DocumentSource(
-            title="Valid Title",
-            related_entity_ids=[]
-        )
-        source.save()
+    source = DocumentSource(
+        title="Valid Title",
+        related_entity_ids=[]
+    )
+    source.save()
+    
+    # Should not raise ValidationError without description
+    try:
+        source.validate()
+    except ValidationError as e:
+        pytest.fail(f"DocumentSource should allow missing description, but raised: {e}")
 
 
 @pytest.mark.django_db

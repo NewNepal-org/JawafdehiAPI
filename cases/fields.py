@@ -97,8 +97,8 @@ class TimelineListField(models.JSONField):
             if not isinstance(entry, dict):
                 raise ValidationError(f"Timeline entry must be a dictionary: {entry}")
             
-            # Check required fields
-            required_fields = ["date", "title", "description"]
+            # Check required fields (description is optional)
+            required_fields = ["date", "title"]
             for field in required_fields:
                 if field not in entry:
                     raise ValidationError(f"Timeline entry missing required field '{field}': {entry}")
@@ -114,12 +114,14 @@ class TimelineListField(models.JSONField):
             except (ValueError, TypeError):
                 raise ValidationError(f"Invalid date format (expected ISO format YYYY-MM-DD): {date_str}")
             
-            # Validate title and description are non-empty strings
+            # Validate title is non-empty string
             if not isinstance(entry["title"], str) or not entry["title"].strip():
                 raise ValidationError(f"Timeline title must be a non-empty string: {entry}")
             
-            if not isinstance(entry["description"], str) or not entry["description"].strip():
-                raise ValidationError(f"Timeline description must be a non-empty string: {entry}")
+            # Validate description if present (optional field)
+            if "description" in entry:
+                if not isinstance(entry["description"], str):
+                    raise ValidationError(f"Timeline description must be a string: {entry}")
 
 
 class EvidenceListField(models.JSONField):

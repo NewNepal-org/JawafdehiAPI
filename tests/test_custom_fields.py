@@ -221,7 +221,8 @@ def test_timeline_list_field_rejects_missing_required_fields():
     """
     Feature: accountability-platform-core, Property 2: Draft validation is lenient, In Review validation is strict
     
-    TimelineListField should reject entries missing required fields (date, title, description).
+    TimelineListField should reject entries missing required fields (date, title).
+    Description is optional.
     """
     field = TimelineListField()
     
@@ -232,10 +233,6 @@ def test_timeline_list_field_rejects_missing_required_fields():
     # Missing 'title'
     with pytest.raises(ValidationError):
         field.validate([{"date": "2024-01-01", "description": "Description"}], None)
-    
-    # Missing 'description'
-    with pytest.raises(ValidationError):
-        field.validate([{"date": "2024-01-01", "title": "Event"}], None)
 
 
 def test_timeline_list_field_rejects_invalid_date_format():
@@ -252,6 +249,43 @@ def test_timeline_list_field_rejects_invalid_date_format():
             "title": "Event",
             "description": "Description"
         }], None)
+
+
+def test_timeline_list_field_accepts_missing_description():
+    """
+    Feature: accountability-platform-core, Property 2: Draft validation is lenient, In Review validation is strict
+    
+    TimelineListField should accept entries without description (description is optional).
+    """
+    field = TimelineListField()
+    
+    # Should not raise ValidationError
+    try:
+        field.validate([{
+            "date": "2024-01-01",
+            "title": "Event"
+        }], None)
+    except ValidationError as e:
+        pytest.fail(f"TimelineListField should accept missing description, but raised: {e}")
+
+
+def test_timeline_list_field_accepts_empty_description():
+    """
+    Feature: accountability-platform-core, Property 2: Draft validation is lenient, In Review validation is strict
+    
+    TimelineListField should accept entries with empty description (description is optional).
+    """
+    field = TimelineListField()
+    
+    # Should not raise ValidationError
+    try:
+        field.validate([{
+            "date": "2024-01-01",
+            "title": "Event",
+            "description": ""
+        }], None)
+    except ValidationError as e:
+        pytest.fail(f"TimelineListField should accept empty description, but raised: {e}")
 
 
 # ============================================================================

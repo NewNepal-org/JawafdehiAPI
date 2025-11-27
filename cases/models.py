@@ -323,6 +323,7 @@ class DocumentSource(models.Model):
         help_text="Source title"
     )
     description = models.TextField(
+        blank=True,
         help_text="Source description"
     )
     url = models.URLField(
@@ -377,9 +378,6 @@ class DocumentSource(models.Model):
         if not self.title or not self.title.strip():
             raise ValidationError("Title is required and cannot be empty")
         
-        if not self.description or not self.description.strip():
-            raise ValidationError("Description is required and cannot be empty")
-        
         super().save(*args, **kwargs)
     
     def validate(self):
@@ -388,7 +386,6 @@ class DocumentSource(models.Model):
         
         Validates:
         - Title is present and non-empty
-        - Description is present and non-empty
         - Entity IDs are valid (validated by EntityListField)
         """
         errors = {}
@@ -396,10 +393,6 @@ class DocumentSource(models.Model):
         # Validate title
         if not self.title or not self.title.strip():
             errors['title'] = "Title is required and cannot be empty"
-        
-        # Validate description
-        if not self.description or not self.description.strip():
-            errors['description'] = "Description is required and cannot be empty"
         
         if errors:
             raise ValidationError(errors)

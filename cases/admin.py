@@ -61,7 +61,7 @@ class CaseAdminForm(forms.ModelForm):
     timeline = MultiTimelineField(
         required=False,
         label="Timeline",
-        help_text="Timeline of events"
+        help_text="Timeline of events (add in reverse-chronological order: most recent first)"
     )
     
     evidence = MultiEvidenceField(
@@ -75,15 +75,32 @@ class CaseAdminForm(forms.ModelForm):
         fields = '__all__'
         widgets = {
             'description': TinyMCE(attrs={'cols': 80, 'rows': 30}),
+            'state': forms.RadioSelect(),
+            'case_start_date': forms.DateInput(attrs={'type': 'date'}),
+            'case_end_date': forms.DateInput(attrs={'type': 'date'}),
+        }
+        help_texts = {
+            'state': 'Current workflow state: DRAFT (editable), IN_REVIEW (pending approval), PUBLISHED (public), CLOSED (archived)',
         }
     
     def __init__(self, *args, **kwargs):
+        self.request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
         
         # Populate evidence field with available sources
         sources = DocumentSource.objects.filter(is_deleted=False).values_list('source_id', 'title')
         self.fields['evidence'].sources = list(sources)
         self.fields['evidence'].widget.sources = list(sources)
+        
+        # Disable PUBLISHED and CLOSED states for Contributors
+        if self.request:
+            user_groups = list(self.request.user.groups.values_list('name', flat=True))
+            if 'Contributor' in user_groups and 'Moderator' not in user_groups and 'Admin' not in user_groups:
+                # Disable PUBLISHED and CLOSED options for contributors
+                state_field = self.fields.get('state')
+                if state_field:
+                    # Create custom choices with disabled options
+                    state_field.widget.attrs['class'] = 'contributor-state-field'
     
     def clean(self):
         """
@@ -126,6 +143,12 @@ class CaseAdmin(admin.ModelAdmin):
     """
     
     form = CaseAdminForm
+    
+    class Media:
+        js = ('admin/js/case_admin.js',)
+        css = {
+            'all': ('admin/css/case_admin.css',)
+        }
     
     list_display = [
         'case_id',
@@ -343,6 +366,17 @@ class CaseAdmin(admin.ModelAdmin):
         
         return False
     
+    def get_form(self, request, obj=None, **kwargs):
+        """Pass request to form for role-based field customization."""
+        form_class = super().get_form(request, obj, **kwargs)
+        
+        class FormWithRequest(form_class):
+            def __new__(cls, *args, **kwargs):
+                kwargs['request'] = request
+                return form_class(*args, **kwargs)
+        
+        return FormWithRequest
+    
     def save_model(self, request, obj, form, change):
         """
         Save the model with validation and state transition checks.
@@ -382,10 +416,18 @@ class CaseAdmin(admin.ModelAdmin):
             raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e))
         
         super().save_model(request, obj, form, change)
+    
+    def save_related(self, request, form, formsets, change):
+        """
+        Save related objects (including many-to-many relationships).
+        Automatically adds the creator to contributors when creating a new case.
+        """
+        # First save the form's many-to-many data
+        super().save_related(request, form, formsets, change)
         
-        # Automatically add creator to contributors when creating a new case
+        # Then add creator to contributors for new cases
         if not change:
-            obj.contributors.add(request.user)
+            form.instance.contributors.add(request.user)
     
     def get_actions(self, request):
         """
@@ -475,13 +517,6 @@ class DocumentSourceAdminForm(forms.ModelForm):
         if not title or not title.strip():
             raise ValidationError({
                 'title': 'Title is required and cannot be empty'
-            })
-        
-        # Validate description is not empty
-        description = cleaned_data.get('description')
-        if not description or not description.strip():
-            raise ValidationError({
-                'description': 'Description is required and cannot be empty'
             })
         
         return cleaned_data

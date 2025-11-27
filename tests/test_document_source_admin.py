@@ -230,18 +230,23 @@ class TestDocumentSourceAdminForm:
         assert not form.is_valid()
         assert 'title' in form.errors
     
-    def test_form_validates_empty_description(self, db):
-        """Test that form rejects empty description."""
+    def test_form_accepts_empty_description(self, db, document_source):
+        """Test that form accepts empty description."""
         from cases.admin import DocumentSourceAdminForm
         
-        form = DocumentSourceAdminForm(data={
-            'title': 'Valid Title',
-            'description': '',
-            'related_entity_ids': '[]',
-        })
+        # Use an existing instance to avoid source_id validation
+        form = DocumentSourceAdminForm(
+            instance=document_source,
+            data={
+                'source_id': document_source.source_id,
+                'title': 'Valid Title',
+                'description': '',
+                'related_entity_ids': '[]',
+                'is_deleted': False,
+            }
+        )
         
-        assert not form.is_valid()
-        assert 'description' in form.errors
+        assert form.is_valid(), f"Form errors: {form.errors}"
     
     def test_form_accepts_valid_data(self, db, document_source):
         """Test that form accepts valid data."""
