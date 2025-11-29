@@ -138,9 +138,11 @@ def test_public_api_only_shows_published_cases(case_data, state):
     Feature: accountability-platform-core, Property 8: Public API only shows published cases
     
     For any API request to list or retrieve cases, only cases with state=PUBLISHED
-    and the highest version per case_id should be returned.
+    (and IN_REVIEW if feature flag is enabled) and the highest version per case_id should be returned.
     Validates: Requirements 6.1, 8.3
     """
+    from django.conf import settings as django_settings
+    
     # Create a case with the given state
     case = Case.objects.create(**case_data)
     case.state = state
@@ -157,14 +159,20 @@ def test_public_api_only_shows_published_cases(case_data, state):
     # Check if case appears in results
     case_ids_in_response = [c.get('case_id') for c in response.data.get('results', [])]
     
-    if state == CaseState.PUBLISHED:
-        # Published cases should appear
-        assert case.case_id in case_ids_in_response, \
-            f"Published case {case.case_id} should appear in API response"
+    # Determine expected visibility based on feature flag
+    if django_settings.EXPOSE_CASES_IN_REVIEW:
+        should_appear = state in [CaseState.PUBLISHED, CaseState.IN_REVIEW]
     else:
-        # Non-published cases should NOT appear
+        should_appear = state == CaseState.PUBLISHED
+    
+    if should_appear:
+        # Cases should appear
+        assert case.case_id in case_ids_in_response, \
+            f"Case {case.case_id} with state={state} should appear in API response"
+    else:
+        # Cases should NOT appear
         assert case.case_id not in case_ids_in_response, \
-            f"Non-published case {case.case_id} (state={state}) should NOT appear in API response"
+            f"Case {case.case_id} with state={state} should NOT appear in API response"
 
 
 @pytest.mark.django_db
@@ -611,10 +619,10 @@ def test_api_does_not_expose_contributors():
 
 
 @pytest.mark.django_db
-def test_api_does_not_expose_state_field():
+def test_api_exposes_state_field():
     """
-    Edge case: API should not expose state field (internal workflow detail).
-    Validates: Design document - state not exposed in API
+    Edge case: API should always expose state field to indicate case status.
+    Validates: Design document - state field shows PUBLISHED or IN_REVIEW
     """
     # Create and publish a case
     case = Case.objects.create(
@@ -632,23 +640,33 @@ def test_api_does_not_expose_state_field():
     
     assert response.status_code == 200
     
-    # State should NOT be in response
-    assert 'state' not in response.data, \
-        "API should not expose state field"
+    # State should always be in response
+    assert 'state' in response.data, \
+        "API should always expose state field"
+    assert response.data['state'] == CaseState.PUBLISHED
 
 
 @pytest.mark.django_db
 def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     """
     Edge case: DocumentSource API should only show sources referenced in evidence of published cases.
+    (And IN_REVIEW cases if feature flag is enabled)
     Validates: Design document - sources visible if referenced by any published case
     """
+    from django.conf import settings
+    
     # Create a source (not linked to any case via ForeignKey)
     draft_source = DocumentSource(
         title="Draft Source",
         description="Source for draft case"
     )
     draft_source.save()
+    
+    in_review_source = DocumentSource(
+        title="In Review Source",
+        description="Source for in-review case"
+    )
+    in_review_source.save()
     
     published_source = DocumentSource(
         title="Published Source",
@@ -674,6 +692,20 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
         }]
     )
     
+    # Create an in-review case that references in_review_source in evidence
+    in_review_case = Case.objects.create(
+        title="In Review Case",
+        alleged_entities=["entity:person/test"],
+        key_allegations=["Test allegation"],
+        case_type=CaseType.CORRUPTION,
+        description="Test description",
+        state=CaseState.IN_REVIEW,
+        evidence=[{
+            "source_id": in_review_source.source_id,
+            "description": "Evidence from in-review case"
+        }]
+    )
+    
     # Create a published case that references published_source in evidence
     published_case = Case.objects.create(
         title="Published Case",
@@ -694,7 +726,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     
     assert response.status_code == 200
     
-    # Only published source should appear (referenced by published case)
+    # Check which sources should appear based on feature flag
     source_ids = [s.get('source_id') for s in response.data.get('results', [])]
     
     assert published_source.source_id in source_ids, \
@@ -703,3 +735,11 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
         "Source referenced only by draft case should NOT appear in API"
     assert unreferenced_source.source_id not in source_ids, \
         "Source not referenced by any case should NOT appear in API"
+    
+    # IN_REVIEW source visibility depends on feature flag
+    if settings.EXPOSE_CASES_IN_REVIEW:
+        assert in_review_source.source_id in source_ids, \
+            "Source referenced by in-review case should appear when EXPOSE_CASES_IN_REVIEW is enabled"
+    else:
+        assert in_review_source.source_id not in source_ids, \
+            "Source referenced by in-review case should NOT appear when EXPOSE_CASES_IN_REVIEW is disabled"

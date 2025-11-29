@@ -199,7 +199,7 @@ The cases endpoint supports:
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": "/api/",
     "SERVERS": [
-        {"url": "https://api.jawafdehi.newnepal.org/api", "description": "Production server"},
+        {"url": "https://api.jawafdehi.newnepal.org", "description": "Production server"},
         {"url": "http://localhost:8000", "description": "Development server"},
     ],
     "TAGS": [
@@ -223,6 +223,9 @@ CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS"]
 
 # NES API Configuration
 NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
+
+# Feature Flags
+EXPOSE_CASES_IN_REVIEW = os.getenv("EXPOSE_CASES_IN_REVIEW", "False") == "True"
 
 # Jazzmin Configuration
 JAZZMIN_SETTINGS = {

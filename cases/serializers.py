@@ -5,6 +5,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 from rest_framework import serializers
+from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from drf_spectacular.types import OpenApiTypes
 from .models import Case, DocumentSource, CaseState
@@ -16,8 +17,9 @@ class CaseSerializer(serializers.ModelSerializer):
     
     Exposes all fields except:
     - contributors (internal only)
-    - state (internal workflow detail)
     - version (internal versioning detail)
+    
+    The state field is always included to indicate case status (PUBLISHED or IN_REVIEW).
     """
     
     alleged_entities = serializers.ListField(
@@ -65,6 +67,7 @@ class CaseSerializer(serializers.ModelSerializer):
             'id',
             'case_id',
             'case_type',
+            'state',
             'title',
             'case_start_date',
             'case_end_date',
@@ -102,13 +105,22 @@ class CaseDetailSerializer(CaseSerializer):
         """
         Get versionInfo from all published versions with the same case_id.
         
+        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes IN_REVIEW versions.
+        
         Returns a list of versionInfo objects ordered by version (newest first).
         """
         # Get all published versions with the same case_id
-        all_versions = Case.objects.filter(
-            case_id=obj.case_id,
-            state=CaseState.PUBLISHED
-        ).order_by('-version')
+        # (and in-review if feature flag is enabled)
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            all_versions = Case.objects.filter(
+                case_id=obj.case_id,
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            ).order_by('-version')
+        else:
+            all_versions = Case.objects.filter(
+                case_id=obj.case_id,
+                state=CaseState.PUBLISHED
+            ).order_by('-version')
         
         # Extract versionInfo from each version
         audit_history = []

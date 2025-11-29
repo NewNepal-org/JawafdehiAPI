@@ -8,6 +8,7 @@ from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Max
 from django.db import connection
+from django.conf import settings
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 from .models import Case, CaseState, DocumentSource
@@ -117,12 +118,19 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return only published cases with the highest version per case_id.
         
+        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes IN_REVIEW cases.
+        
         Implementation:
-        1. Filter to only PUBLISHED cases
+        1. Filter to PUBLISHED cases (and IN_REVIEW if flag is enabled)
         2. For each case_id, return only the highest version
         """
-        # Get all published cases
-        published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+        # Get all published cases (and in-review if feature flag is enabled)
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            published_cases = Case.objects.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            )
+        else:
+            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
         
         # Find the highest version for each case_id
         # Group by case_id and get the max version
@@ -222,11 +230,19 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return only sources referenced in evidence of published cases.
         
+        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes sources
+        from IN_REVIEW cases.
+        
         A source is accessible if it's referenced in the evidence field
-        of at least one published case.
+        of at least one published case (or in-review case if flag is enabled).
         """
-        # Get all published cases
-        published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+        # Get all published cases (and in-review if feature flag is enabled)
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            published_cases = Case.objects.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            )
+        else:
+            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
         
         # Extract all source_ids from evidence fields
         source_ids = set()

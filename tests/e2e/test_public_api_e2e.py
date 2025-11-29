@@ -184,14 +184,16 @@ class TestPublicAPIWorkflows:
         E2E Test: Verify that only published cases are accessible through the API.
         
         Tests:
-        1. List endpoint only shows published cases
+        1. List endpoint only shows published cases (and IN_REVIEW if flag enabled)
         2. Draft cases are not accessible via detail endpoint
         3. Closed cases are not accessible via detail endpoint
-        4. In Review cases are not accessible
+        4. In Review cases behavior depends on feature flag
         
         Validates: Requirements 6.1, 8.3
         """
-        # Test 1: List endpoint only shows published cases
+        from django.conf import settings
+        
+        # Test 1: List endpoint only shows published cases (and IN_REVIEW if flag enabled)
         response = self.client.get('/api/cases/')
         assert response.status_code == 200
         
@@ -213,9 +215,9 @@ class TestPublicAPIWorkflows:
         assert response.status_code == 404, \
             "Closed cases should not be accessible via detail endpoint"
         
-        # Test 4: Create an IN_REVIEW case and verify it's not accessible
+        # Test 4: Create an IN_REVIEW case and verify accessibility based on feature flag
         in_review_case = Case.objects.create(
-            title="In Review Case - Should Not Appear",
+            title="In Review Case",
             alleged_entities=["entity:person/test-person"],
             key_allegations=["Test allegation"],
             case_type=CaseType.CORRUPTION,
@@ -224,15 +226,28 @@ class TestPublicAPIWorkflows:
             version=1
         )
         
-        response = self.client.get(f'/api/cases/{in_review_case.id}/')
-        assert response.status_code == 404, \
-            "In Review cases should not be accessible via detail endpoint"
-        
-        # Verify it doesn't appear in list
-        response = self.client.get('/api/cases/')
-        case_ids = [case['case_id'] for case in response.data.get('results', [])]
-        assert in_review_case.case_id not in case_ids, \
-            "In Review cases should not appear in list endpoint"
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            # When flag is enabled, IN_REVIEW cases should be accessible
+            response = self.client.get(f'/api/cases/{in_review_case.id}/')
+            assert response.status_code == 200, \
+                "In Review cases should be accessible when EXPOSE_CASES_IN_REVIEW is enabled"
+            
+            # Verify it appears in list
+            response = self.client.get('/api/cases/')
+            case_ids = [case['case_id'] for case in response.data.get('results', [])]
+            assert in_review_case.case_id in case_ids, \
+                "In Review cases should appear in list when EXPOSE_CASES_IN_REVIEW is enabled"
+        else:
+            # When flag is disabled, IN_REVIEW cases should NOT be accessible
+            response = self.client.get(f'/api/cases/{in_review_case.id}/')
+            assert response.status_code == 404, \
+                "In Review cases should not be accessible when EXPOSE_CASES_IN_REVIEW is disabled"
+            
+            # Verify it doesn't appear in list
+            response = self.client.get('/api/cases/')
+            case_ids = [case['case_id'] for case in response.data.get('results', [])]
+            assert in_review_case.case_id not in case_ids, \
+                "In Review cases should not appear in list when EXPOSE_CASES_IN_REVIEW is disabled"
     
     def test_audit_history_retrieval(self):
         """
@@ -403,15 +418,18 @@ class TestPublicAPIWorkflows:
     def test_document_source_visibility_workflow(self):
         """
         E2E Test: Verify document sources are only visible for published cases.
+        (And IN_REVIEW cases if feature flag is enabled)
         
         Workflow:
         1. List all sources
-        2. Verify only sources from published cases appear
+        2. Verify only sources from published cases appear (and IN_REVIEW if flag enabled)
         3. Retrieve specific source
         4. Verify source details are complete
         
         Validates: Requirements 4.1, 6.3
         """
+        from django.conf import settings
+        
         # Create a source referenced by the draft case (should not be visible)
         draft_source = DocumentSource(
             title="Draft Source - Should Not Appear",
