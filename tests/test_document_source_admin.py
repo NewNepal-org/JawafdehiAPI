@@ -1,5 +1,3 @@
-from tests.conftest import create_document_source_with_entities, create_entities_from_ids
-from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Integration tests for DocumentSource Django Admin.
 
@@ -10,67 +8,36 @@ Tests the admin interface configuration including:
 """
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
+
 from django.contrib import admin
-from django.test import RequestFactory
+
+from cases.admin import DocumentSourceAdmin, DocumentSourceAdminForm
 from cases.models import DocumentSource, Case, CaseType
-from cases.admin import DocumentSourceAdmin
-
-
-User = get_user_model()
+from tests.conftest import (
+    create_document_source_with_entities,
+    create_case_with_entities,
+    create_entities_from_ids,
+    create_user_with_role,
+    create_mock_request,
+)
 
 
 @pytest.fixture
 def admin_user(db):
     """Create an admin user."""
-    user = User.objects.create_user(
-        username='testadmin',
-        email='admin@test.com',
-        password='test123'
-    )
-    group, _ = Group.objects.get_or_create(name='Admin')
-    user.groups.add(group)
-    user.is_staff = True
-    user.is_superuser = True
-    user.save()
-    return user
+    return create_user_with_role('testadmin', 'admin@test.com', 'Admin')
 
 
 @pytest.fixture
 def moderator_user(db):
     """Create a moderator user."""
-    user = User.objects.create_user(
-        username='testmod',
-        email='mod@test.com',
-        password='test123'
-    )
-    group, _ = Group.objects.get_or_create(name='Moderator')
-    user.groups.add(group)
-    user.is_staff = True
-    user.save()
-    return user
+    return create_user_with_role('testmod', 'mod@test.com', 'Moderator')
 
 
 @pytest.fixture
 def contributor_user(db):
     """Create a contributor user."""
-    user = User.objects.create_user(
-        username='testcontrib',
-        email='contrib@test.com',
-        password='test123'
-    )
-    group, _ = Group.objects.get_or_create(name='Contributor')
-    user.groups.add(group)
-    user.is_staff = True
-    user.save()
-    return user
-
-
-@pytest.fixture
-def request_factory():
-    """Create a request factory."""
-    return RequestFactory()
+    return create_user_with_role('testcontrib', 'contrib@test.com', 'Contributor')
 
 
 @pytest.fixture
@@ -148,58 +115,52 @@ class TestDocumentSourceAdmin:
         admin_instance = admin.site._registry[DocumentSource]
         assert hasattr(admin_instance, 'restore_sources')
     
-    def test_hard_delete_disabled(self, db, admin_user, request_factory, document_source):
+    def test_hard_delete_disabled(self, db, admin_user, document_source):
         """Test that hard deletion is disabled."""
         admin_instance = admin.site._registry[DocumentSource]
-        request = request_factory.get('/')
-        request.user = admin_user
+        request = create_mock_request(admin_user)
         
         # Hard delete should be disabled for everyone
         assert not admin_instance.has_delete_permission(request, document_source)
     
-    def test_admin_can_change_source(self, db, admin_user, request_factory, document_source):
+    def test_admin_can_change_source(self, db, admin_user, document_source):
         """Test that admin can change sources."""
         admin_instance = admin.site._registry[DocumentSource]
-        request = request_factory.get('/')
-        request.user = admin_user
+        request = create_mock_request(admin_user)
         
         assert admin_instance.has_change_permission(request, document_source)
     
-    def test_moderator_can_change_source(self, db, moderator_user, request_factory, document_source):
+    def test_moderator_can_change_source(self, db, moderator_user, document_source):
         """Test that moderator can change sources."""
         admin_instance = admin.site._registry[DocumentSource]
-        request = request_factory.get('/')
-        request.user = moderator_user
+        request = create_mock_request(moderator_user)
         
         assert admin_instance.has_change_permission(request, document_source)
     
     def test_contributor_can_change_assigned_source(
-        self, db, contributor_user, request_factory, source_with_contributor
+        self, db, contributor_user, source_with_contributor
     ):
         """Test that contributor can change sources they're assigned to."""
         admin_instance = admin.site._registry[DocumentSource]
-        request = request_factory.get('/')
-        request.user = contributor_user
+        request = create_mock_request(contributor_user)
         
         assert admin_instance.has_change_permission(request, source_with_contributor)
     
     def test_contributor_cannot_change_unassigned_source(
-        self, db, contributor_user, request_factory, document_source
+        self, db, contributor_user, document_source
     ):
         """Test that contributor cannot change sources they're not assigned to."""
         admin_instance = admin.site._registry[DocumentSource]
-        request = request_factory.get('/')
-        request.user = contributor_user
+        request = create_mock_request(contributor_user)
         
         assert not admin_instance.has_change_permission(request, document_source)
     
     def test_contributor_sees_only_assigned_sources(
-        self, db, contributor_user, request_factory, source_with_contributor, document_source
+        self, db, contributor_user, source_with_contributor, document_source
     ):
         """Test that contributor only sees sources they're assigned to."""
         admin_instance = admin.site._registry[DocumentSource]
-        request = request_factory.get('/')
-        request.user = contributor_user
+        request = create_mock_request(contributor_user)
         
         queryset = admin_instance.get_queryset(request)
         
@@ -245,14 +206,12 @@ class TestDocumentSourcePermissions:
     """Test DocumentSource admin permissions and access control."""
     
     def test_creator_auto_assigned_as_contributor(
-        self, db, contributor_user, request_factory
+        self, db, contributor_user
     ):
         """Test that creator is automatically assigned as contributor when creating a source."""
-        from cases.admin import DocumentSourceAdmin
         
         admin_instance = DocumentSourceAdmin(DocumentSource, admin.site)
-        request = request_factory.post('/')
-        request.user = contributor_user
+        request = create_mock_request(contributor_user, method='post')
         
         # Create a new source
         source = create_document_source_with_entities(
@@ -281,7 +240,6 @@ class TestDocumentSourceAdminForm:
     
     def test_form_validates_empty_title(self, db):
         """Test that form rejects empty title."""
-        from cases.admin import DocumentSourceAdminForm
         
         form = DocumentSourceAdminForm(data={
             'title': '',
@@ -294,7 +252,6 @@ class TestDocumentSourceAdminForm:
     
     def test_form_accepts_empty_description(self, db, document_source):
         """Test that form accepts empty description."""
-        from cases.admin import DocumentSourceAdminForm
         
         # Use an existing instance to avoid source_id validation
         form = DocumentSourceAdminForm(
@@ -312,7 +269,6 @@ class TestDocumentSourceAdminForm:
     
     def test_form_accepts_valid_data(self, db, document_source):
         """Test that form accepts valid data."""
-        from cases.admin import DocumentSourceAdminForm
         
         # Use an existing instance to avoid source_id validation
         form = DocumentSourceAdminForm(

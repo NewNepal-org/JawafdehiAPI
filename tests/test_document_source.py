@@ -1,4 +1,3 @@
-from tests.conftest import create_document_source_with_entities
 """
 Property-based tests for DocumentSource model.
 
@@ -8,93 +7,19 @@ Validates: Requirements 4.2
 """
 
 import pytest
-from hypothesis import given, strategies as st, settings
+
 from django.core.exceptions import ValidationError
+from hypothesis import given, settings
 
-# Import will work once DocumentSource model is implemented in task 6
-try:
-    from cases.models import DocumentSource
-except ImportError:
-    pytest.skip("DocumentSource model not yet implemented", allow_module_level=True)
-
-
-# ============================================================================
-# Hypothesis Strategies (Generators)
-# ============================================================================
-
-@st.composite
-def valid_entity_id(draw):
-    """Generate valid entity IDs matching NES format."""
-    entity_types = ["person", "organization", "location"]
-    entity_type = draw(st.sampled_from(entity_types))
-    
-    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
-    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
-    slug = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
-        min_size=3,
-        max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
-    
-    return f"entity:{entity_type}/{slug}"
-
-
-@st.composite
-def entity_id_list(draw, min_size=0, max_size=5):
-    """Generate a list of valid entity IDs."""
-    return draw(st.lists(valid_entity_id(), min_size=min_size, max_size=max_size, unique=True))
-
-
-@st.composite
-def valid_source_data(draw):
-    """
-    Generate valid DocumentSource data with all required fields.
-    
-    According to Property 11 and Requirement 4.2, required fields are:
-    - title
-    - description
-    """
-    return {
-        "title": draw(st.text(min_size=1, max_size=300).filter(lambda x: x.strip())),
-        "description": draw(st.text(min_size=1, max_size=1000).filter(lambda x: x.strip())),
-        "related_entity_ids": draw(entity_id_list(min_size=0, max_size=3)),
-        "url": draw(st.one_of(
-            st.none(),
-            st.from_regex(r'https?://[a-z0-9\-\.]+\.[a-z]{2,}(/[^\s]*)?', fullmatch=True)
-        )),
-    }
-
-
-@st.composite
-def source_data_missing_title(draw):
-    """Generate DocumentSource data missing the title field."""
-    data = draw(valid_source_data())
-    del data["title"]
-    return data
-
-
-@st.composite
-def source_data_missing_description(draw):
-    """Generate DocumentSource data missing the description field."""
-    data = draw(valid_source_data())
-    del data["description"]
-    return data
-
-
-@st.composite
-def source_data_with_empty_title(draw):
-    """Generate DocumentSource data with empty title."""
-    data = draw(valid_source_data())
-    data["title"] = ""
-    return data
-
-
-@st.composite
-def source_data_with_empty_description(draw):
-    """Generate DocumentSource data with empty description."""
-    data = draw(valid_source_data())
-    data["description"] = ""
-    return data
+from cases.models import DocumentSource
+from tests.conftest import create_document_source_with_entities
+from tests.strategies import (
+    valid_source_data,
+    source_data_missing_title,
+    source_data_missing_description,
+    source_data_with_empty_title,
+    source_data_with_empty_description,
+)
 
 
 # ============================================================================
@@ -295,6 +220,7 @@ def test_document_source_has_contributors_field():
     Validates: Design document - sources have contributors for access control
     """
     from django.contrib.auth import get_user_model
+    
     User = get_user_model()
     
     # Create a user

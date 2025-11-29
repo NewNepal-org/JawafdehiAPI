@@ -7,100 +7,12 @@ Validates: Requirements 1.2
 """
 
 import pytest
-from hypothesis import given, strategies as st, settings
+
 from django.core.exceptions import ValidationError
-from cases.fields import (
-    TextListField,
-    TimelineListField,
-    EvidenceListField,
-)
+from hypothesis import given, settings
 
-
-# ============================================================================
-# Hypothesis Strategies (Generators)
-# ============================================================================
-
-@st.composite
-def valid_entity_id(draw):
-    """Generate valid entity IDs matching NES format."""
-    entity_types = ["person", "organization", "location"]
-    entity_type = draw(st.sampled_from(entity_types))
-    
-    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
-    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
-    slug = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
-        min_size=3,
-        max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
-    
-    return f"entity:{entity_type}/{slug}"
-
-
-@st.composite
-def invalid_entity_id(draw):
-    """Generate invalid entity IDs for negative testing."""
-    invalid_formats = [
-        draw(st.text(min_size=1, max_size=20)),  # Random text
-        f"invalid:{draw(st.text(min_size=1, max_size=20))}",  # Wrong prefix
-        f"entity:{draw(st.text(min_size=1, max_size=20))}",  # Missing slash
-        "",  # Empty string
-    ]
-    return draw(st.sampled_from(invalid_formats))
-
-
-@st.composite
-def entity_id_list(draw, min_size=1, max_size=5):
-    """Generate a list of valid entity IDs."""
-    return draw(st.lists(valid_entity_id(), min_size=min_size, max_size=max_size))
-
-
-@st.composite
-def text_list(draw, min_size=1, max_size=5):
-    """Generate a list of text strings."""
-    return draw(st.lists(
-        st.text(min_size=1, max_size=200).filter(lambda x: x.strip()),
-        min_size=min_size,
-        max_size=max_size
-    ))
-
-
-@st.composite
-def timeline_entry(draw):
-    """Generate a valid timeline entry."""
-    import datetime
-    return {
-        "date": draw(st.dates(min_value=datetime.date(2000, 1, 1))).isoformat(),
-        "title": draw(st.text(min_size=1, max_size=100).filter(lambda x: x.strip())),
-        "description": draw(st.text(min_size=1, max_size=500).filter(lambda x: x.strip())),
-    }
-
-
-@st.composite
-def timeline_list(draw, min_size=0, max_size=5):
-    """Generate a list of timeline entries."""
-    return draw(st.lists(timeline_entry(), min_size=min_size, max_size=max_size))
-
-
-@st.composite
-def evidence_entry(draw, source_ids):
-    """Generate a valid evidence entry."""
-    return {
-        "source_id": draw(st.sampled_from(source_ids)) if source_ids else f"source:{draw(st.text(min_size=5, max_size=20))}",
-        "description": draw(st.text(min_size=1, max_size=500).filter(lambda x: x.strip())),
-    }
-
-
-@st.composite
-def evidence_list(draw, min_size=0, max_size=5):
-    """Generate a list of evidence entries."""
-    # Generate some source IDs first
-    source_ids = [f"source:2024{i:04d}:abc{i}" for i in range(1, 6)]
-    return draw(st.lists(
-        evidence_entry(source_ids),
-        min_size=min_size,
-        max_size=max_size
-    ))
+from cases.fields import TextListField, TimelineListField, EvidenceListField
+from tests.strategies import text_list, timeline_list, evidence_list
 
 
 # ============================================================================

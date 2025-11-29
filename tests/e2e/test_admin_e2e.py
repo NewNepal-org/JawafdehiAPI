@@ -1,4 +1,3 @@
-from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 End-to-End tests for Django Admin workflows.
 
@@ -8,109 +7,25 @@ Validates: Requirements 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.3, 5
 """
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
-from django.test import Client
-from django.urls import reverse
-from django.core.exceptions import ValidationError
 
-from cases.models import Case, CaseState, CaseType, DocumentSource
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.test import Client
+
 from cases.admin import CaseAdmin
+from cases.models import Case, CaseState, CaseType, DocumentSource
+from tests.conftest import (
+    create_case_with_entities,
+    create_entities_from_ids,
+    create_user_with_role,
+    create_mock_request,
+)
 
 
 User = get_user_model()
 
 
-# ============================================================================
-# Helper Functions
-# ============================================================================
 
-def create_user_with_role(username, email, role, password="testpass123"):
-    """
-    Create a user with the specified role.
-    
-    Creates the role group if it doesn't exist and assigns the user to it.
-    """
-    from django.contrib.contenttypes.models import ContentType
-    from django.contrib.auth.models import Permission
-    
-    user = User.objects.create_user(
-        username=username,
-        email=email,
-        password=password
-    )
-    
-    # Create or get the role group
-    group, _ = Group.objects.get_or_create(name=role)
-    user.groups.add(group)
-    
-    # Set staff status for Admin, Moderator, and Contributor
-    if role in ['Admin', 'Moderator', 'Contributor']:
-        user.is_staff = True
-        user.save()
-    
-    # Set superuser status for Admin
-    if role == 'Admin':
-        user.is_superuser = True
-        user.save()
-    
-    # Add necessary permissions for the role
-    content_type = ContentType.objects.get_for_model(Case)
-    user_content_type = ContentType.objects.get_for_model(User)
-    
-    # Get or create Case permissions
-    view_perm, _ = Permission.objects.get_or_create(
-        codename='view_case',
-        content_type=content_type,
-        defaults={'name': 'Can view case'}
-    )
-    change_perm, _ = Permission.objects.get_or_create(
-        codename='change_case',
-        content_type=content_type,
-        defaults={'name': 'Can change case'}
-    )
-    add_perm, _ = Permission.objects.get_or_create(
-        codename='add_case',
-        content_type=content_type,
-        defaults={'name': 'Can add case'}
-    )
-    delete_perm, _ = Permission.objects.get_or_create(
-        codename='delete_case',
-        content_type=content_type,
-        defaults={'name': 'Can delete case'}
-    )
-    
-    # Get or create User permissions (for moderators to manage users)
-    user_view_perm, _ = Permission.objects.get_or_create(
-        codename='view_user',
-        content_type=user_content_type,
-        defaults={'name': 'Can view user'}
-    )
-    user_change_perm, _ = Permission.objects.get_or_create(
-        codename='change_user',
-        content_type=user_content_type,
-        defaults={'name': 'Can change user'}
-    )
-    user_add_perm, _ = Permission.objects.get_or_create(
-        codename='add_user',
-        content_type=user_content_type,
-        defaults={'name': 'Can add user'}
-    )
-    user_delete_perm, _ = Permission.objects.get_or_create(
-        codename='delete_user',
-        content_type=user_content_type,
-        defaults={'name': 'Can delete user'}
-    )
-    
-    # Assign permissions based on role
-    if role in ['Admin', 'Moderator', 'Contributor']:
-        user.user_permissions.add(view_perm, change_perm, add_perm, delete_perm)
-    
-    # Moderators and Admins can manage users
-    if role in ['Admin', 'Moderator']:
-        user.user_permissions.add(user_view_perm, user_change_perm, user_add_perm, user_delete_perm)
-    
-    return user
 
 
 # ============================================================================

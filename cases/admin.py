@@ -11,6 +11,20 @@ from .widgets import (
     MultiTimelineField,
     MultiEvidenceField,
 )
+from .rules.predicates import (
+    is_admin,
+    is_moderator,
+    is_contributor,
+    is_admin_or_moderator,
+    is_case_contributor,
+    is_source_contributor,
+    can_transition_case_state,
+    can_manage_user,
+    can_view_case,
+    can_change_case,
+    can_view_source,
+    can_change_source,
+)
 
 User = get_user_model()
 
@@ -73,16 +87,13 @@ class CaseAdminForm(forms.ModelForm):
             sources_queryset = DocumentSource.objects.filter(is_deleted=False)
             
             # Filter sources based on user role
-            if not user.is_superuser:
-                user_groups = list(user.groups.values_list('name', flat=True))
-                
+            if not is_admin_or_moderator(user):
                 # Contributors only see sources they're assigned to
-                if 'Moderator' not in user_groups and 'Admin' not in user_groups:
-                    if 'Contributor' in user_groups:
-                        sources_queryset = sources_queryset.filter(contributors=user)
-                    else:
-                        # No role - see nothing
-                        sources_queryset = DocumentSource.objects.none()
+                if is_contributor(user):
+                    sources_queryset = sources_queryset.filter(contributors=user)
+                else:
+                    # No role - see nothing
+                    sources_queryset = DocumentSource.objects.none()
             
             sources = sources_queryset.values_list('source_id', 'title')
         else:
@@ -94,8 +105,8 @@ class CaseAdminForm(forms.ModelForm):
         
         # Disable PUBLISHED and CLOSED states for Contributors
         if self.request:
-            user_groups = list(self.request.user.groups.values_list('name', flat=True))
-            if 'Contributor' in user_groups and 'Moderator' not in user_groups and 'Admin' not in user_groups:
+            user = self.request.user
+            if is_contributor(user) and not is_admin_or_moderator(user):
                 # Disable PUBLISHED and CLOSED options for contributors
                 state_field = self.fields.get('state')
                 if state_field:
@@ -268,19 +279,12 @@ class CaseAdmin(admin.ModelAdmin):
         """
         qs = super().get_queryset(request)
         
-        # Admins and superusers see everything
-        if request.user.is_superuser:
-            return qs
-        
-        # Check user groups
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        # Moderators see everything
-        if 'Moderator' in user_groups or 'Admin' in user_groups:
+        # Admins and Moderators see everything
+        if is_admin_or_moderator(request.user):
             return qs
         
         # Contributors only see assigned cases
-        if 'Contributor' in user_groups:
+        if is_contributor(request.user):
             return qs.filter(contributors=request.user)
         
         # No role - see nothing
@@ -293,28 +297,10 @@ class CaseAdmin(admin.ModelAdmin):
         - Contributors: Can only view assigned cases
         - Moderators/Admins: Can view all cases
         """
-        if not super().has_view_permission(request, obj):
-            return False
-        
         if obj is None:
             return True
         
-        # Admins and superusers can view everything
-        if request.user.is_superuser:
-            return True
-        
-        # Check user groups
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        # Moderators and Admins can view everything
-        if 'Moderator' in user_groups or 'Admin' in user_groups:
-            return True
-        
-        # Contributors can only view assigned cases
-        if 'Contributor' in user_groups:
-            return obj.contributors.filter(id=request.user.id).exists()
-        
-        return False
+        return can_view_case(request.user, obj)
     
     def has_change_permission(self, request, obj=None):
         """
@@ -323,28 +309,10 @@ class CaseAdmin(admin.ModelAdmin):
         - Contributors: Can only change assigned cases
         - Moderators/Admins: Can change all cases
         """
-        if not super().has_change_permission(request, obj):
-            return False
-        
         if obj is None:
             return True
         
-        # Admins and superusers can change everything
-        if request.user.is_superuser:
-            return True
-        
-        # Check user groups
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        # Moderators and Admins can change everything
-        if 'Moderator' in user_groups or 'Admin' in user_groups:
-            return True
-        
-        # Contributors can only change assigned cases
-        if 'Contributor' in user_groups:
-            return obj.contributors.filter(id=request.user.id).exists()
-        
-        return False
+        return can_change_case(request.user, obj)
     
     def get_form(self, request, obj=None, **kwargs):
         """Pass request to form for role-based field customization."""
@@ -378,15 +346,11 @@ class CaseAdmin(admin.ModelAdmin):
             
             # Check if user can transition to new state
             if old_state != new_state:
-                user_groups = list(request.user.groups.values_list('name', flat=True))
-                
-                # Contributors can only transition between DRAFT and IN_REVIEW
-                if 'Contributor' in user_groups and 'Moderator' not in user_groups and 'Admin' not in user_groups:
-                    if new_state not in [CaseState.DRAFT, CaseState.IN_REVIEW]:
-                        raise ValidationError(
-                            f"Contributors can only transition between DRAFT and IN_REVIEW states. "
-                            f"Cannot transition to {new_state}."
-                        )
+                if not can_transition_case_state(request.user, old_obj, new_state):
+                    raise ValidationError(
+                        f"You do not have permission to transition from {old_state} to {new_state}. "
+                        f"Contributors can only transition between DRAFT and IN_REVIEW states."
+                    )
         
         # Validate before saving
         try:
@@ -416,9 +380,7 @@ class CaseAdmin(admin.ModelAdmin):
         actions = super().get_actions(request)
         
         # Add custom actions for state transitions
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        if 'Moderator' in user_groups or 'Admin' in user_groups or request.user.is_superuser:
+        if is_admin_or_moderator(request.user):
             # Moderators and Admins can publish and close
             actions['publish_cases'] = (
                 self.publish_cases,
@@ -486,15 +448,13 @@ class DocumentSourceAdminForm(forms.ModelForm):
         # Restrict contributors field visibility based on user role
         if self.request:
             user = self.request.user
-            user_groups = list(user.groups.values_list('name', flat=True))
             
             # Only Moderators and Admins can edit contributors
-            if not user.is_superuser:
-                if 'Moderator' not in user_groups and 'Admin' not in user_groups:
-                    # Contributors cannot edit the contributors field
-                    if 'contributors' in self.fields:
-                        self.fields['contributors'].disabled = True
-                        self.fields['contributors'].help_text = 'Only Moderators and Admins can assign contributors'
+            if not is_admin_or_moderator(user):
+                # Contributors cannot edit the contributors field
+                if 'contributors' in self.fields:
+                    self.fields['contributors'].disabled = True
+                    self.fields['contributors'].help_text = 'Only Moderators and Admins can assign contributors'
     
     def clean(self):
         """
@@ -593,19 +553,12 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """
         qs = super().get_queryset(request)
         
-        # Admins and superusers see everything
-        if request.user.is_superuser:
-            return qs
-        
-        # Check user groups
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        # Moderators see everything
-        if 'Moderator' in user_groups or 'Admin' in user_groups:
+        # Admins and Moderators see everything
+        if is_admin_or_moderator(request.user):
             return qs
         
         # Contributors only see sources they're assigned to
-        if 'Contributor' in user_groups:
+        if is_contributor(request.user):
             return qs.filter(contributors=request.user)
         
         # No role - see nothing
@@ -618,28 +571,10 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         - Contributors: Can only view sources they're assigned to
         - Moderators/Admins: Can view all sources
         """
-        if not super().has_view_permission(request, obj):
-            return False
-        
         if obj is None:
             return True
         
-        # Admins and superusers can view everything
-        if request.user.is_superuser:
-            return True
-        
-        # Check user groups
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        # Moderators and Admins can view everything
-        if 'Moderator' in user_groups or 'Admin' in user_groups:
-            return True
-        
-        # Contributors can only view sources they're assigned to
-        if 'Contributor' in user_groups:
-            return obj.contributors.filter(id=request.user.id).exists()
-        
-        return False
+        return can_view_source(request.user, obj)
     
     def has_change_permission(self, request, obj=None):
         """
@@ -648,29 +583,10 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         - Contributors: Can only change sources they're assigned to
         - Moderators/Admins: Can change all sources
         """
-        # Check if user has staff status
-        if not request.user.is_staff:
-            return False
-        
         if obj is None:
             return True
         
-        # Admins and superusers can change everything
-        if request.user.is_superuser:
-            return True
-        
-        # Check user groups
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        # Moderators and Admins can change everything
-        if 'Moderator' in user_groups or 'Admin' in user_groups:
-            return True
-        
-        # Contributors can only change sources they're assigned to
-        if 'Contributor' in user_groups:
-            return obj.contributors.filter(id=request.user.id).exists()
-        
-        return False
+        return can_change_source(request.user, obj)
     
     def has_delete_permission(self, request, obj=None):
         """
@@ -729,9 +645,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
             del actions['delete_selected']
         
         # Add soft delete action
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        if 'Moderator' in user_groups or 'Admin' in user_groups or request.user.is_superuser:
+        if is_admin_or_moderator(request.user):
             actions['soft_delete_sources'] = (
                 self.soft_delete_sources,
                 'soft_delete_sources',
@@ -777,25 +691,18 @@ class CustomUserAdmin(BaseUserAdmin):
         """
         Filter queryset based on user role.
         
-        - Admins/Superusers: See all users
+        - Admins: See all users
         - Moderators: See all users except other Moderators
         - Others: See nothing
         """
         qs = super().get_queryset(request)
         
-        # Admins and superusers see everything
-        if request.user.is_superuser:
-            return qs
-        
-        # Check user groups
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
         # Admins see everything
-        if 'Admin' in user_groups:
+        if is_admin(request.user):
             return qs
         
         # Moderators see all users except other Moderators
-        if 'Moderator' in user_groups:
+        if is_moderator(request.user):
             # Exclude users who are in the Moderator group
             moderator_group_users = User.objects.filter(groups__name='Moderator').values_list('id', flat=True)
             return qs.exclude(id__in=moderator_group_users)
@@ -807,67 +714,25 @@ class CustomUserAdmin(BaseUserAdmin):
         """
         Check if user can change another user.
         
-        - Admins/Superusers: Can change all users
+        - Admins: Can change all users
         - Moderators: Cannot change other Moderators
         """
-        if not super().has_change_permission(request, obj):
-            return False
-        
         if obj is None:
             return True
         
-        # Admins and superusers can change everything
-        if request.user.is_superuser:
-            return True
-        
-        # Check user groups
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        # Admins can change everything
-        if 'Admin' in user_groups:
-            return True
-        
-        # Moderators cannot change other Moderators
-        if 'Moderator' in user_groups:
-            target_groups = list(obj.groups.values_list('name', flat=True))
-            if 'Moderator' in target_groups:
-                return False
-            return True
-        
-        return False
+        return can_manage_user(request.user, obj)
     
     def has_delete_permission(self, request, obj=None):
         """
         Check if user can delete another user.
         
-        - Admins/Superusers: Can delete users
+        - Admins: Can delete users
         - Moderators: Cannot delete other Moderators
         """
-        if not super().has_delete_permission(request, obj):
-            return False
-        
         if obj is None:
             return True
         
-        # Admins and superusers can delete
-        if request.user.is_superuser:
-            return True
-        
-        # Check user groups
-        user_groups = list(request.user.groups.values_list('name', flat=True))
-        
-        # Admins can delete
-        if 'Admin' in user_groups:
-            return True
-        
-        # Moderators cannot delete other Moderators
-        if 'Moderator' in user_groups:
-            target_groups = list(obj.groups.values_list('name', flat=True))
-            if 'Moderator' in target_groups:
-                return False
-            return True
-        
-        return False
+        return can_manage_user(request.user, obj)
 
 
 # Unregister the default User admin and register our custom one

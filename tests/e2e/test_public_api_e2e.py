@@ -1,4 +1,3 @@
-from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 End-to-End tests for public API workflows.
 
@@ -8,13 +7,11 @@ Validates: Requirements 6.1, 6.2, 6.3, 8.1, 8.3
 """
 
 import pytest
-from django.contrib.auth import get_user_model
+
 from rest_framework.test import APIClient
 
 from cases.models import Case, CaseState, CaseType, DocumentSource
-
-
-User = get_user_model()
+from tests.conftest import create_case_with_entities, create_document_source_with_entities
 
 
 @pytest.mark.django_db
@@ -60,7 +57,6 @@ class TestPublicAPIWorkflows:
         )
         
         # Create a source for the corruption case
-        from tests.conftest import create_document_source_with_entities
         self.corruption_source = create_document_source_with_entities(
             title="Land Registry Document",
             description="Official land registry showing illegal transfer",
@@ -432,7 +428,6 @@ class TestPublicAPIWorkflows:
         from django.conf import settings
         
         # Create a source referenced by the draft case (should not be visible)
-        from tests.conftest import create_document_source_with_entities
         draft_source = create_document_source_with_entities(
             title="Draft Source - Should Not Appear",
             description="Source for draft case"

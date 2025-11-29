@@ -6,8 +6,10 @@ Tests entity listing, retrieval, search, and pagination
 """
 
 import pytest
+
 from hypothesis import given, strategies as st, settings
 from rest_framework.test import APIClient
+
 from cases.models import JawafEntity
 
 

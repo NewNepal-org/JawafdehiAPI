@@ -6,10 +6,13 @@ Validates that the OpenAPI documentation works correctly with actual cases and s
 """
 
 import pytest
+
+from django.contrib.auth.models import User, Group
 from django.test import Client
 from django.urls import reverse
-from django.contrib.auth.models import User, Group
+
 from cases.models import Case, CaseType, CaseState, DocumentSource
+from tests.conftest import create_case_with_entities, create_document_source_with_entities
 
 
 @pytest.mark.django_db
@@ -55,7 +58,6 @@ class TestAPIDocumentationIntegration:
     @pytest.fixture
     def document_source(self, published_case):
         """Create a document source referenced by a published case."""
-        from tests.conftest import create_document_source_with_entities
         source = create_document_source_with_entities(
             source_id="source:test:123",
             title="Test Source",

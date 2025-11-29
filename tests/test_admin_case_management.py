@@ -1,4 +1,3 @@
-from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Property-based tests for Django Admin Case management.
 
@@ -8,165 +7,17 @@ Validates: Requirements 2.1, 2.4, 7.2
 """
 
 import pytest
-from hypothesis import given, strategies as st, settings, assume
-from django.core.exceptions import ValidationError, PermissionDenied
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
-from django.utils import timezone
 from datetime import datetime
 
-# Import will work once Case model is implemented
-try:
-    from cases.models import Case, CaseState, CaseType
-except ImportError:
-    pytest.skip("Case model not yet implemented", allow_module_level=True)
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-
-User = get_user_model()
-
-
-# ============================================================================
-# Hypothesis Strategies (Generators)
-# ============================================================================
-
-@st.composite
-def valid_entity_id(draw):
-    """Generate valid entity IDs matching NES format."""
-    entity_types = ["person", "organization", "location"]
-    entity_type = draw(st.sampled_from(entity_types))
-    
-    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
-    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
-    slug = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
-        min_size=3,
-        max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
-    
-    return f"entity:{entity_type}/{slug}"
-
-
-@st.composite
-def entity_id_list(draw, min_size=1, max_size=5):
-    """Generate a list of valid entity IDs."""
-    return draw(st.lists(valid_entity_id(), min_size=min_size, max_size=max_size, unique=True))
-
-
-@st.composite
-def text_list(draw, min_size=1, max_size=5):
-    """Generate a list of text strings."""
-    return draw(st.lists(
-        st.text(min_size=1, max_size=200).filter(lambda x: x.strip()),
-        min_size=min_size,
-        max_size=max_size
-    ))
-
-
-@st.composite
-def complete_case_data(draw):
-    """
-    Generate complete valid case data for IN_REVIEW state.
-    
-    According to Property 2, IN_REVIEW validation is strict - all required
-    fields must be present and valid.
-    """
-    return {
-        "title": draw(st.text(min_size=1, max_size=200).filter(lambda x: x.strip())),
-        "alleged_entities": draw(entity_id_list(min_size=1, max_size=3)),
-        "key_allegations": draw(text_list(min_size=1, max_size=5)),
-        "case_type": draw(st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES])),
-        "description": draw(st.text(min_size=10, max_size=1000).filter(lambda x: x.strip())),
-    }
-
-
-@st.composite
-def user_with_role(draw, role):
-    """
-    Generate a User with the specified role.
-    
-    Roles: 'Admin', 'Moderator', 'Contributor'
-    """
-    import uuid
-    # Add UUID to ensure uniqueness across test runs
-    unique_id = uuid.uuid4().hex[:8]
-    base_username = draw(st.text(
-        alphabet=st.characters(whitelist_categories=("Ll", "Nd"), whitelist_characters="_"),
-        min_size=3,
-        max_size=12
-    ).filter(lambda x: x and not x.startswith("_")))
-    
-    username = f"{base_username}_{unique_id}"
-    email = f"{username}@example.com"
-    
-    return {
-        "username": username,
-        "email": email,
-        "role": role,
-    }
-
-
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
-def create_user_with_role(username, email, role):
-    """
-    Create a user with the specified role.
-    
-    Creates the role group if it doesn't exist and assigns the user to it.
-    """
-    user = User.objects.create_user(
-        username=username,
-        email=email,
-        password="testpass123"
-    )
-    
-    # Create or get the role group
-    group, _ = Group.objects.get_or_create(name=role)
-    user.groups.add(group)
-    
-    # Set staff status for Admin and Moderator
-    if role in ['Admin', 'Moderator']:
-        user.is_staff = True
-        user.save()
-    
-    # Set superuser status for Admin
-    if role == 'Admin':
-        user.is_superuser = True
-        user.save()
-    
-    return user
-
-
-def can_transition_to_state(user, case, target_state):
-    """
-    Check if a user can transition a case to the target state.
-    
-    This simulates the permission check that would happen in Django Admin.
-    
-    Rules:
-    - Contributors: Can only transition between DRAFT and IN_REVIEW
-    - Moderators: Can transition to any state except they cannot manage other moderators
-    - Admins: Can transition to any state
-    """
-    user_groups = list(user.groups.values_list('name', flat=True))
-    
-    if 'Admin' in user_groups or user.is_superuser:
-        # Admins can do anything
-        return True
-    
-    if 'Moderator' in user_groups:
-        # Moderators can transition to any state
-        return True
-    
-    if 'Contributor' in user_groups:
-        # Contributors can only transition between DRAFT and IN_REVIEW
-        if target_state in [CaseState.DRAFT, CaseState.IN_REVIEW]:
-            return True
-        return False
-    
-    # No role assigned
-    return False
+from cases.models import Case, CaseState, CaseType
+from cases.rules.predicates import can_transition_case_state
+from tests.conftest import create_case_with_entities, create_user_with_role
+from tests.strategies import complete_case_data, user_with_role
 
 
 # ============================================================================
@@ -200,7 +51,7 @@ def test_moderators_can_publish_cases(case_data, moderator_data):
     case.save()
     
     # Check that moderator can transition to PUBLISHED
-    can_publish = can_transition_to_state(moderator, case, CaseState.PUBLISHED)
+    can_publish = can_transition_case_state(moderator, case, CaseState.PUBLISHED)
     
     assert can_publish, \
         "Moderator should be able to transition case to PUBLISHED state"
@@ -241,7 +92,7 @@ def test_moderators_can_close_cases(case_data, moderator_data):
     case.save()
     
     # Check that moderator can transition to CLOSED
-    can_close = can_transition_to_state(moderator, case, CaseState.CLOSED)
+    can_close = can_transition_case_state(moderator, case, CaseState.CLOSED)
     
     assert can_close, \
         "Moderator should be able to transition case to CLOSED state"
@@ -281,7 +132,7 @@ def test_moderators_can_transition_to_any_state(case_data, moderator_data, targe
     case.save()
     
     # Check that moderator can transition to target state
-    can_transition = can_transition_to_state(moderator, case, target_state)
+    can_transition = can_transition_case_state(moderator, case, target_state)
     
     assert can_transition, \
         f"Moderator should be able to transition case to {target_state} state"
@@ -451,7 +302,7 @@ def test_contributor_cannot_publish_case():
     )
     
     # Check that contributor cannot transition to PUBLISHED
-    can_publish = can_transition_to_state(contributor, case, CaseState.PUBLISHED)
+    can_publish = can_transition_case_state(contributor, case, CaseState.PUBLISHED)
     
     assert not can_publish, \
         "Contributor should NOT be able to transition case to PUBLISHED state"
@@ -477,7 +328,7 @@ def test_admin_can_publish_case():
     )
     
     # Check that admin can transition to PUBLISHED
-    can_publish = can_transition_to_state(admin, case, CaseState.PUBLISHED)
+    can_publish = can_transition_case_state(admin, case, CaseState.PUBLISHED)
     
     assert can_publish, \
         "Admin should be able to transition case to PUBLISHED state"

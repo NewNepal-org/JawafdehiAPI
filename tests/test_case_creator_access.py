@@ -1,4 +1,3 @@
-from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Tests to ensure case creators always have access to their created cases.
 
@@ -7,84 +6,24 @@ Validates: Requirements 1.5, 3.1
 """
 
 import pytest
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
-from django.test import RequestFactory
+
 from django.contrib.admin.sites import AdminSite
 
-from cases.models import Case, CaseType, CaseState
 from cases.admin import CaseAdmin
-
-
-User = get_user_model()
+from cases.models import Case, CaseType, CaseState
+from tests.conftest import create_case_with_entities, create_user_with_role, create_mock_request
 
 
 @pytest.fixture
 def contributor_user(db):
     """Create a contributor user with proper permissions."""
-    from django.contrib.contenttypes.models import ContentType
-    from django.contrib.auth.models import Permission
-    
-    user = User.objects.create_user(
-        username='testcontrib',
-        email='contrib@test.com',
-        password='test123'
-    )
-    group, _ = Group.objects.get_or_create(name='Contributor')
-    user.groups.add(group)
-    user.is_staff = True
-    
-    # Add view and change permissions for Case model
-    content_type = ContentType.objects.get_for_model(Case)
-    view_permission = Permission.objects.get(
-        codename='view_case',
-        content_type=content_type,
-    )
-    change_permission = Permission.objects.get(
-        codename='change_case',
-        content_type=content_type,
-    )
-    user.user_permissions.add(view_permission, change_permission)
-    
-    user.save()
-    return user
+    return create_user_with_role('testcontrib', 'contrib@test.com', 'Contributor')
 
 
 @pytest.fixture
 def another_contributor(db):
     """Create another contributor user with proper permissions."""
-    from django.contrib.contenttypes.models import ContentType
-    from django.contrib.auth.models import Permission
-    
-    user = User.objects.create_user(
-        username='anothercontrib',
-        email='another@test.com',
-        password='test123'
-    )
-    group, _ = Group.objects.get_or_create(name='Contributor')
-    user.groups.add(group)
-    user.is_staff = True
-    
-    # Add view and change permissions for Case model
-    content_type = ContentType.objects.get_for_model(Case)
-    view_permission = Permission.objects.get(
-        codename='view_case',
-        content_type=content_type,
-    )
-    change_permission = Permission.objects.get(
-        codename='change_case',
-        content_type=content_type,
-    )
-    user.user_permissions.add(view_permission, change_permission)
-    
-    user.save()
-    return user
-
-
-@pytest.fixture
-def request_factory():
-    """Create a request factory."""
-    return RequestFactory()
+    return create_user_with_role('anothercontrib', 'another@test.com', 'Contributor')
 
 
 @pytest.fixture
@@ -94,17 +33,14 @@ def case_admin():
 
 
 @pytest.mark.django_db
-def test_creator_automatically_added_to_contributors(contributor_user, request_factory, case_admin):
+def test_creator_automatically_added_to_contributors(contributor_user, case_admin):
     """
     Test that when a contributor creates a case, they are automatically added to contributors.
     
     Validates: Requirements 1.5, 3.1
     """
-    from cases.admin import CaseAdminForm
-    
     # Create a mock request
-    request = request_factory.post('/admin/cases/case/add/')
-    request.user = contributor_user
+    request = create_mock_request(contributor_user, method='post', path='/admin/cases/case/add/')
     
     # Create a new case
     case = create_case_with_entities(
@@ -136,12 +72,13 @@ def test_creator_automatically_added_to_contributors(contributor_user, request_f
 
 
 @pytest.mark.django_db
-def test_creator_has_view_permission(contributor_user, request_factory, case_admin):
+def test_creator_has_view_permission(contributor_user, case_admin):
     """
     Test that the creator has view permission for their created case.
     
     Validates: Requirements 1.5, 3.1
     """
+    
     # Create a case
     case = create_case_with_entities(
         title='Test Case',
@@ -154,8 +91,7 @@ def test_creator_has_view_permission(contributor_user, request_factory, case_adm
     case.contributors.add(contributor_user)
     
     # Create a mock request
-    request = request_factory.get('/admin/cases/case/')
-    request.user = contributor_user
+    request = create_mock_request(contributor_user)
     
     # Check view permission
     has_permission = case_admin.has_view_permission(request, case)
@@ -165,12 +101,13 @@ def test_creator_has_view_permission(contributor_user, request_factory, case_adm
 
 
 @pytest.mark.django_db
-def test_creator_has_change_permission(contributor_user, request_factory, case_admin):
+def test_creator_has_change_permission(contributor_user, case_admin):
     """
     Test that the creator has change permission for their created case.
     
     Validates: Requirements 1.5, 3.1
     """
+    
     # Create a case
     case = create_case_with_entities(
         title='Test Case',
@@ -183,8 +120,7 @@ def test_creator_has_change_permission(contributor_user, request_factory, case_a
     case.contributors.add(contributor_user)
     
     # Create a mock request
-    request = request_factory.get('/admin/cases/case/')
-    request.user = contributor_user
+    request = create_mock_request(contributor_user)
     
     # Check change permission
     has_permission = case_admin.has_change_permission(request, case)
@@ -194,12 +130,13 @@ def test_creator_has_change_permission(contributor_user, request_factory, case_a
 
 
 @pytest.mark.django_db
-def test_non_creator_contributor_cannot_access(contributor_user, another_contributor, request_factory, case_admin):
+def test_non_creator_contributor_cannot_access(contributor_user, another_contributor, case_admin):
     """
     Test that a contributor who didn't create the case cannot access it.
     
     Validates: Requirements 1.5, 3.1
     """
+    
     # Create a case by first contributor
     case = create_case_with_entities(
         title='Test Case',
@@ -210,8 +147,7 @@ def test_non_creator_contributor_cannot_access(contributor_user, another_contrib
     case.contributors.add(contributor_user)
     
     # Try to access with another contributor
-    request = request_factory.get('/admin/cases/case/')
-    request.user = another_contributor
+    request = create_mock_request(another_contributor)
     
     # Check view permission
     has_view = case_admin.has_view_permission(request, case)
@@ -225,12 +161,13 @@ def test_non_creator_contributor_cannot_access(contributor_user, another_contrib
 
 
 @pytest.mark.django_db
-def test_creator_can_see_case_in_queryset(contributor_user, another_contributor, request_factory, case_admin):
+def test_creator_can_see_case_in_queryset(contributor_user, another_contributor, case_admin):
     """
     Test that the creator can see their case in the admin queryset.
     
     Validates: Requirements 1.5, 3.1
     """
+    
     # Create cases by different contributors
     case1 = create_case_with_entities(
         title='Case by Contributor 1',
@@ -249,8 +186,7 @@ def test_creator_can_see_case_in_queryset(contributor_user, another_contributor,
     case2.contributors.add(another_contributor)
     
     # Get queryset for first contributor
-    request = request_factory.get('/admin/cases/case/')
-    request.user = contributor_user
+    request = create_mock_request(contributor_user)
     
     queryset = case_admin.get_queryset(request)
     
@@ -266,12 +202,13 @@ def test_creator_can_see_case_in_queryset(contributor_user, another_contributor,
 
 
 @pytest.mark.django_db
-def test_multiple_cases_by_same_creator(contributor_user, request_factory, case_admin):
+def test_multiple_cases_by_same_creator(contributor_user, case_admin):
     """
     Test that a creator can access all cases they created.
     
     Validates: Requirements 1.5, 3.1
     """
+    
     # Create multiple cases
     case1 = create_case_with_entities(
         title='Case 1',
@@ -298,8 +235,7 @@ def test_multiple_cases_by_same_creator(contributor_user, request_factory, case_
     case3.contributors.add(contributor_user)
     
     # Get queryset for contributor
-    request = request_factory.get('/admin/cases/case/')
-    request.user = contributor_user
+    request = create_mock_request(contributor_user)
     
     queryset = case_admin.get_queryset(request)
     
@@ -313,12 +249,13 @@ def test_multiple_cases_by_same_creator(contributor_user, request_factory, case_
 
 
 @pytest.mark.django_db
-def test_creator_access_persists_after_state_change(contributor_user, request_factory, case_admin):
+def test_creator_access_persists_after_state_change(contributor_user, case_admin):
     """
     Test that creator access persists even after case state changes.
     
     Validates: Requirements 1.5, 3.1
     """
+    
     # Create a case in DRAFT
     case = create_case_with_entities(
         title='Test Case',
@@ -331,8 +268,7 @@ def test_creator_access_persists_after_state_change(contributor_user, request_fa
     case.contributors.add(contributor_user)
     
     # Create a mock request
-    request = request_factory.get('/admin/cases/case/')
-    request.user = contributor_user
+    request = create_mock_request(contributor_user)
     
     # Check access in DRAFT state
     assert case_admin.has_view_permission(request, case), \

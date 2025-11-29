@@ -7,88 +7,13 @@ Validates: Requirements 1.1, 1.2, 1.3, 1.4, 7.3
 """
 
 import pytest
-from hypothesis import given, strategies as st, settings, assume
+
 from django.core.exceptions import ValidationError
-from django.contrib.auth import get_user_model
-from tests.conftest import create_case_with_entities, create_entities_from_ids
+from hypothesis import given, settings
 
-# Import will work once Case model is implemented in task 4
-try:
-    from cases.models import Case, CaseState, CaseType
-except ImportError:
-    pytest.skip("Case model not yet implemented", allow_module_level=True)
-
-
-User = get_user_model()
-
-
-# ============================================================================
-# Hypothesis Strategies (Generators)
-# ============================================================================
-
-@st.composite
-def valid_entity_id(draw):
-    """Generate valid entity IDs matching NES format."""
-    entity_types = ["person", "organization", "location"]
-    entity_type = draw(st.sampled_from(entity_types))
-    
-    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
-    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
-    slug = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
-        min_size=3,
-        max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
-    
-    return f"entity:{entity_type}/{slug}"
-
-
-@st.composite
-def entity_id_list(draw, min_size=1, max_size=5):
-    """Generate a list of valid entity IDs."""
-    return draw(st.lists(valid_entity_id(), min_size=min_size, max_size=max_size, unique=True))
-
-
-@st.composite
-def text_list(draw, min_size=1, max_size=5):
-    """Generate a list of text strings."""
-    return draw(st.lists(
-        st.text(min_size=1, max_size=200).filter(lambda x: x.strip()),
-        min_size=min_size,
-        max_size=max_size
-    ))
-
-
-@st.composite
-def minimal_case_data(draw):
-    """
-    Generate minimal valid case data for DRAFT state.
-    
-    According to Property 2, draft validation is lenient - only title and
-    at least one alleged entity are required.
-    """
-    return {
-        "title": draw(st.text(min_size=1, max_size=200).filter(lambda x: x.strip())),
-        "alleged_entities": draw(entity_id_list(min_size=1, max_size=3)),
-        "case_type": draw(st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES])),
-    }
-
-
-@st.composite
-def complete_case_data(draw):
-    """
-    Generate complete valid case data for IN_REVIEW state.
-    
-    According to Property 2, IN_REVIEW validation is strict - all required
-    fields must be present and valid.
-    """
-    return {
-        "title": draw(st.text(min_size=1, max_size=200).filter(lambda x: x.strip())),
-        "alleged_entities": draw(entity_id_list(min_size=1, max_size=3)),
-        "key_allegations": draw(text_list(min_size=1, max_size=5)),
-        "case_type": draw(st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES])),
-        "description": draw(st.text(min_size=10, max_size=1000).filter(lambda x: x.strip())),
-    }
+from cases.models import Case, CaseState, CaseType
+from tests.conftest import create_case_with_entities
+from tests.strategies import minimal_case_data, complete_case_data
 
 
 # ============================================================================

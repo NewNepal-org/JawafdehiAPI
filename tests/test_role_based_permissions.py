@@ -1,4 +1,3 @@
-from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Property-based tests for role-based permissions.
 
@@ -8,175 +7,19 @@ Validates: Requirements 1.5, 3.1, 3.2, 3.3, 5.1, 5.2, 5.3
 """
 
 import pytest
-from hypothesis import given, strategies as st, settings, assume
-from django.core.exceptions import ValidationError
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
-from django.test import RequestFactory
 
-# Import models
-try:
-    from cases.models import Case, CaseState, CaseType
-    from cases.admin import CaseAdmin, DocumentSourceAdmin
-except ImportError:
-    pytest.skip("Case model or admin not yet implemented", allow_module_level=True)
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from cases.admin import CaseAdmin, DocumentSourceAdmin
+from cases.models import Case, CaseState, CaseType
+from tests.conftest import create_case_with_entities, create_user_with_role, create_mock_request
+from tests.strategies import simple_complete_case_data as complete_case_data, user_with_role
 
 
 User = get_user_model()
-
-
-# ============================================================================
-# Hypothesis Strategies (Generators)
-# ============================================================================
-
-@st.composite
-def valid_entity_id(draw):
-    """Generate valid entity IDs matching NES format."""
-    entity_types = ["person", "organization", "location"]
-    entity_type = draw(st.sampled_from(entity_types))
-    
-    # Generate simple valid slug (much faster)
-    slug = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789",
-        min_size=3,
-        max_size=20
-    ))
-    
-    return f"entity:{entity_type}/{slug}"
-
-
-@st.composite
-def entity_id_list(draw, min_size=1, max_size=5):
-    """Generate a list of valid entity IDs."""
-    return draw(st.lists(valid_entity_id(), min_size=min_size, max_size=max_size, unique=True))
-
-
-@st.composite
-def text_list(draw, min_size=1, max_size=5):
-    """Generate a list of text strings."""
-    return draw(st.lists(
-        st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=5, max_size=50),
-        min_size=min_size,
-        max_size=max_size
-    ))
-
-
-@st.composite
-def complete_case_data(draw):
-    """
-    Generate complete valid case data for IN_REVIEW state.
-    
-    According to Property 2, IN_REVIEW validation is strict - all required
-    fields must be present and valid.
-    """
-    return {
-        "title": draw(st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=5, max_size=50)),
-        "alleged_entities": draw(entity_id_list(min_size=1, max_size=2)),
-        "key_allegations": draw(text_list(min_size=1, max_size=2)),
-        "case_type": draw(st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES])),
-        "description": draw(st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=20, max_size=100)),
-    }
-
-
-@st.composite
-def user_with_role(draw, role):
-    """
-    Generate a User with the specified role.
-    
-    Roles: 'Admin', 'Moderator', 'Contributor'
-    """
-    import uuid
-    # Add UUID to ensure uniqueness across test runs
-    unique_id = uuid.uuid4().hex[:8]
-    # Use simple alphabet for faster generation
-    base_username = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz",
-        min_size=3,
-        max_size=8
-    ))
-    
-    username = f"{base_username}_{unique_id}"
-    email = f"{username}@example.com"
-    
-    return {
-        "username": username,
-        "email": email,
-        "role": role,
-    }
-
-
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
-def create_user_with_role(username, email, role):
-    """
-    Create a user with the specified role.
-    
-    Creates the role group if it doesn't exist and assigns the user to it.
-    Also sets up necessary Django permissions.
-    """
-    from django.contrib.contenttypes.models import ContentType
-    from django.contrib.auth.models import Permission
-    
-    user = User.objects.create_user(
-        username=username,
-        email=email,
-        password="testpass123"
-    )
-    
-    # Create or get the role group
-    group, _ = Group.objects.get_or_create(name=role)
-    user.groups.add(group)
-    
-    # Set staff status for Admin, Moderator, and Contributor
-    if role in ['Admin', 'Moderator', 'Contributor']:
-        user.is_staff = True
-        user.save()
-    
-    # Set superuser status for Admin
-    if role == 'Admin':
-        user.is_superuser = True
-        user.save()
-    
-    # Add necessary permissions for the role
-    content_type = ContentType.objects.get_for_model(Case)
-    
-    # Get or create permissions
-    view_perm, _ = Permission.objects.get_or_create(
-        codename='view_case',
-        content_type=content_type,
-        defaults={'name': 'Can view case'}
-    )
-    change_perm, _ = Permission.objects.get_or_create(
-        codename='change_case',
-        content_type=content_type,
-        defaults={'name': 'Can change case'}
-    )
-    add_perm, _ = Permission.objects.get_or_create(
-        codename='add_case',
-        content_type=content_type,
-        defaults={'name': 'Can add case'}
-    )
-    delete_perm, _ = Permission.objects.get_or_create(
-        codename='delete_case',
-        content_type=content_type,
-        defaults={'name': 'Can delete case'}
-    )
-    
-    # Assign permissions based on role
-    if role in ['Admin', 'Moderator', 'Contributor']:
-        user.user_permissions.add(view_perm, change_perm, add_perm, delete_perm)
-    
-    return user
-
-
-def create_mock_request(user):
-    """Create a mock request object with the given user."""
-    factory = RequestFactory()
-    request = factory.get('/')
-    request.user = user
-    return request
 
 
 # ============================================================================
@@ -592,7 +435,6 @@ def test_user_without_role_has_no_access():
         email='norole@example.com',
         password='testpass123'
     )
-    user.is_staff = True
     user.save()
     
     # Create a case

@@ -1,4 +1,3 @@
-from tests.conftest import create_case_with_entities, create_entities_from_ids, create_document_source_with_entities
 """
 Property-based tests for public API.
 
@@ -8,121 +7,15 @@ Validates: Requirements 4.1, 6.1, 6.2, 6.3, 8.1, 8.3
 """
 
 import pytest
-from hypothesis import given, strategies as st, settings, assume
-from django.contrib.auth import get_user_model
+
+from django.conf import settings as django_settings
+from hypothesis import given, settings
+from hypothesis import strategies as st
 from rest_framework.test import APIClient
 
-# Import models
-try:
-    from cases.models import Case, CaseState, CaseType, DocumentSource
-except ImportError:
-    pytest.skip("Models not yet implemented", allow_module_level=True)
-
-
-User = get_user_model()
-
-
-# ============================================================================
-# Hypothesis Strategies (Generators)
-# ============================================================================
-
-@st.composite
-def valid_entity_id(draw):
-    """Generate valid entity IDs matching NES format."""
-    entity_types = ["person", "organization", "location"]
-    entity_type = draw(st.sampled_from(entity_types))
-    
-    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
-    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
-    slug = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
-        min_size=3,
-        max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
-    
-    return f"entity:{entity_type}/{slug}"
-
-
-@st.composite
-def entity_id_list(draw, min_size=1, max_size=5):
-    """Generate a list of valid entity IDs."""
-    return draw(st.lists(valid_entity_id(), min_size=min_size, max_size=max_size, unique=True))
-
-
-@st.composite
-def text_list(draw, min_size=1, max_size=5):
-    """Generate a list of text strings."""
-    return draw(st.lists(
-        st.text(min_size=1, max_size=200).filter(lambda x: x.strip()),
-        min_size=min_size,
-        max_size=max_size
-    ))
-
-
-@st.composite
-def tag_list(draw, min_size=0, max_size=5):
-    """Generate a list of tags."""
-    return draw(st.lists(
-        st.text(
-            alphabet=st.characters(whitelist_categories=("Ll", "Nd"), whitelist_characters="-"),
-            min_size=3,
-            max_size=30
-        ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-")),
-        min_size=min_size,
-        max_size=max_size,
-        unique=True
-    ))
-
-
-@st.composite
-def timeline_entry(draw):
-    """Generate a timeline entry."""
-    from datetime import date, timedelta
-    base_date = date(2020, 1, 1)
-    days_offset = draw(st.integers(min_value=0, max_value=1825))  # 5 years
-    
-    return {
-        "date": (base_date + timedelta(days=days_offset)).isoformat(),
-        "title": draw(st.text(min_size=5, max_size=100).filter(lambda x: x.strip())),
-        "description": draw(st.text(min_size=10, max_size=500).filter(lambda x: x.strip())),
-    }
-
-
-@st.composite
-def timeline_list(draw, min_size=0, max_size=5):
-    """Generate a list of timeline entries."""
-    return draw(st.lists(timeline_entry(), min_size=min_size, max_size=max_size))
-
-
-@st.composite
-def complete_case_data(draw):
-    """
-    Generate complete valid case data suitable for PUBLISHED state.
-    
-    Includes all required fields for strict validation.
-    """
-    return {
-        "title": draw(st.text(min_size=5, max_size=200).filter(lambda x: x.strip())),
-        "alleged_entities": draw(entity_id_list(min_size=1, max_size=3)),
-        "related_entities": draw(entity_id_list(min_size=0, max_size=3)),
-        "locations": draw(entity_id_list(min_size=0, max_size=2)),
-        "key_allegations": draw(text_list(min_size=1, max_size=5)),
-        "case_type": draw(st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES])),
-        "description": draw(st.text(min_size=20, max_size=1000).filter(lambda x: x.strip())),
-        "tags": draw(tag_list(min_size=0, max_size=5)),
-        "timeline": draw(timeline_list(min_size=0, max_size=3)),
-        "evidence": [],  # Will be populated with valid source references
-    }
-
-
-@st.composite
-def valid_source_data(draw):
-    """Generate valid DocumentSource data."""
-    return {
-        "title": draw(st.text(min_size=5, max_size=300).filter(lambda x: x.strip())),
-        "description": draw(st.text(min_size=10, max_size=1000).filter(lambda x: x.strip())),
-        "related_entity_ids": draw(entity_id_list(min_size=0, max_size=3)),
-    }
+from cases.models import Case, CaseState, CaseType, DocumentSource
+from tests.conftest import create_case_with_entities, create_document_source_with_entities
+from tests.strategies import complete_case_data_with_timeline as complete_case_data, valid_source_data, tag_list
 
 
 # ============================================================================
@@ -143,7 +36,6 @@ def test_public_api_only_shows_published_cases(case_data, state):
     (and IN_REVIEW if feature flag is enabled) and the highest version per case_id should be returned.
     Validates: Requirements 6.1, 8.3
     """
-    from django.conf import settings as django_settings
     
     # Create a case with the given state
     case = create_case_with_entities(**case_data)
@@ -661,7 +553,6 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     (And IN_REVIEW cases if feature flag is enabled)
     Validates: Design document - sources visible if referenced by any published case
     """
-    from django.conf import settings
     
     # Create a source (not linked to any case via ForeignKey)
     draft_source = create_document_source_with_entities(
@@ -741,7 +632,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
         "Source not referenced by any case should NOT appear in API"
     
     # IN_REVIEW source visibility depends on feature flag
-    if settings.EXPOSE_CASES_IN_REVIEW:
+    if django_settings.EXPOSE_CASES_IN_REVIEW:
         assert in_review_source.source_id in source_ids, \
             "Source referenced by in-review case should appear when EXPOSE_CASES_IN_REVIEW is enabled"
     else:
