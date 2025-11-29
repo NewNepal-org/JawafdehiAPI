@@ -1,3 +1,5 @@
+from tests.conftest import create_document_source_with_entities, create_entities_from_ids
+from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Integration tests for DocumentSource Django Admin.
 
@@ -74,7 +76,7 @@ def request_factory():
 @pytest.fixture
 def document_source(db):
     """Create a test document source."""
-    source = DocumentSource(
+    source = create_document_source_with_entities(
         title='Test Source',
         description='Test description',
         related_entity_ids=[]
@@ -86,7 +88,7 @@ def document_source(db):
 @pytest.fixture
 def case_with_contributor(db, contributor_user):
     """Create a case with an assigned contributor."""
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title='Test Case',
         alleged_entities=['entity:person/test'],
         case_type=CaseType.CORRUPTION
@@ -98,7 +100,7 @@ def case_with_contributor(db, contributor_user):
 @pytest.fixture
 def source_with_contributor(db, contributor_user):
     """Create a document source with an assigned contributor."""
-    source = DocumentSource(
+    source = create_document_source_with_entities(
         title='Test Source',
         description='Test description',
         related_entity_ids=[]
@@ -253,7 +255,7 @@ class TestDocumentSourcePermissions:
         request.user = contributor_user
         
         # Create a new source
-        source = DocumentSource(
+        source = create_document_source_with_entities(
             title='New Source',
             description='Test description',
             related_entity_ids=[]

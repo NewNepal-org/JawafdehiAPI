@@ -1,3 +1,4 @@
+from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 End-to-End tests for public API workflows.
 
@@ -30,10 +31,10 @@ class TestPublicAPIWorkflows:
         self.client = APIClient()
         
         # Create test cases with different states and types
-        self.published_corruption_case = Case.objects.create(
+        self.published_corruption_case = create_case_with_entities(
             title="Corruption Case - Land Encroachment",
             alleged_entities=["entity:person/test-official"],
-            related_entities=["entity:organization/government/test-ministry"],
+            related_entities=["entity:organization/test-ministry"],
             locations=["entity:location/district/kathmandu"],
             key_allegations=[
                 "Illegally acquired public land",
@@ -59,12 +60,12 @@ class TestPublicAPIWorkflows:
         )
         
         # Create a source for the corruption case
-        self.corruption_source = DocumentSource(
+        from tests.conftest import create_document_source_with_entities
+        self.corruption_source = create_document_source_with_entities(
             title="Land Registry Document",
             description="Official land registry showing illegal transfer",
             related_entity_ids=["entity:person/test-official"]
         )
-        self.corruption_source.save()
         
         # Add evidence to the case
         self.published_corruption_case.evidence = [
@@ -76,7 +77,7 @@ class TestPublicAPIWorkflows:
         self.published_corruption_case.save()
         
         # Create another published case with different type
-        self.published_promises_case = Case.objects.create(
+        self.published_promises_case = create_case_with_entities(
             title="Broken Promise - Infrastructure Project",
             alleged_entities=["entity:person/test-politician"],
             key_allegations=["Failed to deliver promised infrastructure"],
@@ -88,7 +89,7 @@ class TestPublicAPIWorkflows:
         )
         
         # Create a draft case (should not be visible)
-        self.draft_case = Case.objects.create(
+        self.draft_case = create_case_with_entities(
             title="Draft Case - Should Not Appear",
             alleged_entities=["entity:person/test-person"],
             key_allegations=["Test allegation"],
@@ -99,7 +100,7 @@ class TestPublicAPIWorkflows:
         )
         
         # Create a closed case (should not be visible)
-        self.closed_case = Case.objects.create(
+        self.closed_case = create_case_with_entities(
             title="Closed Case - Should Not Appear",
             alleged_entities=["entity:person/test-person"],
             key_allegations=["Test allegation"],
@@ -216,7 +217,7 @@ class TestPublicAPIWorkflows:
             "Closed cases should not be accessible via detail endpoint"
         
         # Test 4: Create an IN_REVIEW case and verify accessibility based on feature flag
-        in_review_case = Case.objects.create(
+        in_review_case = create_case_with_entities(
             title="In Review Case",
             alleged_entities=["entity:person/test-person"],
             key_allegations=["Test allegation"],
@@ -262,7 +263,7 @@ class TestPublicAPIWorkflows:
         Validates: Requirements 6.3, 7.1, 7.2
         """
         # Step 1: Create initial published case
-        case_v1 = Case.objects.create(
+        case_v1 = create_case_with_entities(
             title="Case with Version History",
             alleged_entities=["entity:person/test-official"],
             key_allegations=["Initial allegation"],
@@ -431,11 +432,11 @@ class TestPublicAPIWorkflows:
         from django.conf import settings
         
         # Create a source referenced by the draft case (should not be visible)
-        draft_source = DocumentSource(
+        from tests.conftest import create_document_source_with_entities
+        draft_source = create_document_source_with_entities(
             title="Draft Source - Should Not Appear",
             description="Source for draft case"
         )
-        draft_source.save()
         
         # Add evidence to draft case referencing this source
         self.draft_case.evidence = [{
@@ -465,8 +466,8 @@ class TestPublicAPIWorkflows:
         source_detail = response.data
         assert source_detail['title'] == "Land Registry Document"
         assert source_detail['description'] is not None
-        assert 'related_entity_ids' in source_detail
-        assert len(source_detail['related_entity_ids']) > 0
+        assert 'related_entities' in source_detail
+        assert len(source_detail['related_entities']) > 0
         
         # Verify draft source is not accessible directly
         response = self.client.get(f'/api/sources/{draft_source.id}/')
@@ -486,7 +487,7 @@ class TestPublicAPIWorkflows:
         Validates: Requirements 6.1, 8.3
         """
         # Step 1: Create version 1
-        case_v1 = Case.objects.create(
+        case_v1 = create_case_with_entities(
             title="Multi-Version Case v1",
             alleged_entities=["entity:person/test"],
             key_allegations=["Allegation v1"],
@@ -539,7 +540,7 @@ class TestPublicAPIWorkflows:
         """
         # Create additional cases to test pagination
         for i in range(5):
-            Case.objects.create(
+            create_case_with_entities(
                 title=f"Pagination Test Case {i}",
                 alleged_entities=["entity:person/test"],
                 key_allegations=["Test allegation"],

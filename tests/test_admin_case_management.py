@@ -1,3 +1,4 @@
+from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Property-based tests for Django Admin Case management.
 
@@ -34,12 +35,13 @@ def valid_entity_id(draw):
     entity_types = ["person", "organization", "location"]
     entity_type = draw(st.sampled_from(entity_types))
     
-    # Generate valid slug (lowercase letters, numbers, hyphens)
+    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
+    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
     slug = draw(st.text(
-        alphabet=st.characters(whitelist_categories=("Ll", "Nd"), whitelist_characters="-"),
+        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
         min_size=3,
         max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-")))
+    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
     
     return f"entity:{entity_type}/{slug}"
 
@@ -193,7 +195,7 @@ def test_moderators_can_publish_cases(case_data, moderator_data):
     )
     
     # Create a case in IN_REVIEW state
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.IN_REVIEW
     case.save()
     
@@ -234,7 +236,7 @@ def test_moderators_can_close_cases(case_data, moderator_data):
     )
     
     # Create a case in IN_REVIEW state
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.IN_REVIEW
     case.save()
     
@@ -274,7 +276,7 @@ def test_moderators_can_transition_to_any_state(case_data, moderator_data, targe
     )
     
     # Create a case in IN_REVIEW state
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.IN_REVIEW
     case.save()
     
@@ -301,7 +303,7 @@ def test_transition_to_in_review_updates_version_info(case_data):
     Validates: Requirements 2.4, 7.2
     """
     # Create a case in DRAFT state
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     assert case.state == CaseState.DRAFT
     
     # Record time before transition
@@ -344,7 +346,7 @@ def test_transition_to_published_updates_version_info(case_data):
     Validates: Requirements 2.4, 7.2
     """
     # Create a case in IN_REVIEW state
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.IN_REVIEW
     case.save()
     
@@ -391,7 +393,7 @@ def test_state_transitions_always_update_version_info(case_data, target_state):
     Validates: Requirements 2.4, 7.2
     """
     # Create a case
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     
     # Clear versionInfo to test that it gets updated
     case.versionInfo = {}
@@ -439,7 +441,7 @@ def test_contributor_cannot_publish_case():
     contributor = create_user_with_role('testcontrib', 'contrib@example.com', 'Contributor')
     
     # Create a case in IN_REVIEW state
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title="Test Case",
         alleged_entities=["entity:person/test-person"],
         key_allegations=["Test allegation"],
@@ -465,7 +467,7 @@ def test_admin_can_publish_case():
     admin = create_user_with_role('testadmin', 'admin@example.com', 'Admin')
     
     # Create a case in IN_REVIEW state
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title="Test Case",
         alleged_entities=["entity:person/test-person"],
         key_allegations=["Test allegation"],
@@ -488,7 +490,7 @@ def test_version_info_contains_version_number():
     Validates: Requirements 7.2
     """
     # Create a case
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title="Test Case",
         alleged_entities=["entity:person/test-person"],
         key_allegations=["Test allegation"],

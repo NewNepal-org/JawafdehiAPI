@@ -1,3 +1,4 @@
+from tests.conftest import create_case_with_entities, create_entities_from_ids, create_document_source_with_entities
 """
 Property-based tests for public API.
 
@@ -31,12 +32,13 @@ def valid_entity_id(draw):
     entity_types = ["person", "organization", "location"]
     entity_type = draw(st.sampled_from(entity_types))
     
-    # Generate valid slug (lowercase letters, numbers, hyphens)
+    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
+    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
     slug = draw(st.text(
-        alphabet=st.characters(whitelist_categories=("Ll", "Nd"), whitelist_characters="-"),
+        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
         min_size=3,
         max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-")))
+    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
     
     return f"entity:{entity_type}/{slug}"
 
@@ -144,7 +146,7 @@ def test_public_api_only_shows_published_cases(case_data, state):
     from django.conf import settings as django_settings
     
     # Create a case with the given state
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = state
     case.save()
     
@@ -187,7 +189,7 @@ def test_public_api_shows_highest_version_only(case_data):
     Validates: Requirements 6.1, 8.3
     """
     # Create and publish version 1
-    case_v1 = Case.objects.create(**case_data)
+    case_v1 = create_case_with_entities(**case_data)
     case_v1.state = CaseState.PUBLISHED
     case_v1.save()
     
@@ -237,11 +239,10 @@ def test_evidence_requires_valid_source_references(case_data, source_data):
     Validates: Requirements 4.1
     """
     # Create a case
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     
     # Create a valid DocumentSource
-    source = DocumentSource(**source_data)
-    source.save()
+    source = create_document_source_with_entities(**source_data)
     
     # Add evidence referencing the source
     case.evidence = [
@@ -287,7 +288,7 @@ def test_evidence_with_invalid_source_reference():
     Validates: Requirements 4.1
     """
     # Create a case
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title="Test Case",
         alleged_entities=["entity:person/test"],
         key_allegations=["Test allegation"],
@@ -340,7 +341,7 @@ def test_search_functionality_across_fields(case_data, search_term):
     case_data['title'] = f"{search_term} Case Title"
     
     # Create and publish a case
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
     
@@ -374,7 +375,7 @@ def test_filter_by_case_type(case_data, case_type):
     case_data['case_type'] = case_type
     
     # Create and publish a case
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
     
@@ -417,7 +418,7 @@ def test_filter_by_tags(case_data, tag):
     case_data['tags'] = [tag]
     
     # Create and publish a case
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
     
@@ -458,11 +459,10 @@ def test_published_cases_display_complete_data(case_data, source_data):
     Validates: Requirements 6.3
     """
     # Create a case with complete data
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     
     # Create a source
-    source = DocumentSource(**source_data)
-    source.save()
+    source = create_document_source_with_entities(**source_data)
     
     # Add evidence referencing the source
     case.evidence = [
@@ -531,7 +531,7 @@ def test_published_cases_include_all_entity_fields(case_data):
     Validates: Requirements 6.3
     """
     # Create and publish a case
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
     
@@ -551,17 +551,25 @@ def test_published_cases_include_all_entity_fields(case_data):
     assert 'locations' in returned_case, \
         "Response should include locations"
     
-    # Verify entity lists match
-    assert returned_case['alleged_entities'] == case.alleged_entities, \
-        "alleged_entities should match case data"
+    # Verify entity lists are present and have correct structure
+    assert isinstance(returned_case['alleged_entities'], list), \
+        "alleged_entities should be a list"
+    assert len(returned_case['alleged_entities']) == case.alleged_entities.count(), \
+        "alleged_entities count should match"
     
-    if case.related_entities:
-        assert returned_case['related_entities'] == case.related_entities, \
-            "related_entities should match case data"
+    # Verify entity objects have required fields
+    for entity in returned_case['alleged_entities']:
+        assert 'id' in entity, "Entity should have id field"
+        assert 'nes_id' in entity or 'display_name' in entity, \
+            "Entity should have nes_id or display_name"
     
-    if case.locations:
-        assert returned_case['locations'] == case.locations, \
-            "locations should match case data"
+    if case.related_entities.count() > 0:
+        assert len(returned_case['related_entities']) == case.related_entities.count(), \
+            "related_entities count should match"
+    
+    if case.locations.count() > 0:
+        assert len(returned_case['locations']) == case.locations.count(), \
+            "locations count should match"
 
 
 # ============================================================================
@@ -575,7 +583,7 @@ def test_api_returns_empty_list_when_no_published_cases():
     Validates: Requirements 6.1, 8.3
     """
     # Create only draft cases
-    Case.objects.create(
+    create_case_with_entities(
         title="Draft Case",
         alleged_entities=["entity:person/test"],
         case_type=CaseType.CORRUPTION,
@@ -598,7 +606,7 @@ def test_api_does_not_expose_contributors():
     Validates: Design document - contributors not exposed in API
     """
     # Create and publish a case
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title="Test Case",
         alleged_entities=["entity:person/test"],
         key_allegations=["Test allegation"],
@@ -625,7 +633,7 @@ def test_api_exposes_state_field():
     Validates: Design document - state field shows PUBLISHED or IN_REVIEW
     """
     # Create and publish a case
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title="Test Case",
         alleged_entities=["entity:person/test"],
         key_allegations=["Test allegation"],
@@ -656,32 +664,28 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     from django.conf import settings
     
     # Create a source (not linked to any case via ForeignKey)
-    draft_source = DocumentSource(
+    draft_source = create_document_source_with_entities(
         title="Draft Source",
         description="Source for draft case"
     )
-    draft_source.save()
     
-    in_review_source = DocumentSource(
+    in_review_source = create_document_source_with_entities(
         title="In Review Source",
         description="Source for in-review case"
     )
-    in_review_source.save()
     
-    published_source = DocumentSource(
+    published_source = create_document_source_with_entities(
         title="Published Source",
         description="Source for published case"
     )
-    published_source.save()
     
-    unreferenced_source = DocumentSource(
+    unreferenced_source = create_document_source_with_entities(
         title="Unreferenced Source",
         description="Source not referenced by any case"
     )
-    unreferenced_source.save()
     
     # Create a draft case that references draft_source in evidence
-    draft_case = Case.objects.create(
+    draft_case = create_case_with_entities(
         title="Draft Case",
         alleged_entities=["entity:person/test"],
         case_type=CaseType.CORRUPTION,
@@ -693,7 +697,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     )
     
     # Create an in-review case that references in_review_source in evidence
-    in_review_case = Case.objects.create(
+    in_review_case = create_case_with_entities(
         title="In Review Case",
         alleged_entities=["entity:person/test"],
         key_allegations=["Test allegation"],
@@ -707,7 +711,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     )
     
     # Create a published case that references published_source in evidence
-    published_case = Case.objects.create(
+    published_case = create_case_with_entities(
         title="Published Case",
         alleged_entities=["entity:person/test"],
         key_allegations=["Test allegation"],

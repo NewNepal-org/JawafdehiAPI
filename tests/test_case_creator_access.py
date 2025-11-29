@@ -1,3 +1,4 @@
+from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Tests to ensure case creators always have access to their created cases.
 
@@ -106,7 +107,7 @@ def test_creator_automatically_added_to_contributors(contributor_user, request_f
     request.user = contributor_user
     
     # Create a new case
-    case = Case(
+    case = create_case_with_entities(
         title='Test Case',
         case_type=CaseType.CORRUPTION,
         alleged_entities=['entity:person/test-person'],
@@ -142,7 +143,7 @@ def test_creator_has_view_permission(contributor_user, request_factory, case_adm
     Validates: Requirements 1.5, 3.1
     """
     # Create a case
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title='Test Case',
         case_type=CaseType.CORRUPTION,
         alleged_entities=['entity:person/test-person'],
@@ -171,7 +172,7 @@ def test_creator_has_change_permission(contributor_user, request_factory, case_a
     Validates: Requirements 1.5, 3.1
     """
     # Create a case
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title='Test Case',
         case_type=CaseType.CORRUPTION,
         alleged_entities=['entity:person/test-person'],
@@ -200,7 +201,7 @@ def test_non_creator_contributor_cannot_access(contributor_user, another_contrib
     Validates: Requirements 1.5, 3.1
     """
     # Create a case by first contributor
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title='Test Case',
         case_type=CaseType.CORRUPTION,
         alleged_entities=['entity:person/test-person'],
@@ -231,7 +232,7 @@ def test_creator_can_see_case_in_queryset(contributor_user, another_contributor,
     Validates: Requirements 1.5, 3.1
     """
     # Create cases by different contributors
-    case1 = Case.objects.create(
+    case1 = create_case_with_entities(
         title='Case by Contributor 1',
         case_type=CaseType.CORRUPTION,
         alleged_entities=['entity:person/test-person'],
@@ -239,7 +240,7 @@ def test_creator_can_see_case_in_queryset(contributor_user, another_contributor,
     )
     case1.contributors.add(contributor_user)
     
-    case2 = Case.objects.create(
+    case2 = create_case_with_entities(
         title='Case by Another Contributor',
         case_type=CaseType.CORRUPTION,
         alleged_entities=['entity:person/test-person'],
@@ -272,7 +273,7 @@ def test_multiple_cases_by_same_creator(contributor_user, request_factory, case_
     Validates: Requirements 1.5, 3.1
     """
     # Create multiple cases
-    case1 = Case.objects.create(
+    case1 = create_case_with_entities(
         title='Case 1',
         case_type=CaseType.CORRUPTION,
         alleged_entities=['entity:person/test-person'],
@@ -280,7 +281,7 @@ def test_multiple_cases_by_same_creator(contributor_user, request_factory, case_
     )
     case1.contributors.add(contributor_user)
     
-    case2 = Case.objects.create(
+    case2 = create_case_with_entities(
         title='Case 2',
         case_type=CaseType.PROMISES,
         alleged_entities=['entity:person/test-person'],
@@ -288,7 +289,7 @@ def test_multiple_cases_by_same_creator(contributor_user, request_factory, case_
     )
     case2.contributors.add(contributor_user)
     
-    case3 = Case.objects.create(
+    case3 = create_case_with_entities(
         title='Case 3',
         case_type=CaseType.CORRUPTION,
         alleged_entities=['entity:person/test-person'],
@@ -319,7 +320,7 @@ def test_creator_access_persists_after_state_change(contributor_user, request_fa
     Validates: Requirements 1.5, 3.1
     """
     # Create a case in DRAFT
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title='Test Case',
         case_type=CaseType.CORRUPTION,
         alleged_entities=['entity:person/test-person'],

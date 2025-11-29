@@ -11,8 +11,8 @@ from django.db import connection
 from django.conf import settings
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
-from .models import Case, CaseState, DocumentSource
-from .serializers import CaseSerializer, CaseDetailSerializer, DocumentSourceSerializer
+from .models import Case, CaseState, DocumentSource, JawafEntity
+from .serializers import CaseSerializer, CaseDetailSerializer, DocumentSourceSerializer, JawafEntitySerializer
 
 
 @extend_schema_view(
@@ -284,3 +284,69 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         except DocumentSource.DoesNotExist:
             from rest_framework.exceptions import NotFound
             raise NotFound(f"Source with id or source_id '{lookup_value}' not found.")
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="List all entities",
+        description="""
+        Retrieve a paginated list of all entities in the system.
+        
+        Entities can have either:
+        - `nes_id`: Reference to Nepal Entity Service
+        - `display_name`: Custom entity name
+        - Both fields (display_name is optional when nes_id is present)
+        
+        **Search:**
+        - `search`: Search across nes_id and display_name
+        
+        **Pagination:**
+        - Results are paginated with 50 items per page
+        - Use `page` parameter to navigate pages
+        """,
+        parameters=[
+            OpenApiParameter(
+                name='search',
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                description='Search across nes_id and display_name',
+                required=False,
+            ),
+            OpenApiParameter(
+                name='page',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description='Page number for pagination',
+                required=False,
+            ),
+        ],
+        tags=['entities'],
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve an entity",
+        description="""
+        Retrieve detailed information about a specific entity.
+        
+        Returns entity with id, nes_id, and display_name.
+        """,
+        tags=['entities'],
+    ),
+)
+class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Public read-only API for JawafEntities.
+    
+    Provides:
+    - List endpoint: GET /api/entities/
+    - Retrieve endpoint: GET /api/entities/{id}/
+    
+    Search:
+    - Full-text search across nes_id and display_name
+    
+    All entities in the system are accessible.
+    """
+    
+    queryset = JawafEntity.objects.all().order_by('-created_at')
+    serializer_class = JawafEntitySerializer
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['nes_id', 'display_name']

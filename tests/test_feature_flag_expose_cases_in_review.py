@@ -1,3 +1,4 @@
+from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Tests for EXPOSE_CASES_IN_REVIEW feature flag.
 
@@ -28,7 +29,7 @@ class TestExposeCasesInReviewFeatureFlag:
         self.client = APIClient()
         
         # Create a published case
-        self.published_case = Case.objects.create(
+        self.published_case = create_case_with_entities(
             title="Published Case",
             alleged_entities=["entity:person/test"],
             key_allegations=["Test allegation"],
@@ -39,7 +40,7 @@ class TestExposeCasesInReviewFeatureFlag:
         )
         
         # Create an in-review case
-        self.in_review_case = Case.objects.create(
+        self.in_review_case = create_case_with_entities(
             title="In Review Case",
             alleged_entities=["entity:person/test"],
             key_allegations=["Test allegation"],
@@ -50,7 +51,7 @@ class TestExposeCasesInReviewFeatureFlag:
         )
         
         # Create a draft case
-        self.draft_case = Case.objects.create(
+        self.draft_case = create_case_with_entities(
             title="Draft Case",
             alleged_entities=["entity:person/test"],
             case_type=CaseType.CORRUPTION,
@@ -202,7 +203,7 @@ class TestExposeCasesInReviewFeatureFlag:
         When EXPOSE_CASES_IN_REVIEW=True, audit history should include IN_REVIEW versions.
         """
         # Create version 1 (published)
-        case_v1 = Case.objects.create(
+        case_v1 = create_case_with_entities(
             title="Case v1",
             alleged_entities=["entity:person/test"],
             key_allegations=["Allegation v1"],

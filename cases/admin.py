@@ -5,9 +5,8 @@ from django import forms
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 from tinymce.widgets import TinyMCE
-from .models import Case, DocumentSource, CaseState, CaseType
+from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType
 from .widgets import (
-    MultiEntityIDField,
     MultiTextField,
     MultiTimelineField,
     MultiEvidenceField,
@@ -24,25 +23,6 @@ class CaseAdminForm(forms.ModelForm):
     """
     Custom form for Case admin with rich text editor and custom widgets.
     """
-    
-    # Override fields with custom widgets
-    alleged_entities = MultiEntityIDField(
-        required=False,
-        label="Alleged Entities",
-        help_text="Entity IDs for entities being accused"
-    )
-    
-    related_entities = MultiEntityIDField(
-        required=False,
-        label="Related Entities",
-        help_text="Entity IDs for related entities"
-    )
-    
-    locations = MultiEntityIDField(
-        required=False,
-        label="Locations",
-        help_text="Location entity IDs"
-    )
     
     key_allegations = MultiTextField(
         required=False,
@@ -122,33 +102,7 @@ class CaseAdminForm(forms.ModelForm):
                     # Create custom choices with disabled options
                     state_field.widget.attrs['class'] = 'contributor-state-field'
     
-    def clean(self):
-        """
-        Validate the form based on the current state.
-        """
-        cleaned_data = super().clean()
-        state = cleaned_data.get('state')
-        
-        # Validate based on state
-        if state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Strict validation for IN_REVIEW and PUBLISHED
-            alleged_entities = cleaned_data.get('alleged_entities')
-            if not alleged_entities or len(alleged_entities) == 0:
-                raise ValidationError({
-                    'alleged_entities': 'At least one alleged entity is required for IN_REVIEW or PUBLISHED state'
-                })
-            
-            if not cleaned_data.get('key_allegations'):
-                raise ValidationError({
-                    'key_allegations': 'At least one key allegation is required for IN_REVIEW or PUBLISHED state'
-                })
-            
-            if not cleaned_data.get('description') or not cleaned_data.get('description').strip():
-                raise ValidationError({
-                    'description': 'Description is required for IN_REVIEW or PUBLISHED state'
-                })
-        
-        return cleaned_data
+
 
 
 # ============================================================================
@@ -257,7 +211,7 @@ class CaseAdmin(admin.ModelAdmin):
         }),
     )
     
-    filter_horizontal = ['contributors']
+    filter_horizontal = ['contributors', 'alleged_entities', 'related_entities', 'locations']
     
     def state_badge(self, obj):
         """Display state as a colored badge."""
@@ -513,13 +467,6 @@ class DocumentSourceAdminForm(forms.ModelForm):
     Custom form for DocumentSource admin with custom widgets.
     """
     
-    # Override related_entity_ids with custom widget
-    related_entity_ids = MultiEntityIDField(
-        required=False,
-        label="Related Entity IDs",
-        help_text="Entity IDs related to this source"
-    )
-    
     # Override url field to set assume_scheme and silence Django 6.0 warning
     url = forms.URLField(
         required=False,
@@ -609,7 +556,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
                 'title',
                 'description',
                 'url',
-                'related_entity_ids',
+                'related_entities',
                 'contributors',
             )
         }),
@@ -621,6 +568,8 @@ class DocumentSourceAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    filter_horizontal = ['related_entities', 'contributors']
     
     def deletion_status(self, obj):
         """Display deletion status as a colored badge."""
@@ -924,6 +873,81 @@ class CustomUserAdmin(BaseUserAdmin):
 # Unregister the default User admin and register our custom one
 admin.site.unregister(User)
 admin.site.register(User, CustomUserAdmin)
+
+
+# ============================================================================
+# JawafEntity Admin
+# ============================================================================
+
+class JawafEntityAdminForm(forms.ModelForm):
+    """
+    Custom form for JawafEntity admin with validation.
+    """
+    
+    class Meta:
+        model = JawafEntity
+        fields = '__all__'
+    
+    def clean(self):
+        """
+        Validate entity data.
+        """
+        cleaned_data = super().clean()
+        nes_id = cleaned_data.get('nes_id')
+        display_name = cleaned_data.get('display_name')
+        
+        # Check that at least one is provided
+        if not nes_id and not display_name:
+            raise ValidationError("Entity must have either NES ID or Display Name")
+        
+        return cleaned_data
+
+
+@admin.register(JawafEntity)
+class JawafEntityAdmin(admin.ModelAdmin):
+    """
+    Django Admin configuration for JawafEntity model.
+    """
+    
+    form = JawafEntityAdminForm
+    
+    list_display = [
+        'id',
+        'nes_id',
+        'display_name',
+        'created_at',
+    ]
+    
+    list_filter = [
+        'created_at',
+    ]
+    
+    search_fields = [
+        'nes_id',
+        'display_name',
+    ]
+    
+    readonly_fields = [
+        'created_at',
+        'updated_at',
+    ]
+    
+    fieldsets = (
+        ('Entity Information', {
+            'fields': (
+                'nes_id',
+                'display_name',
+            ),
+            'description': 'Provide either NES ID (from Nepal Entity Service) or a custom Display Name. Both can be provided if needed.'
+        }),
+        ('Metadata', {
+            'fields': (
+                'created_at',
+                'updated_at',
+            ),
+            'classes': ('collapse',)
+        }),
+    )
 
 
 # ============================================================================

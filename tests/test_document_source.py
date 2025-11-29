@@ -1,3 +1,4 @@
+from tests.conftest import create_document_source_with_entities
 """
 Property-based tests for DocumentSource model.
 
@@ -27,12 +28,13 @@ def valid_entity_id(draw):
     entity_types = ["person", "organization", "location"]
     entity_type = draw(st.sampled_from(entity_types))
     
-    # Generate valid slug (lowercase letters, numbers, hyphens)
+    # Generate valid slug (ASCII lowercase letters, numbers, hyphens only)
+    # NES validator expects: ^[a-z0-9]+(?:-[a-z0-9]+)*$
     slug = draw(st.text(
-        alphabet=st.characters(whitelist_categories=("Ll", "Nd"), whitelist_characters="-"),
+        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-",
         min_size=3,
         max_size=50
-    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-")))
+    ).filter(lambda x: x and not x.startswith("-") and not x.endswith("-") and "--" not in x))
     
     return f"entity:{entity_type}/{slug}"
 
@@ -110,7 +112,7 @@ def test_document_source_accepts_valid_data(source_data):
     validation should pass without raising ValidationError.
     Validates: Requirements 4.2
     """
-    source = DocumentSource(**source_data)
+    source = create_document_source_with_entities(**source_data)
     source.save()
     
     # Should not raise ValidationError
@@ -133,7 +135,7 @@ def test_document_source_rejects_missing_title(source_data):
     """
     # Should raise ValidationError when missing title
     with pytest.raises(ValidationError) as exc_info:
-        source = DocumentSource(**source_data)
+        source = create_document_source_with_entities(**source_data)
         source.save()
         source.validate()
     
@@ -155,7 +157,7 @@ def test_document_source_accepts_missing_description(source_data):
     Validates: Requirements 4.2
     """
     # Should not raise ValidationError when missing description
-    source = DocumentSource(**source_data)
+    source = create_document_source_with_entities(**source_data)
     source.save()
     
     try:
@@ -177,7 +179,7 @@ def test_document_source_rejects_empty_title(source_data):
     """
     # Should raise ValidationError when title is empty
     with pytest.raises(ValidationError):
-        source = DocumentSource(**source_data)
+        source = create_document_source_with_entities(**source_data)
         source.save()
 
 
@@ -193,7 +195,7 @@ def test_document_source_accepts_empty_description(source_data):
     Validates: Requirements 4.2
     """
     # Should not raise ValidationError when description is empty
-    source = DocumentSource(**source_data)
+    source = create_document_source_with_entities(**source_data)
     source.save()
     
     try:
@@ -213,7 +215,7 @@ def test_document_source_requires_title():
     Validates: Requirements 4.2
     """
     with pytest.raises(ValidationError):
-        source = DocumentSource(
+        source = create_document_source_with_entities(
             description="Valid description",
             related_entity_ids=[]
         )
@@ -226,7 +228,7 @@ def test_document_source_accepts_missing_description():
     Edge case: DocumentSource can be created without description (description is optional).
     Validates: Requirements 4.2
     """
-    source = DocumentSource(
+    source = create_document_source_with_entities(
         title="Valid Title",
         related_entity_ids=[]
     )
@@ -245,7 +247,7 @@ def test_document_source_url_is_optional():
     Edge case: URL field is optional for DocumentSource.
     Validates: Requirements 4.1, 4.2
     """
-    source = DocumentSource(
+    source = create_document_source_with_entities(
         title="Valid Title",
         description="Valid description",
         related_entity_ids=[]
@@ -265,7 +267,7 @@ def test_document_source_soft_deletion():
     Edge case: DocumentSource should support soft deletion via is_deleted flag.
     Validates: Design document soft deletion requirement
     """
-    source = DocumentSource(
+    source = create_document_source_with_entities(
         title="Valid Title",
         description="Valid description",
         related_entity_ids=[]
@@ -299,7 +301,7 @@ def test_document_source_has_contributors_field():
     user = User.objects.create_user(username='testuser', password='test123')
     
     # Create a source
-    source = DocumentSource(
+    source = create_document_source_with_entities(
         title="Valid Title",
         description="Valid description",
         related_entity_ids=[]

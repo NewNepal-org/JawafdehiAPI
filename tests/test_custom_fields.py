@@ -9,8 +9,7 @@ Validates: Requirements 1.2
 import pytest
 from hypothesis import given, strategies as st, settings
 from django.core.exceptions import ValidationError
-from cases.models import (
-    EntityListField,
+from cases.fields import (
     TextListField,
     TimelineListField,
     EvidenceListField,
@@ -102,54 +101,6 @@ def evidence_list(draw, min_size=0, max_size=5):
         min_size=min_size,
         max_size=max_size
     ))
-
-
-# ============================================================================
-# EntityListField Tests
-# ============================================================================
-
-@settings(max_examples=100)
-@given(entity_ids=entity_id_list(min_size=1, max_size=10))
-def test_entity_list_field_accepts_valid_entity_ids(entity_ids):
-    """
-    Feature: accountability-platform-core, Property 2: Draft validation is lenient, In Review validation is strict
-    
-    For any list of valid entity IDs, EntityListField should accept them without raising ValidationError.
-    """
-    field = EntityListField()
-    
-    # Should not raise ValidationError
-    try:
-        field.validate(entity_ids, None)
-    except ValidationError:
-        pytest.fail(f"EntityListField rejected valid entity IDs: {entity_ids}")
-
-
-@settings(max_examples=100)
-@given(entity_ids=st.lists(invalid_entity_id(), min_size=1, max_size=5))
-def test_entity_list_field_rejects_invalid_entity_ids(entity_ids):
-    """
-    Feature: accountability-platform-core, Property 2: Draft validation is lenient, In Review validation is strict
-    
-    For any list containing invalid entity IDs, EntityListField should raise ValidationError.
-    """
-    field = EntityListField()
-    
-    # Should raise ValidationError
-    with pytest.raises(ValidationError):
-        field.validate(entity_ids, None)
-
-
-def test_entity_list_field_rejects_empty_list():
-    """
-    Feature: accountability-platform-core, Property 2: Draft validation is lenient, In Review validation is strict
-    
-    EntityListField should reject empty lists when required.
-    """
-    field = EntityListField()
-    
-    with pytest.raises(ValidationError):
-        field.validate([], None)
 
 
 # ============================================================================

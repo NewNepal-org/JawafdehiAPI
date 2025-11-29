@@ -10,6 +10,7 @@ import pytest
 from hypothesis import given, strategies as st, settings, assume
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
+from tests.conftest import create_case_with_entities, create_entities_from_ids
 
 # Import will work once Case model is implemented in task 4
 try:
@@ -104,7 +105,7 @@ def test_new_cases_start_in_draft_state(case_data):
     For any case created, the initial state should be Draft.
     Validates: Requirements 1.1
     """
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     
     assert case.state == CaseState.DRAFT, \
         f"New case should start in DRAFT state, but got {case.state}"
@@ -127,7 +128,7 @@ def test_draft_validation_is_lenient(case_data):
     Other fields (key_allegations, description) can be incomplete.
     Validates: Requirements 1.2
     """
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.DRAFT
     
     # Should not raise ValidationError even without key_allegations
@@ -148,7 +149,7 @@ def test_in_review_validation_is_strict(case_data):
     (alleged_entities, key_allegations) must be valid and complete.
     Validates: Requirements 1.2
     """
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.IN_REVIEW
     
     # Should not raise ValidationError with complete data
@@ -167,7 +168,7 @@ def test_in_review_validation_rejects_incomplete_data():
     Validates: Requirements 1.2
     """
     # Create case with minimal data (valid for DRAFT)
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title="Test Case",
         alleged_entities=["entity:person/test-person"],
         case_type=CaseType.CORRUPTION,
@@ -199,7 +200,7 @@ def test_draft_submission_transitions_to_in_review(case_data):
     For any case in Draft state, when submitted, the state should change to In Review.
     Validates: Requirements 1.3
     """
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     assert case.state == CaseState.DRAFT
     
     # Submit the draft (this will be a method on the Case model)
@@ -225,7 +226,7 @@ def test_draft_creation_increments_version(case_data):
     Validates: Requirements 1.4
     """
     # Create and publish a case
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
     
@@ -266,7 +267,7 @@ def test_editing_published_cases_preserves_original(case_data):
     Validates: Requirements 1.4
     """
     # Create and publish a case
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
     
@@ -316,7 +317,7 @@ def test_case_requires_at_least_one_alleged_entity():
     Validates: Requirements 1.2
     """
     # Draft cases can have empty alleged_entities (lenient validation)
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title="Test Case",
         alleged_entities=[],  # Empty list
         case_type=CaseType.CORRUPTION,
@@ -337,7 +338,7 @@ def test_case_requires_title():
     Validates: Requirements 1.2
     """
     with pytest.raises((ValidationError, ValueError)):
-        Case.objects.create(
+        create_case_with_entities(
             title="",  # Empty title
             alleged_entities=["entity:person/test-person"],
             case_type=CaseType.CORRUPTION,
@@ -360,7 +361,7 @@ def test_soft_delete_sets_state_to_closed(case_data):
     Validates: Requirements 7.3
     """
     # Create a case in any state
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     original_id = case.id
     original_case_id = case.case_id
     
@@ -394,14 +395,14 @@ def test_soft_delete_preserves_all_data(case_data):
     Validates: Requirements 7.3
     """
     # Create and publish a case
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
     
     original_id = case.id
     original_title = case.title
     original_version = case.version
-    original_alleged_entities = case.alleged_entities.copy()
+    original_alleged_entities = list(case.alleged_entities.all())
     original_key_allegations = case.key_allegations.copy()
     
     # Soft delete the case
@@ -415,7 +416,7 @@ def test_soft_delete_preserves_all_data(case_data):
         "Soft-deleted case should preserve title"
     assert case.version == original_version, \
         "Soft-deleted case should preserve version"
-    assert case.alleged_entities == original_alleged_entities, \
+    assert list(case.alleged_entities.all()) == original_alleged_entities, \
         "Soft-deleted case should preserve alleged_entities"
     assert case.key_allegations == original_key_allegations, \
         "Soft-deleted case should preserve key_allegations"

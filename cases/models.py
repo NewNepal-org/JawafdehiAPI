@@ -11,7 +11,6 @@ from django.utils import timezone
 import uuid
 
 from .fields import (
-    EntityListField,
     TextListField,
     TimelineListField,
     EvidenceListField,
@@ -19,6 +18,87 @@ from .fields import (
 
 
 User = get_user_model()
+
+
+class JawafEntity(models.Model):
+    """
+    Represents an entity (person, organization, location, etc.) in the system.
+    
+    Entities can either:
+    - Reference an entity in the Nepal Entity Service (NES) via nes_id
+    - Be custom entities with a display_name (when NES record doesn't exist)
+    - Have both nes_id and display_name (display_name is optional)
+    
+    nes_id must be unique across all entities (excluding nulls).
+    """
+    
+    nes_id = models.CharField(
+        max_length=300,
+        null=True,
+        blank=True,
+        unique=True,
+        db_index=True,
+        help_text="Entity ID from Nepal Entity Service (NES) database (unique)"
+    )
+    
+    display_name = models.CharField(
+        max_length=300,
+        null=True,
+        blank=True,
+        help_text="Display name for the entity (optional if nes_id is present, required otherwise)"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Jawaf Entity"
+        verbose_name_plural = "Jawaf Entities"
+        ordering = ['-created_at']
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(nes_id__isnull=True, display_name__isnull=True),
+                name='jawafentity_must_have_nes_id_or_display_name'
+            )
+        ]
+    
+    def __str__(self):
+        if self.nes_id:
+            return f"{self.nes_id}" + (f" ({self.display_name})" if self.display_name else "")
+        return f"{self.display_name}"
+    
+    def clean(self):
+        """
+        Validate entity data.
+        
+        Rules:
+        - Must have either nes_id OR display_name (or both)
+        - If nes_id is provided, validate it using NES validator
+        """
+        errors = {}
+        
+        # Check that at least one of nes_id or display_name is provided
+        has_nes_id = self.nes_id and self.nes_id.strip()
+        has_display_name = self.display_name and self.display_name.strip()
+        
+        if not has_nes_id and not has_display_name:
+            errors['__all__'] = "Entity must have either nes_id or display_name"
+        
+        # Validate nes_id format if provided
+        if has_nes_id:
+            from nes.core.identifiers.validators import validate_entity_id
+            try:
+                validate_entity_id(self.nes_id)
+            except ValueError as e:
+                errors['nes_id'] = str(e)
+        
+        if errors:
+            raise ValidationError(errors)
+    
+    def save(self, *args, **kwargs):
+        """Override save to validate before saving."""
+        self.clean()
+        super().save(*args, **kwargs)
 
 
 class CaseType(models.TextChoices):
@@ -85,18 +165,24 @@ class Case(models.Model):
         help_text="When the alleged incident ended"
     )
     
-    # Entity fields (using custom list fields)
-    alleged_entities = EntityListField(
+    # Entity relationships (many-to-many)
+    alleged_entities = models.ManyToManyField(
+        JawafEntity,
         blank=True,
-        help_text="List of entity IDs for entities being accused"
+        related_name="cases_as_alleged",
+        help_text="Entities being accused"
     )
-    related_entities = EntityListField(
+    related_entities = models.ManyToManyField(
+        JawafEntity,
         blank=True,
-        help_text="List of entity IDs for related entities"
+        related_name="cases_as_related",
+        help_text="Related entities"
     )
-    locations = EntityListField(
+    locations = models.ManyToManyField(
+        JawafEntity,
         blank=True,
-        help_text="List of location entity IDs"
+        related_name="cases_as_location",
+        help_text="Location entities"
     )
     
     # Content fields
@@ -178,7 +264,7 @@ class Case(models.Model):
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
             # Require at least one alleged entity for published cases
-            if not self.alleged_entities or len(self.alleged_entities) == 0:
+            if self.alleged_entities.count() == 0:
                 errors['alleged_entities'] = "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
             
             if not self.key_allegations or len(self.key_allegations) == 0:
@@ -233,9 +319,6 @@ class Case(models.Model):
             title=self.title,
             case_start_date=self.case_start_date,
             case_end_date=self.case_end_date,
-            alleged_entities=self.alleged_entities.copy() if self.alleged_entities else [],
-            related_entities=self.related_entities.copy() if self.related_entities else [],
-            locations=self.locations.copy() if self.locations else [],
             tags=self.tags.copy() if self.tags else [],
             description=self.description,
             key_allegations=self.key_allegations.copy() if self.key_allegations else [],
@@ -251,7 +334,10 @@ class Case(models.Model):
         
         draft.save()
         
-        # Copy contributors
+        # Copy many-to-many relationships
+        draft.alleged_entities.set(self.alleged_entities.all())
+        draft.related_entities.set(self.related_entities.all())
+        draft.locations.set(self.locations.all())
         draft.contributors.set(self.contributors.all())
         
         return draft
@@ -334,9 +420,11 @@ class DocumentSource(models.Model):
     )
     
     # Entity relationships
-    related_entity_ids = EntityListField(
+    related_entities = models.ManyToManyField(
+        JawafEntity,
         blank=True,
-        help_text="List of entity IDs related to this source"
+        related_name="document_sources",
+        help_text="Entities related to this source"
     )
     
     # Contributors (for access control)

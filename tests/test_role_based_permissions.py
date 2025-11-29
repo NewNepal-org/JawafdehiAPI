@@ -1,3 +1,4 @@
+from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Property-based tests for role-based permissions.
 
@@ -205,7 +206,7 @@ def test_contributors_can_transition_between_draft_and_in_review(case_data, cont
     )
     
     # Create a case and assign contributor
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.contributors.add(contributor)
     case.save()
     
@@ -265,7 +266,7 @@ def test_contributors_cannot_transition_to_published_or_closed(case_data, contri
     )
     
     # Create a case in IN_REVIEW state and assign contributor
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.IN_REVIEW
     case.save()
     case.contributors.add(contributor)
@@ -316,7 +317,7 @@ def test_admin_has_full_access_to_all_cases(case_data, admin_data):
     )
     
     # Create a case (not assigned to admin)
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     
     # Create mock request
     request = create_mock_request(admin_user)
@@ -358,7 +359,7 @@ def test_admin_can_transition_to_any_state(case_data, admin_data, target_state):
     )
     
     # Create a case in IN_REVIEW state
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     case.state = CaseState.IN_REVIEW
     case.save()
     
@@ -408,13 +409,13 @@ def test_contributor_can_only_access_assigned_cases(case_data, contributor_data)
     )
     
     # Create two cases: one assigned, one not assigned
-    assigned_case = Case.objects.create(**case_data)
+    assigned_case = create_case_with_entities(**case_data)
     assigned_case.contributors.add(contributor)
     
     # Create unassigned case with different title to avoid conflicts
     unassigned_case_data = case_data.copy()
     unassigned_case_data['title'] = f"{case_data['title']}_unassigned"
-    unassigned_case = Case.objects.create(**unassigned_case_data)
+    unassigned_case = create_case_with_entities(**unassigned_case_data)
     
     # Create mock request
     request = create_mock_request(contributor)
@@ -462,7 +463,7 @@ def test_contributor_cannot_modify_unassigned_cases(case_data, contributor_data)
     )
     
     # Create a case (not assigned to contributor)
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     
     # Create mock request
     request = create_mock_request(contributor)
@@ -557,7 +558,7 @@ def test_moderators_can_access_all_cases(case_data, moderator_data):
     )
     
     # Create a case (not assigned to moderator)
-    case = Case.objects.create(**case_data)
+    case = create_case_with_entities(**case_data)
     
     # Create mock request
     request = create_mock_request(moderator)
@@ -595,7 +596,7 @@ def test_user_without_role_has_no_access():
     user.save()
     
     # Create a case
-    case = Case.objects.create(
+    case = create_case_with_entities(
         title="Test Case",
         alleged_entities=["entity:person/test-person"],
         key_allegations=["Test allegation"],
@@ -629,7 +630,7 @@ def test_contributor_can_access_multiple_assigned_cases():
     contributor = create_user_with_role('contrib', 'contrib@example.com', 'Contributor')
     
     # Create multiple cases and assign all to contributor
-    case1 = Case.objects.create(
+    case1 = create_case_with_entities(
         title="Case 1",
         alleged_entities=["entity:person/person1"],
         key_allegations=["Allegation 1"],
@@ -638,7 +639,7 @@ def test_contributor_can_access_multiple_assigned_cases():
     )
     case1.contributors.add(contributor)
     
-    case2 = Case.objects.create(
+    case2 = create_case_with_entities(
         title="Case 2",
         alleged_entities=["entity:person/person2"],
         key_allegations=["Allegation 2"],

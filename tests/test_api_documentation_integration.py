@@ -1,3 +1,4 @@
+from tests.conftest import create_case_with_entities, create_entities_from_ids
 """
 Integration tests for API documentation with real data.
 
@@ -18,15 +19,15 @@ class TestAPIDocumentationIntegration:
     @pytest.fixture
     def published_case(self):
         """Create a published case for testing."""
-        case = Case.objects.create(
+        case = create_case_with_entities(
             case_id="case-test123",
             version=1,
             case_type=CaseType.CORRUPTION,
             state=CaseState.PUBLISHED,
             title="Test Corruption Case",
             alleged_entities=["entity:person/test-person"],
-            related_entities=["entity:organization/government/test-ministry"],
-            locations=["entity:location/district/kathmandu"],
+            related_entities=["entity:organization/test-ministry"],
+            locations=["entity:location/kathmandu"],
             tags=["corruption", "test"],
             description="Test case description",
             key_allegations=["Test allegation 1", "Test allegation 2"],
@@ -54,7 +55,8 @@ class TestAPIDocumentationIntegration:
     @pytest.fixture
     def document_source(self, published_case):
         """Create a document source referenced by a published case."""
-        source = DocumentSource.objects.create(
+        from tests.conftest import create_document_source_with_entities
+        source = create_document_source_with_entities(
             source_id="source:test:123",
             title="Test Source",
             description="Test source description",
@@ -111,7 +113,7 @@ class TestAPIDocumentationIntegration:
         # Verify DocumentSource schema includes all expected fields
         source_schema = schema['components']['schemas']['DocumentSource']
         expected_fields = [
-            'id', 'source_id', 'title', 'description', 'url', 'related_entity_ids'
+            'id', 'source_id', 'title', 'description', 'url', 'related_entities'
         ]
         
         for field in expected_fields:

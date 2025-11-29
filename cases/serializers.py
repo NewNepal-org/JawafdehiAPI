@@ -8,7 +8,17 @@ from rest_framework import serializers
 from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from drf_spectacular.types import OpenApiTypes
-from .models import Case, DocumentSource, CaseState
+from .models import Case, DocumentSource, JawafEntity, CaseState
+
+
+class JawafEntitySerializer(serializers.ModelSerializer):
+    """
+    Serializer for JawafEntity model.
+    """
+    
+    class Meta:
+        model = JawafEntity
+        fields = ['id', 'nes_id', 'display_name']
 
 
 class CaseSerializer(serializers.ModelSerializer):
@@ -22,20 +32,9 @@ class CaseSerializer(serializers.ModelSerializer):
     The state field is always included to indicate case status (PUBLISHED or IN_REVIEW).
     """
     
-    alleged_entities = serializers.ListField(
-        child=serializers.CharField(),
-        help_text="List of entity IDs for entities being accused (e.g., 'entity:person/rabi-lamichhane')"
-    )
-    related_entities = serializers.ListField(
-        child=serializers.CharField(),
-        help_text="List of entity IDs for related entities",
-        required=False
-    )
-    locations = serializers.ListField(
-        child=serializers.CharField(),
-        help_text="List of location entity IDs (e.g., 'entity:location/district/kathmandu')",
-        required=False
-    )
+    alleged_entities = JawafEntitySerializer(many=True, read_only=True)
+    related_entities = JawafEntitySerializer(many=True, read_only=True)
+    locations = JawafEntitySerializer(many=True, read_only=True)
     tags = serializers.ListField(
         child=serializers.CharField(),
         help_text="List of tags for categorization (e.g., 'land-encroachment', 'national-interest')",
@@ -138,11 +137,7 @@ class DocumentSourceSerializer(serializers.ModelSerializer):
     Used for public API access to sources associated with published cases.
     """
     
-    related_entity_ids = serializers.ListField(
-        child=serializers.CharField(),
-        help_text="List of entity IDs related to this source",
-        required=False
-    )
+    related_entities = JawafEntitySerializer(many=True, read_only=True)
     
     class Meta:
         model = DocumentSource
@@ -152,7 +147,7 @@ class DocumentSourceSerializer(serializers.ModelSerializer):
             'title',
             'description',
             'url',
-            'related_entity_ids',
+            'related_entities',
             'created_at',
             'updated_at',
         ]
