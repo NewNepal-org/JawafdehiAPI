@@ -414,12 +414,12 @@ class CaseAdmin(admin.ModelAdmin):
         if is_admin_or_moderator(request.user):
             # Moderators and Admins can publish and close
             actions['publish_cases'] = (
-                self.publish_cases,
+                self.__class__.publish_cases,
                 'publish_cases',
                 'Publish selected cases'
             )
             actions['close_cases'] = (
-                self.close_cases,
+                self.__class__.close_cases,
                 'close_cases',
                 'Close selected cases'
             )
