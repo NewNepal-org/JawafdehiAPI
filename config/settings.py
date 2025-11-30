@@ -198,10 +198,7 @@ The cases endpoint supports:
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "SCHEMA_PATH_PREFIX": "/api/",
-    "SERVERS": [
-        {"url": "https://api.jawafdehi.newnepal.org", "description": "Production server"},
-        {"url": "http://localhost:8000", "description": "Development server"},
-    ],
+    "SERVERS": None,  # Use None to auto-detect from request
     "TAGS": [
         {
             "name": "cases",

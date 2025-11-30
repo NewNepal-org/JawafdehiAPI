@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 from django import forms
+from django.db import models
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 from tinymce.widgets import TinyMCE
@@ -88,9 +89,24 @@ class CaseAdminForm(forms.ModelForm):
             
             # Filter sources based on user role
             if not is_admin_or_moderator(user):
-                # Contributors only see sources they're assigned to
+                # Contributors see sources they're assigned to
                 if is_contributor(user):
                     sources_queryset = sources_queryset.filter(contributors=user)
+                    
+                    # Also include sources already referenced in this case's evidence
+                    if self.instance and self.instance.pk and self.instance.evidence:
+                        existing_source_ids = [
+                            entry.get('source_id') 
+                            for entry in self.instance.evidence 
+                            if entry.get('source_id')
+                        ]
+                        if existing_source_ids:
+                            # Combine: sources assigned to user OR sources already in evidence
+                            sources_queryset = DocumentSource.objects.filter(
+                                is_deleted=False
+                            ).filter(
+                                models.Q(contributors=user) | models.Q(source_id__in=existing_source_ids)
+                            ).distinct()
                 else:
                     # No role - see nothing
                     sources_queryset = DocumentSource.objects.none()
