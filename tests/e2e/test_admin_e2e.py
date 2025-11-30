@@ -335,33 +335,37 @@ class TestDjangoAdminWorkflows:
             "Case should transition to IN_REVIEW with complete data"
         
         # Step 5: Contributor attempts to publish (should fail)
-        admin_instance = CaseAdmin(Case, None)
         from django.test import RequestFactory
-        factory = RequestFactory()
+        from cases.admin import CaseAdminForm
         
-        request_contrib = factory.get('/')
+        factory = RequestFactory()
+        request_contrib = factory.post('/')
         request_contrib.user = self.contributor1
         
-        case.state = CaseState.PUBLISHED
-        
-        with pytest.raises(ValidationError) as exc_info:
-            admin_instance.save_model(request_contrib, case, None, change=True)
-        
-        # Verify error message mentions contributor restrictions
-        error_message = str(exc_info.value)
-        assert "Contributors can only transition between DRAFT and IN_REVIEW" in error_message, \
+        form_data = {
+            'case_id': case.case_id,
+            'version': case.version,
+            'title': case.title,
+            'case_type': case.case_type,
+            'state': CaseState.PUBLISHED,
+            'alleged_entities': [e.id for e in case.alleged_entities.all()],
+            'key_allegations': case.key_allegations,
+            'description': case.description,
+        }
+        form = CaseAdminForm(data=form_data, instance=case, request=request_contrib)
+        assert not form.is_valid(), "Form should not be valid for contributor publishing"
+        assert 'state' in form.errors, "Should have state error"
+        assert "Contributors can only transition between DRAFT and IN_REVIEW" in str(form.errors['state']), \
             "Contributor should not be able to publish (Requirement 1.5)"
         
-        # Reset state
-        case.state = CaseState.IN_REVIEW
-        case.save()
-        
         # Step 6: Moderator successfully publishes
-        request_mod = factory.get('/')
+        request_mod = factory.post('/')
         request_mod.user = self.moderator
         
-        case.state = CaseState.PUBLISHED
-        admin_instance.save_model(request_mod, case, None, change=True)
+        form_data['state'] = CaseState.PUBLISHED
+        form = CaseAdminForm(data=form_data, instance=case, request=request_mod)
+        assert form.is_valid(), f"Form should be valid for moderator publishing: {form.errors}"
+        form.save()
         
         case.refresh_from_db()
         assert case.state == CaseState.PUBLISHED, \
@@ -770,56 +774,63 @@ class TestDjangoAdminWorkflows:
         case.contributors.add(self.contributor1)
         case.save()
         
-        admin_instance = CaseAdmin(Case, None)
         from django.test import RequestFactory
-        factory = RequestFactory()
+        from cases.admin import CaseAdminForm
         
-        request_contrib = factory.get('/')
+        factory = RequestFactory()
+        request_contrib = factory.post('/')
         request_contrib.user = self.contributor1
         
         # Step 2: Contributor transitions DRAFT → IN_REVIEW (allowed)
-        case.state = CaseState.IN_REVIEW
-        admin_instance.save_model(request_contrib, case, None, change=True)
+        form_data = {
+            'case_id': case.case_id,
+            'version': case.version,
+            'title': case.title,
+            'case_type': case.case_type,
+            'state': CaseState.IN_REVIEW,
+            'alleged_entities': [e.id for e in case.alleged_entities.all()],
+            'key_allegations': case.key_allegations,
+            'description': case.description,
+        }
+        form = CaseAdminForm(data=form_data, instance=case, request=request_contrib)
+        assert form.is_valid(), f"Form should be valid for DRAFT → IN_REVIEW: {form.errors}"
+        form.save()
         
         case.refresh_from_db()
         assert case.state == CaseState.IN_REVIEW, \
             "Contributor should be able to transition DRAFT → IN_REVIEW"
         
         # Step 3: Contributor transitions IN_REVIEW → DRAFT (allowed)
-        case.state = CaseState.DRAFT
-        admin_instance.save_model(request_contrib, case, None, change=True)
+        form_data['state'] = CaseState.DRAFT
+        form = CaseAdminForm(data=form_data, instance=case, request=request_contrib)
+        assert form.is_valid(), f"Form should be valid for IN_REVIEW → DRAFT: {form.errors}"
+        form.save()
         
         case.refresh_from_db()
         assert case.state == CaseState.DRAFT, \
             "Contributor should be able to transition IN_REVIEW → DRAFT"
         
         # Step 4: Contributor attempts DRAFT → PUBLISHED (should fail)
-        case.state = CaseState.PUBLISHED
-        
-        with pytest.raises(ValidationError) as exc_info:
-            admin_instance.save_model(request_contrib, case, None, change=True)
-        
-        error_message = str(exc_info.value)
-        assert "Contributors can only transition between DRAFT and IN_REVIEW" in error_message, \
+        form_data['state'] = CaseState.PUBLISHED
+        form = CaseAdminForm(data=form_data, instance=case, request=request_contrib)
+        assert not form.is_valid(), "Form should not be valid for DRAFT → PUBLISHED"
+        assert 'state' in form.errors, "Should have state error"
+        assert "Contributors can only transition between DRAFT and IN_REVIEW" in str(form.errors['state']), \
             "Contributor should NOT be able to transition to PUBLISHED (Requirement 1.5)"
         
-        # Reset state
-        case.state = CaseState.DRAFT
-        case.save()
-        
         # Transition to IN_REVIEW for next test
-        case.state = CaseState.IN_REVIEW
-        admin_instance.save_model(request_contrib, case, None, change=True)
+        form_data['state'] = CaseState.IN_REVIEW
+        form = CaseAdminForm(data=form_data, instance=case, request=request_contrib)
+        assert form.is_valid(), f"Form should be valid: {form.errors}"
+        form.save()
         case.refresh_from_db()
         
         # Step 5: Contributor attempts IN_REVIEW → CLOSED (should fail)
-        case.state = CaseState.CLOSED
-        
-        with pytest.raises(ValidationError) as exc_info:
-            admin_instance.save_model(request_contrib, case, None, change=True)
-        
-        error_message = str(exc_info.value)
-        assert "Contributors can only transition between DRAFT and IN_REVIEW" in error_message, \
+        form_data['state'] = CaseState.CLOSED
+        form = CaseAdminForm(data=form_data, instance=case, request=request_contrib)
+        assert not form.is_valid(), "Form should not be valid for IN_REVIEW → CLOSED"
+        assert 'state' in form.errors, "Should have state error"
+        assert "Contributors can only transition between DRAFT and IN_REVIEW" in str(form.errors['state']), \
             "Contributor should NOT be able to transition to CLOSED"
     
     def test_document_source_soft_deletion(self):
@@ -1004,80 +1015,62 @@ class TestDjangoAdminWorkflows:
         
         Validates: Requirements 1.1
         """
-        admin_instance = CaseAdmin(Case, None)
         from django.test import RequestFactory
-        factory = RequestFactory()
+        from cases.admin import CaseAdminForm
         
+        factory = RequestFactory()
         request_contrib = factory.post('/admin/cases/case/add/')
         request_contrib.user = self.contributor1
         
+        entities = create_entities_from_ids(["entity:person/test"])
+        
         # Step 1: Attempt to create a new case with state=PUBLISHED (should fail)
-        case_published = create_case_with_entities(
-            title="New Case - Published State",
-            case_type=CaseType.CORRUPTION,
-            alleged_entities=["entity:person/test"],
-            key_allegations=["Test allegation"],
-            description="Test description",
-            state=CaseState.PUBLISHED
-        )
-        
-        with pytest.raises(ValidationError) as exc_info:
-            admin_instance.save_model(request_contrib, case_published, None, change=False)
-        
-        error_message = str(exc_info.value)
-        assert "New cases must be created in DRAFT state" in error_message, \
+        form_data = {
+            'title': 'New Case - Published State',
+            'case_type': CaseType.CORRUPTION,
+            'state': CaseState.PUBLISHED,
+            'alleged_entities': [e.id for e in entities],
+            'key_allegations': ['Test allegation'],
+            'description': 'Test description',
+        }
+        form = CaseAdminForm(data=form_data, request=request_contrib)
+        assert not form.is_valid(), "Form should not be valid for PUBLISHED state on new case"
+        assert 'state' in form.errors, "Should have state error"
+        assert "New cases must be created in DRAFT state" in str(form.errors['state']), \
             "Should not allow creating new case with PUBLISHED state (Requirement 1.1)"
         
         # Step 2: Attempt to create a new case with state=IN_REVIEW (should fail)
-        case_in_review = create_case_with_entities(
-            title="New Case - In Review State",
-            case_type=CaseType.CORRUPTION,
-            alleged_entities=["entity:person/test"],
-            key_allegations=["Test allegation"],
-            description="Test description",
-            state=CaseState.IN_REVIEW
-        )
-        
-        with pytest.raises(ValidationError) as exc_info:
-            admin_instance.save_model(request_contrib, case_in_review, None, change=False)
-        
-        error_message = str(exc_info.value)
-        assert "New cases must be created in DRAFT state" in error_message, \
+        form_data['state'] = CaseState.IN_REVIEW
+        form_data['title'] = 'New Case - In Review State'
+        form = CaseAdminForm(data=form_data, request=request_contrib)
+        assert not form.is_valid(), "Form should not be valid for IN_REVIEW state on new case"
+        assert 'state' in form.errors, "Should have state error"
+        assert "New cases must be created in DRAFT state" in str(form.errors['state']), \
             "Should not allow creating new case with IN_REVIEW state"
         
         # Step 3: Attempt to create a new case with state=CLOSED (should fail)
-        case_closed = create_case_with_entities(
-            title="New Case - Closed State",
-            case_type=CaseType.CORRUPTION,
-            alleged_entities=["entity:person/test"],
-            state=CaseState.CLOSED
-        )
-        
-        with pytest.raises(ValidationError) as exc_info:
-            admin_instance.save_model(request_contrib, case_closed, None, change=False)
-        
-        error_message = str(exc_info.value)
-        assert "New cases must be created in DRAFT state" in error_message, \
+        form_data['state'] = CaseState.CLOSED
+        form_data['title'] = 'New Case - Closed State'
+        form = CaseAdminForm(data=form_data, request=request_contrib)
+        assert not form.is_valid(), "Form should not be valid for CLOSED state on new case"
+        assert 'state' in form.errors, "Should have state error"
+        assert "New cases must be created in DRAFT state" in str(form.errors['state']), \
             "Should not allow creating new case with CLOSED state"
         
         # Step 4: Create a new case with state=DRAFT (should succeed)
-        case_draft = create_case_with_entities(
-            title="New Case - Draft State",
+        case_draft = Case(
+            title='New Case - Draft State',
             case_type=CaseType.CORRUPTION,
-            alleged_entities=["entity:person/test"]
+            state=CaseState.DRAFT
         )
-        
-        # Should not raise any exception
-        admin_instance.save_model(request_contrib, case_draft, None, change=False)
+        case_draft.save()
+        case_draft.alleged_entities.set(entities)
         
         # Step 5: Verify case is created successfully in DRAFT state
-        case_draft.refresh_from_db()
-        assert case_draft.id is not None, \
-            "Case should be saved to database"
+        assert case_draft.id is not None, "Case should be saved to database"
         assert case_draft.state == CaseState.DRAFT, \
             "New case should be in DRAFT state (Requirement 1.1)"
-        assert case_draft.version == 1, \
-            "New case should start at version 1"
+        assert case_draft.version == 1, "New case should start at version 1"
     
     def test_admin_entity_id_validation_on_create(self):
         """

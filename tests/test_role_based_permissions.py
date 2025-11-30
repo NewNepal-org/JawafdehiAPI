@@ -117,20 +117,29 @@ def test_contributors_cannot_transition_to_published_or_closed(case_data, contri
     # Create mock request
     request = create_mock_request(contributor)
     
-    # Create admin instance
-    admin = CaseAdmin(Case, None)
+    # Use the admin form to test validation
+    from cases.admin import CaseAdminForm
     
-    # Attempt to transition to forbidden state
-    case.state = forbidden_state
+    form_data = {
+        'case_id': case.case_id,
+        'version': case.version,
+        'title': case.title,
+        'case_type': case.case_type,
+        'state': forbidden_state,
+        'alleged_entities': [e.id for e in case.alleged_entities.all()],
+        'key_allegations': case.key_allegations,
+        'description': case.description,
+    }
     
-    # This should raise ValidationError
-    with pytest.raises(ValidationError) as exc_info:
-        admin.save_model(request, case, None, change=True)
+    form = CaseAdminForm(data=form_data, instance=case, request=request)
+    
+    # Form should not be valid
+    assert not form.is_valid(), f"Form should not be valid for transition to {forbidden_state}"
+    assert 'state' in form.errors, "Should have state error"
     
     # Check error message mentions the restriction
-    error_message = str(exc_info.value)
-    assert "Contributors can only transition between DRAFT and IN_REVIEW" in error_message or \
-           "Cannot transition to" in error_message, \
+    error_message = str(form.errors['state'])
+    assert "Contributors can only transition between DRAFT and IN_REVIEW" in error_message, \
         f"Error message should mention contributor restrictions, got: {error_message}"
 
 

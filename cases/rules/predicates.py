@@ -35,7 +35,7 @@ def is_contributor(user: User) -> bool:
 @rules.predicate
 def is_admin_or_moderator(user: User) -> bool:
     """Check if user is Admin or Moderator."""
-    return user.groups.filter(name__in=['Admin', 'Moderator']).exists()
+    return user.is_superuser or user.groups.filter(name__in=['Admin', 'Moderator']).exists()
 
 
 @rules.predicate

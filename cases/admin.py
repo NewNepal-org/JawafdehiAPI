@@ -113,6 +113,57 @@ class CaseAdminForm(forms.ModelForm):
                     # Create custom choices with disabled options
                     state_field.widget.attrs['class'] = 'contributor-state-field'
     
+    def clean(self):
+        """
+        Validate state transitions, new case state requirements, and required fields.
+        """
+        cleaned_data = super().clean()
+        errors = {}
+        
+        # For new cases, enforce DRAFT state
+        if not self.instance.pk:
+            new_state = cleaned_data.get('state')
+            if new_state != CaseState.DRAFT:
+                errors['state'] = f"New cases must be created in DRAFT state. Cannot create a new case with state {new_state}."
+        
+        # Check state transitions for existing cases
+        if self.instance.pk:
+            old_state = Case.objects.get(pk=self.instance.pk).state
+            new_state = cleaned_data.get('state')
+            
+            if old_state != new_state and self.request:
+                if not can_transition_case_state(self.request.user, self.instance, new_state):
+                    errors['state'] = f"You do not have permission to transition from {old_state} to {new_state}. Contributors can only transition between DRAFT and IN_REVIEW states."
+        
+        # Validate required fields based on state
+        new_state = cleaned_data.get('state')
+        
+        # Always require title
+        if not cleaned_data.get('title', '').strip():
+            errors['title'] = "Title is required"
+        
+        # Strict validation for IN_REVIEW and PUBLISHED states
+        if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
+            # Check alleged_entities (m2m field - check form data)
+            alleged_entities = cleaned_data.get('alleged_entities')
+            if not alleged_entities or alleged_entities.count() == 0:
+                errors['alleged_entities'] = "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+            
+            # Check key_allegations
+            key_allegations = cleaned_data.get('key_allegations')
+            if not key_allegations or len(key_allegations) == 0:
+                errors['key_allegations'] = "At least one key allegation is required for IN_REVIEW or PUBLISHED state"
+            
+            # Check description
+            description = cleaned_data.get('description', '').strip()
+            if not description:
+                errors['description'] = "Description is required for IN_REVIEW or PUBLISHED state"
+        
+        if errors:
+            raise ValidationError(errors)
+        
+        return cleaned_data
+    
 
 
 
@@ -324,42 +375,6 @@ class CaseAdmin(admin.ModelAdmin):
                 return form_class(*args, **kwargs)
         
         return FormWithRequest
-    
-    def save_model(self, request, obj, form, change):
-        """
-        Save the model with validation and state transition checks.
-        Automatically adds the creator to contributors when creating a new case.
-        """
-        # For new cases, enforce DRAFT state
-        if not change:
-            if obj.state != CaseState.DRAFT:
-                raise ValidationError(
-                    f"New cases must be created in DRAFT state. "
-                    f"Cannot create a new case with state {obj.state}."
-                )
-        
-        # Check if state is being changed
-        if change:
-            old_obj = Case.objects.get(pk=obj.pk)
-            old_state = old_obj.state
-            new_state = obj.state
-            
-            # Check if user can transition to new state
-            if old_state != new_state:
-                if not can_transition_case_state(request.user, old_obj, new_state):
-                    raise ValidationError(
-                        f"You do not have permission to transition from {old_state} to {new_state}. "
-                        f"Contributors can only transition between DRAFT and IN_REVIEW states."
-                    )
-        
-        # Validate before saving
-        try:
-            obj.validate()
-        except ValidationError as e:
-            # Re-raise with form context
-            raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e))
-        
-        super().save_model(request, obj, form, change)
     
     def save_related(self, request, form, formsets, change):
         """

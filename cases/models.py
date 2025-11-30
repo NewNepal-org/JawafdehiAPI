@@ -57,7 +57,7 @@ class JawafEntity(models.Model):
         ordering = ['-created_at']
         constraints = [
             models.CheckConstraint(
-                check=~models.Q(nes_id__isnull=True, display_name__isnull=True),
+                condition=~models.Q(nes_id__isnull=True, display_name__isnull=True),
                 name='jawafentity_must_have_nes_id_or_display_name'
             )
         ]
