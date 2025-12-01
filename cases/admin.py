@@ -579,21 +579,40 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """
         Filter queryset based on user role.
         
-        - Contributors: Only see sources they're assigned to
-        - Moderators/Admins: See all sources
+        - Admins: See all sources (including deleted)
+        - Moderators: Only see active sources (exclude deleted)
+        - Contributors: Only see active sources they're assigned to (exclude deleted)
         """
         qs = super().get_queryset(request)
         
-        # Admins and Moderators see everything
-        if is_admin_or_moderator(request.user):
+        # Admins see everything including deleted
+        if is_admin(request.user):
             return qs
         
-        # Contributors only see sources they're assigned to
+        # Moderators see all active sources
+        if is_moderator(request.user):
+            return qs.filter(is_deleted=False)
+        
+        # Contributors only see active sources they're assigned to
         if is_contributor(request.user):
-            return qs.filter(contributors=request.user)
+            return qs.filter(contributors=request.user, is_deleted=False)
         
         # No role - see nothing
         return qs.none()
+    
+    def get_list_filter(self, request):
+        """
+        Customize list filters based on user role.
+        
+        - Admins: See is_deleted and created_at filters
+        - Moderators: Only see created_at filter
+        - Contributors: Only see created_at filter
+        """
+        if is_admin(request.user):
+            return ['is_deleted', 'created_at']
+        
+        # Moderators and Contributors only see created_at
+        return ['created_at']
     
     def has_view_permission(self, request, obj=None):
         """
@@ -851,5 +870,5 @@ class JawafEntityAdmin(admin.ModelAdmin):
 # ============================================================================
 
 admin.site.site_header = "Jawafdehi"
-admin.site.site_title = "Jawafdehi Management Portal"
-admin.site.index_title = "Welcome to Jawafdehi Management Portal"
+admin.site.site_title = "Jawafdehi Contributor Portal"
+admin.site.index_title = "Welcome to Jawafdehi Contributor Portal"

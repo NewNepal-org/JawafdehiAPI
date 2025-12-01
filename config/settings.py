@@ -233,7 +233,7 @@ JAZZMIN_SETTINGS = {
     "login_logo": "corruption-db-logo.png",
     "site_logo_classes": "img-circle",
     "site_icon": "corruption-db-logo.png",
-    "welcome_sign": "Welcome to Jawafdehi Management Portal",
+    "welcome_sign": "Welcome to Jawafdehi Contributor Portal",
     "copyright": "Jawafdehi",
     "search_model": ["cases.Case", "cases.DocumentSource"],
     "user_avatar": None,

@@ -99,6 +99,44 @@ class JawafEntity(models.Model):
         """Override save to validate before saving."""
         self.clean()
         super().save(*args, **kwargs)
+    
+    def delete(self, using=None, keep_parents=False):
+        """
+        Override delete to prevent deletion if entity is in use.
+        
+        Checks if entity is referenced by:
+        - Cases (as alleged_entities, related_entities, or locations)
+        - DocumentSources (as related_entities, excluding soft-deleted sources)
+        
+        Raises ValidationError if entity is in use.
+        """
+        usage = []
+        
+        # Check if used in cases
+        alleged_count = self.cases_as_alleged.count()
+        if alleged_count > 0:
+            usage.append(f"alleged entity in {alleged_count} case(s)")
+        
+        related_count = self.cases_as_related.count()
+        if related_count > 0:
+            usage.append(f"related entity in {related_count} case(s)")
+        
+        location_count = self.cases_as_location.count()
+        if location_count > 0:
+            usage.append(f"location in {location_count} case(s)")
+        
+        # Check if used in active document sources (exclude soft-deleted)
+        source_count = self.document_sources.filter(is_deleted=False).count()
+        if source_count > 0:
+            usage.append(f"related entity in {source_count} document source(s)")
+        
+        if usage:
+            raise ValidationError(
+                f"Cannot delete entity '{self}' because it is currently used as: {', '.join(usage)}. "
+                f"Remove the entity from all cases and sources before deleting."
+            )
+        
+        return super().delete(using=using, keep_parents=keep_parents)
 
 
 class CaseType(models.TextChoices):

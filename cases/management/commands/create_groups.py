@@ -7,7 +7,7 @@ Usage: python manage.py create_groups
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from cases.models import Case, DocumentSource
+from cases.models import Case, DocumentSource, JawafEntity
 
 
 class Command(BaseCommand):
@@ -19,6 +19,7 @@ class Command(BaseCommand):
         # Get content types
         case_ct = ContentType.objects.get_for_model(Case)
         source_ct = ContentType.objects.get_for_model(DocumentSource)
+        entity_ct = ContentType.objects.get_for_model(JawafEntity)
         
         # Get or create permissions for Case
         case_permissions = {
@@ -68,6 +69,30 @@ class Command(BaseCommand):
             )[0],
         }
         
+        # Get or create permissions for JawafEntity
+        entity_permissions = {
+            'view': Permission.objects.get_or_create(
+                codename='view_jawafentity',
+                content_type=entity_ct,
+                defaults={'name': 'Can view jawaf entity'}
+            )[0],
+            'add': Permission.objects.get_or_create(
+                codename='add_jawafentity',
+                content_type=entity_ct,
+                defaults={'name': 'Can add jawaf entity'}
+            )[0],
+            'change': Permission.objects.get_or_create(
+                codename='change_jawafentity',
+                content_type=entity_ct,
+                defaults={'name': 'Can change jawaf entity'}
+            )[0],
+            'delete': Permission.objects.get_or_create(
+                codename='delete_jawafentity',
+                content_type=entity_ct,
+                defaults={'name': 'Can delete jawaf entity'}
+            )[0],
+        }
+        
         # Create Admin group
         admin_group, created = Group.objects.get_or_create(name='Admin')
         if created:
@@ -85,6 +110,10 @@ class Command(BaseCommand):
             source_permissions['add'],
             source_permissions['change'],
             source_permissions['delete'],
+            entity_permissions['view'],
+            entity_permissions['add'],
+            entity_permissions['change'],
+            entity_permissions['delete'],
         ])
         
         # Create Moderator group
@@ -94,7 +123,7 @@ class Command(BaseCommand):
         else:
             self.stdout.write('Moderator group already exists')
         
-        # Moderators get all permissions for cases and sources
+        # Moderators get all permissions for cases, sources, and entities
         moderator_group.permissions.set([
             case_permissions['view'],
             case_permissions['add'],
@@ -104,6 +133,10 @@ class Command(BaseCommand):
             source_permissions['add'],
             source_permissions['change'],
             source_permissions['delete'],
+            entity_permissions['view'],
+            entity_permissions['add'],
+            entity_permissions['change'],
+            entity_permissions['delete'],
         ])
         
         # Create Contributor group
@@ -113,7 +146,8 @@ class Command(BaseCommand):
         else:
             self.stdout.write('Contributor group already exists')
         
-        # Contributors get view, add, and change permissions (limited by assignment)
+        # Contributors get view, add, and change permissions (limited by assignment for cases/sources)
+        # Entities are shared resources, so contributors get full CRUD
         contributor_group.permissions.set([
             case_permissions['view'],
             case_permissions['add'],
@@ -121,6 +155,10 @@ class Command(BaseCommand):
             source_permissions['view'],
             source_permissions['add'],
             source_permissions['change'],
+            entity_permissions['view'],
+            entity_permissions['add'],
+            entity_permissions['change'],
+            entity_permissions['delete'],
         ])
         
         self.stdout.write(self.style.SUCCESS('Successfully configured all groups'))
