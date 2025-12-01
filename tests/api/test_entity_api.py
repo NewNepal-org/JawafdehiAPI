@@ -243,13 +243,14 @@ def test_entity_list_pagination_navigation():
 # ============================================================================
 
 @pytest.mark.django_db(transaction=True)
-@settings(max_examples=20)
+@settings(max_examples=20, derandomize=True)
 @given(nes_id=valid_entity_id())
 def test_entity_with_nes_id_accessible_via_api(nes_id):
     """
     Property: Any entity with a valid nes_id should be accessible via API.
     """
-    entity = JawafEntity.objects.create(nes_id=nes_id)
+    # Use get_or_create to handle potential duplicates from previous test runs
+    entity, _ = JawafEntity.objects.get_or_create(nes_id=nes_id)
     
     client = APIClient()
     response = client.get(f'/api/entities/{entity.id}/')
