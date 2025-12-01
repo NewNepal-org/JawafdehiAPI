@@ -308,6 +308,21 @@ argon2 = ["argon2-cffi (>=19.1.0)"]
 bcrypt = ["bcrypt"]
 
 [[package]]
+name = "django-auditlog"
+version = "3.3.0"
+description = "Audit log app for Django"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "django_auditlog-3.3.0-py3-none-any.whl", hash = "sha256:ab0f0f556a7107ac01c8fa87137bdfbb2b6f0debf70f7753169d9a40673d2636"},
+    {file = "django_auditlog-3.3.0.tar.gz", hash = "sha256:01331a0e7bb1a8ff7573311b486c88f3d0c431c388f5a1e4a9b6b26911dd79b8"},
+]
+
+[package.dependencies]
+Django = ">=4.2"
+python-dateutil = ">=2.7.0"
+
+[[package]]
 name = "django-cors-headers"
 version = "4.9.0"
 description = "django-cors-headers is a Django application for handling the server headers required for Cross-Origin Resource Sharing (CORS)."
@@ -3145,4 +3160,4 @@ requests = ">=2.0.0,<3.0.0"
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "ae4083eb177351668c6cf532852b825d558f236b897499db85bd43101982bfd0"
+content-hash = "6e99a4f19915bd1afaccae4a94a3bffdbadc45d2cebe4d84540025b0d15dd7f5"

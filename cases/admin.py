@@ -111,10 +111,10 @@ class CaseAdminForm(forms.ModelForm):
                     # No role - see nothing
                     sources_queryset = DocumentSource.objects.none()
             
-            sources = sources_queryset.values_list('source_id', 'title')
+            sources = sources_queryset.values_list('source_id', 'title', 'url')
         else:
             # Fallback if no request (shouldn't happen in normal admin usage)
-            sources = DocumentSource.objects.filter(is_deleted=False).values_list('source_id', 'title')
+            sources = DocumentSource.objects.filter(is_deleted=False).values_list('source_id', 'title', 'url')
         
         self.fields['evidence'].sources = list(sources)
         self.fields['evidence'].widget.sources = list(sources)
