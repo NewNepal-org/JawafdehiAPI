@@ -260,7 +260,18 @@ class MultiTimelineField(Field):
     
     def prepare_value(self, value):
         if isinstance(value, list):
-            return value
+            # Normalize event_date to date for backwards compatibility
+            normalized = []
+            for item in value:
+                if isinstance(item, dict):
+                    normalized_item = item.copy()
+                    # If event_date exists but date doesn't, rename it
+                    if 'event_date' in normalized_item and 'date' not in normalized_item:
+                        normalized_item['date'] = normalized_item.pop('event_date')
+                    normalized.append(normalized_item)
+                else:
+                    normalized.append(item)
+            return normalized
         return value
 
 
