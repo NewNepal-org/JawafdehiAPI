@@ -2,6 +2,7 @@ from django import forms
 from django.forms.widgets import Widget
 from django.forms.fields import Field
 from django.utils.safestring import mark_safe
+from django.utils.html import escape
 from django.core.exceptions import ValidationError
 from nes.core.identifiers.validators import validate_entity_id
 import json
@@ -34,7 +35,7 @@ class BaseMultiWidget(Widget):
         html += f'<div style="margin-bottom: 8px;">'
         html += f'<button type="button" id="{widget_id}_add" class="btn btn-sm btn-success" style="padding: 2px 8px;"><i class="fas fa-plus"></i> {self.button_label}</button>'
         html += '</div></div>'
-        html += f'<input type="hidden" name="{name}" id="{widget_id}" value=\'{json.dumps(value)}\'>'
+        html += f'<input type="hidden" name="{name}" id="{widget_id}" value="{escape(json.dumps(value))}">'
         
         html += f'''
         <script>
@@ -43,11 +44,30 @@ class BaseMultiWidget(Widget):
             const hiddenInput = document.getElementById('{widget_id}');
             const addBtn = document.getElementById('{widget_id}_add');
             
+            function autoResize(textarea) {{
+                textarea.style.height = 'auto';
+                textarea.style.height = textarea.scrollHeight + 'px';
+            }}
+            
             function updateHidden() {{
                 const inputs = container.querySelectorAll('.{self.input_class}');
                 const values = {self.get_update_logic()};
                 hiddenInput.value = JSON.stringify(values);
             }}
+            
+            // Auto-resize existing textareas
+            container.querySelectorAll('textarea.auto-resize').forEach(textarea => {{
+                autoResize(textarea);
+                textarea.addEventListener('input', function() {{
+                    autoResize(this);
+                }});
+                // Prevent Enter key from creating new lines
+                textarea.addEventListener('keydown', function(e) {{
+                    if (e.key === 'Enter') {{
+                        e.preventDefault();
+                    }}
+                }});
+            }});
             
             addBtn.addEventListener('click', function(e) {{
                 e.preventDefault();
@@ -56,7 +76,18 @@ class BaseMultiWidget(Widget):
                 row.innerHTML = '{self.get_row_template()}';
                 {self.get_row_styles()}
                 addBtn.parentElement.insertAdjacentElement('beforebegin', row);
-                row.querySelectorAll('.{self.input_class}').forEach(inp => inp.addEventListener('input', updateHidden));
+                row.querySelectorAll('.{self.input_class}').forEach(inp => {{
+                    inp.addEventListener('input', updateHidden);
+                    if (inp.classList.contains('auto-resize')) {{
+                        inp.addEventListener('input', function() {{ autoResize(this); }});
+                        // Prevent Enter key from creating new lines
+                        inp.addEventListener('keydown', function(e) {{
+                            if (e.key === 'Enter') {{
+                                e.preventDefault();
+                            }}
+                        }});
+                    }}
+                }});
                 row.querySelector('.remove-input').addEventListener('click', function() {{
                     row.remove();
                     updateHidden();
@@ -74,6 +105,9 @@ class BaseMultiWidget(Widget):
             container.addEventListener('input', function(e) {{
                 if (e.target.classList.contains('{self.input_class}')) {{
                     updateHidden();
+                    if (e.target.classList.contains('auto-resize')) {{
+                        autoResize(e.target);
+                    }}
                 }}
             }});
             
@@ -189,10 +223,12 @@ class MultiTextWidget(BaseMultiWidget):
             self.button_label = button_label
     
     def get_row_html(self, value, widget_id):
-        return f'<div class="input-row" draggable="true" style="margin-bottom: 8px; display: flex; align-items: center;"><span class="drag-handle" style="cursor: move; padding: 4px 8px; margin-right: 4px;">⋮⋮</span><input type="text" value="{value}" style="width: 500px; margin-right: 8px;" class="text-input"><button type="button" class="btn btn-sm btn-danger remove-input" style="padding: 2px 8px;"><i class="fas fa-times"></i></button></div>'
+        # Replace newlines with spaces for single-line display
+        escaped_value = escape(value.replace('\n', ' ') if value else '')
+        return f'<div class="input-row" draggable="true" style="margin-bottom: 8px; display: flex; align-items: flex-start;"><span class="drag-handle" style="cursor: move; padding: 4px 8px; margin-right: 4px;">⋮⋮</span><textarea class="text-input auto-resize" style="width: 500px; margin-right: 8px; min-height: 38px; resize: none; overflow: hidden; font-family: inherit; padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word;">{escaped_value}</textarea><button type="button" class="btn btn-sm btn-danger remove-input" style="padding: 2px 8px;"><i class="fas fa-times"></i></button></div>'
     
     def get_row_template(self):
-        return '<span class="drag-handle" style="cursor: move; padding: 4px 8px; margin-right: 4px;">⋮⋮</span><input type="text" style="width: 500px; margin-right: 8px;" class="text-input"> <button type="button" class="btn btn-sm btn-danger remove-input" style="padding: 2px 8px;"><i class="fas fa-times"></i></button>'
+        return '<span class="drag-handle" style="cursor: move; padding: 4px 8px; margin-right: 4px;">⋮⋮</span><textarea class="text-input auto-resize" style="width: 500px; margin-right: 8px; min-height: 38px; resize: none; overflow: hidden; font-family: inherit; padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px; white-space: pre-wrap; word-wrap: break-word;"></textarea> <button type="button" class="btn btn-sm btn-danger remove-input" style="padding: 2px 8px;"><i class="fas fa-times"></i></button>'
 
 
 class MultiTextField(Field):
