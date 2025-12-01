@@ -147,7 +147,7 @@ class Command(BaseCommand):
             self.stdout.write('Contributor group already exists')
         
         # Contributors get view, add, and change permissions (limited by assignment for cases/sources)
-        # Entities are shared resources, so contributors get full CRUD
+        # Entities: contributors can view and add, but cannot change or delete
         contributor_group.permissions.set([
             case_permissions['view'],
             case_permissions['add'],
@@ -157,8 +157,6 @@ class Command(BaseCommand):
             source_permissions['change'],
             entity_permissions['view'],
             entity_permissions['add'],
-            entity_permissions['change'],
-            entity_permissions['delete'],
         ])
         
         self.stdout.write(self.style.SUCCESS('Successfully configured all groups'))
