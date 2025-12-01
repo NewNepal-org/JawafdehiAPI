@@ -25,6 +25,7 @@ from .rules.predicates import (
     can_change_case,
     can_view_source,
     can_change_source,
+    can_delete_source,
 )
 
 User = get_user_model()
@@ -581,7 +582,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         
         - Admins: See all sources (including deleted)
         - Moderators: Only see active sources (exclude deleted)
-        - Contributors: Only see active sources they're assigned to (exclude deleted)
+        - Contributors: See active sources they're assigned to OR sources referenced in their assigned cases
         """
         qs = super().get_queryset(request)
         
@@ -593,9 +594,25 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         if is_moderator(request.user):
             return qs.filter(is_deleted=False)
         
-        # Contributors only see active sources they're assigned to
+        # Contributors see sources they're assigned to OR sources in their cases
         if is_contributor(request.user):
-            return qs.filter(contributors=request.user, is_deleted=False)
+            # Get cases where user is a contributor
+            user_cases = Case.objects.filter(contributors=request.user)
+            
+            # Extract source_ids from evidence of user's cases
+            source_ids_from_cases = set()
+            for case in user_cases:
+                if case.evidence:
+                    for evidence_item in case.evidence:
+                        if isinstance(evidence_item, dict) and 'source_id' in evidence_item:
+                            source_ids_from_cases.add(evidence_item['source_id'])
+            
+            # Return sources where user is contributor OR source is in their cases
+            return qs.filter(
+                is_deleted=False
+            ).filter(
+                models.Q(contributors=request.user) | models.Q(source_id__in=source_ids_from_cases)
+            ).distinct()
         
         # No role - see nothing
         return qs.none()
@@ -630,7 +647,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """
         Check if user can change a source.
         
-        - Contributors: Can only change sources they're assigned to
+        - Contributors: Can only change sources they're directly assigned to (not case-based access)
         - Moderators/Admins: Can change all sources
         """
         if obj is None:

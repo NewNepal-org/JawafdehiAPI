@@ -5,7 +5,7 @@ Predicates are reusable functions that return True/False for permission checks.
 They can be combined using logical operators (&, |, ~) to create complex rules.
 """
 
-from typing import Optional
+from typing import Optional, List
 from django.contrib.auth.models import User
 import rules
 
@@ -113,6 +113,36 @@ def is_source_contributor(user: User, source: Optional['DocumentSource']) -> boo
     return source.contributors.filter(id=user.id).exists()
 
 
+@rules.predicate
+def is_case_contributor_for_source(user: User, source: Optional['DocumentSource']) -> bool:
+    """
+    Check if user is a contributor to any case that references this source in its evidence.
+    
+    Args:
+        user: The user to check
+        source: The DocumentSource to check
+    
+    Returns:
+        bool: True if the source appears in evidence of any case the user contributes to
+    """
+    if source is None:
+        return False
+    
+    from cases.models import Case
+    
+    # Query all cases where user is a contributor
+    cases_to_check = Case.objects.filter(contributors=user)
+    
+    # Check if source_id appears in evidence of any of these cases
+    for case in cases_to_check:
+        if case.evidence:
+            for evidence_item in case.evidence:
+                if isinstance(evidence_item, dict) and evidence_item.get('source_id') == source.source_id:
+                    return True
+    
+    return False
+
+
 # ============================================================================
 # User Management Predicates
 # ============================================================================
@@ -149,8 +179,9 @@ can_view_case = is_admin_or_moderator | is_case_contributor
 can_change_case = is_admin_or_moderator | is_case_contributor
 
 # Source permissions
-can_view_source = is_admin_or_moderator | is_source_contributor
+can_view_source = is_admin_or_moderator | is_source_contributor | is_case_contributor_for_source
 can_change_source = is_admin_or_moderator | is_source_contributor
+can_delete_source = is_admin_or_moderator
 
 # User management permissions
 can_manage_user_account = is_admin | can_manage_user

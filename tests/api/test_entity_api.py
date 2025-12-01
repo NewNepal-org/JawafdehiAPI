@@ -242,7 +242,7 @@ def test_entity_list_pagination_navigation():
 # Property-Based Tests
 # ============================================================================
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @settings(max_examples=20)
 @given(nes_id=valid_entity_id())
 def test_entity_with_nes_id_accessible_via_api(nes_id):
@@ -258,7 +258,7 @@ def test_entity_with_nes_id_accessible_via_api(nes_id):
     assert response.data['nes_id'] == nes_id
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @settings(max_examples=20)
 @given(display_name=st.text(min_size=1, max_size=100).filter(lambda x: x.strip()))
 def test_entity_with_display_name_accessible_via_api(display_name):
