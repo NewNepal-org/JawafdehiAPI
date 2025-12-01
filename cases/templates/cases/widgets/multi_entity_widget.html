@@ -1,0 +1,34 @@
+<div id="{{ widget_id }}_container" class="multiple-input-container">
+    {% for value in values %}
+    <div class="input-row" draggable="true">
+        <span class="drag-handle">⋮⋮</span>
+        <input type="text" value="{{ value }}" class="entity-input">
+        <button type="button" class="btn btn-sm btn-danger remove-input">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    {% endfor %}
+    <div style="margin-bottom: 8px;">
+        <button type="button" id="{{ widget_id }}_add" class="btn btn-sm btn-success add-widget-btn">
+            <i class="fas fa-plus"></i> Add Entity
+        </button>
+    </div>
+</div>
+<input type="hidden" name="{{ name }}" id="{{ widget_id }}" value="{{ values_json }}">
+
+<script>
+window.initMultiWidget(
+    '{{ widget_id }}_container',
+    '{{ widget_id }}',
+    'entity',
+    {
+        rowTemplate: [
+            '<span class="drag-handle">⋮⋮</span>',
+            '<input type="text" class="entity-input">',
+            '<button type="button" class="btn btn-sm btn-danger remove-input">',
+            '<i class="fas fa-times"></i>',
+            '</button>'
+        ].join(' ')
+    }
+);
+</script>

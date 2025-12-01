@@ -1,0 +1,56 @@
+<div id="{{ widget_id }}_container" class="multiple-input-container">
+    {% for item in values %}
+    <div class="input-row timeline-row" draggable="true">
+        <span class="drag-handle">⋮⋮</span>
+        <button type="button" class="btn btn-sm btn-danger remove-input">
+            <i class="fas fa-times"></i>
+        </button>
+        <div class="timeline-field-group">
+            <label>Date</label>
+            <input type="date" value="{{ item.date }}" class="timeline-input">
+        </div>
+        <div class="timeline-field-group">
+            <label>Title</label>
+            <textarea class="timeline-input auto-resize">{{ item.title }}</textarea>
+        </div>
+        <div class="timeline-field-group">
+            <label>Description (optional)</label>
+            <textarea class="timeline-input auto-resize description">{{ item.description }}</textarea>
+        </div>
+    </div>
+    {% endfor %}
+    <div style="margin-bottom: 8px;">
+        <button type="button" id="{{ widget_id }}_add" class="btn btn-sm btn-success add-widget-btn">
+            <i class="fas fa-plus"></i> Add Timeline Entry
+        </button>
+    </div>
+</div>
+<input type="hidden" name="{{ name }}" id="{{ widget_id }}" value="{{ values_json }}">
+
+<script>
+window.initMultiWidget(
+    '{{ widget_id }}_container',
+    '{{ widget_id }}',
+    'timeline',
+    {
+        rowTemplate: [
+            '<span class="drag-handle">⋮⋮</span>',
+            '<button type="button" class="btn btn-sm btn-danger remove-input">',
+            '<i class="fas fa-times"></i>',
+            '</button>',
+            '<div class="timeline-field-group">',
+            '<label>Date</label>',
+            '<input type="date" class="timeline-input">',
+            '</div>',
+            '<div class="timeline-field-group">',
+            '<label>Title</label>',
+            '<textarea class="timeline-input auto-resize"></textarea>',
+            '</div>',
+            '<div class="timeline-field-group">',
+            '<label>Description (optional)</label>',
+            '<textarea class="timeline-input auto-resize description"></textarea>',
+            '</div>'
+        ].join('')
+    }
+);
+</script>
