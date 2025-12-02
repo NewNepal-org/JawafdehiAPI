@@ -54,9 +54,9 @@ class Case(BaseModel):
     sources: list[DocumentSource] = Field(description="Document sources supporting the case")
 
 
-SYSTEM_PROMPT = """You are a research assistant for a world-class corruption and accountability database focused on Nepali public entities.
+SYSTEM_PROMPT_TEMPLATE = """You are a research assistant for a world-class corruption and accountability database focused on Nepali public entities.
 
-LANGUAGE: Provide all responses in Nepali language (नेपाली भाषामा जवाफ दिनुहोस्).
+LANGUAGE: {language_instruction}
 
 FORMATTING: The description and unverified_info fields must be in rich HTML format:
 - Use <p> tags for paragraphs
@@ -127,6 +127,13 @@ class Command(BaseCommand):
             help='One or more source file paths to scrape'
         )
         parser.add_argument(
+            '--language',
+            type=str,
+            default='en',
+            choices=['en', 'np'],
+            help='Output language: en (English) or np (Nepali). Default: en'
+        )
+        parser.add_argument(
             '--work-dir',
             type=str,
             default='/tmp',
@@ -161,11 +168,21 @@ class Command(BaseCommand):
         start_time = datetime.now()
         
         source_paths = options['source_paths']
+        language = options['language']
         work_dir_base = options['work_dir']
         service_account_path = options['service_account']
         project = options['project']
         location = options['location']
         model = options['model']
+        
+        # Set language instruction based on selected language
+        if language == 'np':
+            language_instruction = "Provide all responses in Nepali language (नेपाली भाषामा जवाफ दिनुहोस्)."
+        else:
+            language_instruction = "Provide all responses in English language."
+        
+        # Generate system prompt with language instruction
+        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(language_instruction=language_instruction)
 
         # Validate source paths
         self.log_error("Validating source paths...")
@@ -244,7 +261,7 @@ class Command(BaseCommand):
             model=model,
             contents=f"{PHASE1_PROMPT}\n\n{query}",
             config=GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
+                system_instruction=system_prompt,
                 tools=[Tool(google_search=GoogleSearch())]
             ),
         )
@@ -267,7 +284,7 @@ class Command(BaseCommand):
             config=GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=Case,
-                system_instruction=SYSTEM_PROMPT
+                system_instruction=system_prompt
             ),
         )
 

@@ -714,12 +714,12 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         # Add soft delete action
         if is_admin_or_moderator(request.user):
             actions['soft_delete_sources'] = (
-                self.soft_delete_sources,
+                self.__class__.soft_delete_sources,
                 'soft_delete_sources',
                 'Mark selected sources as deleted'
             )
             actions['restore_sources'] = (
-                self.restore_sources,
+                self.__class__.restore_sources,
                 'restore_sources',
                 'Restore selected sources'
             )
