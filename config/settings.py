@@ -94,7 +94,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {"default": dj_database_url.config()}
 
 # Configure connection pooling for PostgreSQL only
-if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+if DATABASES["default"].get("ENGINE") == "django.db.backends.postgresql":
     DATABASES["default"]["CONN_MAX_AGE"] = 60
     DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
