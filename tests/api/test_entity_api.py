@@ -7,10 +7,19 @@ Tests entity listing, retrieval, search, and pagination
 
 import pytest
 
+from django.core.cache import cache
 from hypothesis import given, strategies as st, settings
 from rest_framework.test import APIClient
 
 from cases.models import JawafEntity
+
+
+@pytest.fixture(autouse=True)
+def clear_cache():
+    """Clear cache before each test."""
+    cache.clear()
+    yield
+    cache.clear()
 
 
 # ============================================================================
@@ -49,7 +58,9 @@ def test_entity_list_endpoint_returns_200():
 
 @pytest.mark.django_db
 def test_entity_list_includes_all_entities():
-    """Test that the entity list includes all entities in the system."""
+    """Test that the entity list includes all entities in published cases."""
+    from cases.models import Case, CaseState
+    
     # Create test entities
     entity1 = JawafEntity.objects.create(nes_id="entity:person/test-person")
     entity2 = JawafEntity.objects.create(display_name="Custom Entity")
@@ -57,6 +68,16 @@ def test_entity_list_includes_all_entities():
         nes_id="entity:organization/test-org",
         display_name="Test Organization"
     )
+    
+    # Create published case with entities
+    case = Case.objects.create(
+        case_id="test-case",
+        state=CaseState.PUBLISHED,
+        title="Test Case",
+        description="Test"
+    )
+    case.alleged_entities.add(entity1, entity2)
+    case.related_entities.add(entity3)
     
     client = APIClient()
     response = client.get('/api/entities/')
@@ -130,9 +151,20 @@ def test_entity_retrieve_nonexistent_returns_404():
 @pytest.mark.django_db
 def test_entity_search_by_nes_id():
     """Test searching entities by nes_id."""
+    from cases.models import Case, CaseState
+    
     entity1 = JawafEntity.objects.create(nes_id="entity:person/john-doe")
     entity2 = JawafEntity.objects.create(nes_id="entity:person/jane-smith")
     entity3 = JawafEntity.objects.create(display_name="John Williams")
+    
+    # Create published case with entities
+    case = Case.objects.create(
+        case_id="test-case",
+        state=CaseState.PUBLISHED,
+        title="Test Case",
+        description="Test"
+    )
+    case.alleged_entities.add(entity1, entity2, entity3)
     
     client = APIClient()
     response = client.get('/api/entities/?search=john')
@@ -148,9 +180,20 @@ def test_entity_search_by_nes_id():
 @pytest.mark.django_db
 def test_entity_search_by_display_name():
     """Test searching entities by display_name."""
+    from cases.models import Case, CaseState
+    
     entity1 = JawafEntity.objects.create(display_name="Jane Smith")
     entity2 = JawafEntity.objects.create(display_name="John Doe")
     entity3 = JawafEntity.objects.create(nes_id="entity:person/test-person")
+    
+    # Create published case with entities
+    case = Case.objects.create(
+        case_id="test-case",
+        state=CaseState.PUBLISHED,
+        title="Test Case",
+        description="Test"
+    )
+    case.alleged_entities.add(entity1, entity2, entity3)
     
     client = APIClient()
     response = client.get('/api/entities/?search=Jane')
@@ -166,7 +209,18 @@ def test_entity_search_by_display_name():
 @pytest.mark.django_db
 def test_entity_search_case_insensitive():
     """Test that entity search is case-insensitive."""
+    from cases.models import Case, CaseState
+    
     entity = JawafEntity.objects.create(display_name="Test Entity")
+    
+    # Create published case with entity
+    case = Case.objects.create(
+        case_id="test-case",
+        state=CaseState.PUBLISHED,
+        title="Test Case",
+        description="Test"
+    )
+    case.alleged_entities.add(entity)
     
     client = APIClient()
     
@@ -201,9 +255,21 @@ def test_entity_search_no_results():
 @pytest.mark.django_db
 def test_entity_list_pagination():
     """Test that entity list is paginated."""
+    from cases.models import Case, CaseState
+    
     # Create more than 50 entities (default page size)
+    entities = []
     for i in range(60):
-        JawafEntity.objects.create(display_name=f"Entity {i}")
+        entities.append(JawafEntity.objects.create(display_name=f"Entity {i}"))
+    
+    # Create published case with all entities
+    case = Case.objects.create(
+        case_id="test-case",
+        state=CaseState.PUBLISHED,
+        title="Test Case",
+        description="Test"
+    )
+    case.alleged_entities.add(*entities)
     
     client = APIClient()
     response = client.get('/api/entities/')
@@ -218,9 +284,21 @@ def test_entity_list_pagination():
 @pytest.mark.django_db
 def test_entity_list_pagination_navigation():
     """Test navigating through paginated entity results."""
+    from cases.models import Case, CaseState
+    
     # Create entities
+    entities = []
     for i in range(60):
-        JawafEntity.objects.create(display_name=f"Entity {i}")
+        entities.append(JawafEntity.objects.create(display_name=f"Entity {i}"))
+    
+    # Create published case with all entities
+    case = Case.objects.create(
+        case_id="test-case",
+        state=CaseState.PUBLISHED,
+        title="Test Case",
+        description="Test"
+    )
+    case.alleged_entities.add(*entities)
     
     client = APIClient()
     
@@ -344,10 +422,21 @@ class TestEntityAPIWorkflows:
         2. User searches for entities by name
         3. User retrieves specific entity details
         """
+        from cases.models import Case, CaseState
+        
         # Setup: Create test entities
         entity1 = JawafEntity.objects.create(nes_id="entity:person/rabi-lamichhane")
         entity2 = JawafEntity.objects.create(display_name="Pushpa Kamal Dahal")
         entity3 = JawafEntity.objects.create(nes_id="entity:organization/ciaa")
+        
+        # Create published case with entities
+        case = Case.objects.create(
+            case_id="test-case",
+            state=CaseState.PUBLISHED,
+            title="Test Case",
+            description="Test"
+        )
+        case.alleged_entities.add(entity1, entity2, entity3)
         
         client = APIClient()
         
@@ -385,11 +474,22 @@ class TestEntityAPIWorkflows:
         3. User navigates to next page
         4. User verifies different results
         """
+        from cases.models import Case, CaseState
+        
         # Setup: Create 60 entities
         entities = []
         for i in range(60):
             entity = JawafEntity.objects.create(display_name=f"Entity {i:03d}")
             entities.append(entity)
+        
+        # Create published case with all entities
+        case = Case.objects.create(
+            case_id="test-case",
+            state=CaseState.PUBLISHED,
+            title="Test Case",
+            description="Test"
+        )
+        case.alleged_entities.add(*entities)
         
         client = APIClient()
         

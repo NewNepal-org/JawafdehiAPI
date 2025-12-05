@@ -341,19 +341,67 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
     Public read-only API for JawafEntities.
     
     Provides:
-    - List endpoint: GET /api/entities/
+    - List endpoint: GET /api/entities/ (filtered by case association)
     - Retrieve endpoint: GET /api/entities/{id}/
     
     Search:
     - Full-text search across nes_id and display_name
     
-    All entities in the system are accessible.
+    Only entities associated with published cases are returned in list view.
+    Entities must appear in alleged_entities or related_entities (not locations).
     """
     
-    queryset = JawafEntity.objects.all().order_by('-created_at')
     serializer_class = JawafEntitySerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['nes_id', 'display_name']
+    
+    def get_queryset(self):
+        """
+        Return entities based on action.
+        
+        For list action: Only entities that appear in published cases.
+        For retrieve action: All entities (no filtering).
+        
+        An entity is included in list if it appears in alleged_entities or 
+        related_entities of at least one published case.
+        
+        Note: Location entities are excluded from the list.
+        
+        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes
+        entities from IN_REVIEW cases.
+        
+        Uses caching to avoid expensive queryset evaluation.
+        """
+        # For retrieve action, return all entities
+        if self.action == 'retrieve':
+            return JawafEntity.objects.all()
+        
+        # For list action, filter by case association
+        from django.core.cache import cache
+        
+        # Try to get entity IDs from cache
+        entity_ids = cache.get('public_entities_list')
+        
+        if entity_ids is None:
+            # Cache miss - compute entity IDs
+            if settings.EXPOSE_CASES_IN_REVIEW:
+                published_cases = Case.objects.filter(
+                    state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                )
+            else:
+                published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+            
+            entity_ids = set()
+            for case in published_cases:
+                # Add alleged entities
+                entity_ids.update(case.alleged_entities.values_list('id', flat=True))
+                # Add related entities
+                entity_ids.update(case.related_entities.values_list('id', flat=True))
+            
+            # Cache for 10 minutes - stale cache is acceptable
+            cache.set('public_entities_list', entity_ids, timeout=600)
+        
+        return JawafEntity.objects.filter(id__in=entity_ids).order_by('-created_at')
 
 
 
