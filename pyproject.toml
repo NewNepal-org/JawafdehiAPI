@@ -23,6 +23,7 @@ django-tinymce = "^5.0.0"
 rules = "^3.5"
 whitenoise = "^6.11.0"
 django-auditlog = "^3.3.0"
+gunicorn = "^23.0.0"
 
 
 [tool.poetry.group.dev.dependencies]

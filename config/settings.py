@@ -92,8 +92,15 @@ WSGI_APPLICATION = "config.wsgi.application"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    "default": dj_database_url.config(conn_max_age=600)
+    "default": dj_database_url.config(
+        conn_max_age=60,  # Reduced from 600 to 60 seconds
+        conn_health_checks=True,  # Enable connection health checks
+    )
 }
+
+# Add connection pool size limit
+DATABASES["default"]["OPTIONS"] = DATABASES["default"].get("OPTIONS", {})
+DATABASES["default"]["OPTIONS"]["connect_timeout"] = 10
 
 
 # Password validation
