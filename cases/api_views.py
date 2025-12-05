@@ -5,10 +5,14 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 from rest_framework import viewsets, filters
+from rest_framework.views import APIView
+from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q, Max
 from django.db import connection
 from django.conf import settings
+from django.core.cache import cache
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiExample
 from drf_spectacular.types import OpenApiTypes
 from .models import Case, CaseState, DocumentSource, JawafEntity
@@ -350,3 +354,70 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = JawafEntitySerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ['nes_id', 'display_name']
+
+
+
+@extend_schema(
+    summary="Get case statistics",
+    description="""
+    Retrieve aggregate statistics about cases in the system.
+    
+    Returns:
+    - `published_cases`: Number of cases with state PUBLISHED
+    - `cases_under_investigation`: Number of cases with state DRAFT or IN_REVIEW
+    - `cases_closed`: Number of cases with state CLOSED
+    - `entities_tracked`: Number of unique entities involved in published cases
+    - `last_updated`: Timestamp when statistics were last calculated
+    
+    **Caching:**
+    - Statistics are cached for 5 minutes to optimize performance
+    - The cache is automatically refreshed after expiration
+    """,
+    tags=['statistics'],
+    responses={
+        200: {
+            'type': 'object',
+            'properties': {
+                'published_cases': {'type': 'integer', 'example': 127},
+                'cases_under_investigation': {'type': 'integer', 'example': 43},
+                'cases_closed': {'type': 'integer', 'example': 31},
+                'entities_tracked': {'type': 'integer', 'example': 89},
+                'last_updated': {'type': 'string', 'format': 'date-time', 'example': '2024-12-04T10:30:00Z'},
+            }
+        }
+    }
+)
+class StatisticsView(APIView):
+    """
+    Public API endpoint for case statistics.
+    
+    Provides aggregate counts of cases by state and unique entities tracked.
+    Results are cached for 5 minutes using LocMemCache.
+    """
+    
+    def get(self, request):
+        """
+        Get cached or calculate fresh statistics.
+        """
+        cache_key = 'stats-cache'
+        
+        # Try to get from cache
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
+        
+        # Calculate statistics
+        stats = {
+            'published_cases': Case.objects.filter(state=CaseState.PUBLISHED).count(),
+            'cases_under_investigation': Case.objects.filter(
+                state__in=[CaseState.DRAFT, CaseState.IN_REVIEW]
+            ).count(),
+            'cases_closed': Case.objects.filter(state=CaseState.CLOSED).count(),
+            'entities_tracked': JawafEntity.objects.count(),
+            'last_updated': timezone.now().isoformat(),
+        }
+        
+        # Cache for 5 minutes
+        cache.set(cache_key, stats, timeout=300)
+        
+        return Response(stats)

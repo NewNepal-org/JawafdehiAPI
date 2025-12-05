@@ -91,16 +91,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    "default": dj_database_url.config(
-        conn_max_age=60,  # Reduced from 600 to 60 seconds
-        conn_health_checks=True,  # Enable connection health checks
-    )
-}
+DATABASES = {"default": dj_database_url.config()}
 
-# Add connection pool size limit
-DATABASES["default"]["OPTIONS"] = DATABASES["default"].get("OPTIONS", {})
-DATABASES["default"]["OPTIONS"]["connect_timeout"] = 10
+# Configure connection pooling for PostgreSQL only
+if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    DATABASES["default"]["CONN_MAX_AGE"] = 60
+    DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 
 # Password validation
@@ -232,6 +228,15 @@ NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
 
 # Feature Flags
 EXPOSE_CASES_IN_REVIEW = os.getenv("EXPOSE_CASES_IN_REVIEW", "False") == "True"
+
+# Cache Configuration
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'jawafdehi-cache',
+        'TIMEOUT': 300,  # 5 minutes default
+    }
+}
 
 # Jazzmin Configuration
 JAZZMIN_SETTINGS = {
