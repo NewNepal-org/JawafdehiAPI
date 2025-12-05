@@ -15,10 +15,79 @@ class JawafEntitySerializer(serializers.ModelSerializer):
     """
     Serializer for JawafEntity model.
     """
+    alleged_cases = serializers.SerializerMethodField(
+        help_text="List of case IDs where this entity is alleged"
+    )
+    related_cases = serializers.SerializerMethodField(
+        help_text="List of case IDs where this entity is related or a location"
+    )
     
     class Meta:
         model = JawafEntity
-        fields = ['id', 'nes_id', 'display_name']
+        fields = ['id', 'nes_id', 'display_name', 'alleged_cases', 'related_cases']
+    
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_alleged_cases(self, obj):
+        """
+        Get list of case IDs where this entity is alleged.
+        
+        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
+        """
+        from django.conf import settings
+        
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            cases = obj.cases_as_alleged.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            )
+        else:
+            cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
+        
+        return list(cases.values_list('id', flat=True))
+    
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_related_cases(self, obj):
+        """
+        Get list of case IDs where this entity is related or a location.
+        
+        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
+        Excludes cases where entity is already alleged (to avoid duplicates).
+        """
+        from django.conf import settings
+        from django.db.models import Q
+        
+        # Get alleged case IDs to exclude
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            alleged_case_ids = obj.cases_as_alleged.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            ).values_list('id', flat=True)
+        else:
+            alleged_case_ids = obj.cases_as_alleged.filter(
+                state=CaseState.PUBLISHED
+            ).values_list('id', flat=True)
+        
+        # Get related and location cases
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            related_cases = obj.cases_as_related.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            ).exclude(id__in=alleged_case_ids)
+            
+            location_cases = obj.cases_as_location.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            ).exclude(id__in=alleged_case_ids)
+        else:
+            related_cases = obj.cases_as_related.filter(
+                state=CaseState.PUBLISHED
+            ).exclude(id__in=alleged_case_ids)
+            
+            location_cases = obj.cases_as_location.filter(
+                state=CaseState.PUBLISHED
+            ).exclude(id__in=alleged_case_ids)
+        
+        # Combine and deduplicate
+        case_ids = set(related_cases.values_list('id', flat=True))
+        case_ids.update(location_cases.values_list('id', flat=True))
+        
+        return list(case_ids)
 
 
 class CaseSerializer(serializers.ModelSerializer):
