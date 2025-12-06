@@ -2,6 +2,107 @@
 
 A Django-based public accountability platform for tracking allegations of corruption, misconduct, and broken promises by public entities in Nepal.
 
+## Setup Instructions
+
+### Prerequisites
+
+- Python 3.12+
+- Poetry (Python package manager)
+- PostgreSQL (for production) or SQLite (for development)
+
+### Installation
+
+1. **Clone the repository and navigate to the project**
+   ```bash
+   cd services/JawafdehiAPI
+   ```
+
+2. **Install dependencies with Poetry**
+   ```bash
+   poetry install
+   ```
+
+3. **Activate the virtual environment**
+   ```bash
+   poetry shell
+   ```
+
+4. **Verify Django installation**
+   ```bash
+   python manage.py --version
+   # Should output: 5.2.9
+   ```
+
+5. **Configure environment variables**
+   
+   Copy the example environment file and update it:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Edit `.env` with your configuration:
+   - `SECRET_KEY`: Django secret key
+   - `DEBUG`: Set to `True` for development
+   - `DATABASE_URL`: PostgreSQL connection string (or use SQLite for dev)
+   - `NES_API_URL`: Nepal Entity Service API URL
+   - `ALLOWED_HOSTS`: Comma-separated hostnames
+   - `CSRF_TRUSTED_ORIGINS`: Comma-separated origins
+
+6. **Run database migrations**
+   ```bash
+   python manage.py migrate
+   ```
+
+7. **Create user groups (Admin/Moderator/Contributor)**
+   ```bash
+   python manage.py create_groups
+   ```
+
+8. **Create a superuser account**
+   ```bash
+   python manage.py createsuperuser
+   ```
+   
+   Follow the prompts to set username, email, and password.
+
+9. **Start the development server**
+   ```bash
+   python manage.py runserver
+   ```
+   
+   The API will be available at `http://localhost:8000`
+
+10. **Access the admin portal**
+    
+    Navigate to `http://localhost:8000/admin` and login with your superuser credentials.
+
+### Seed Data (Optional)
+
+To populate the database with sample allegations for testing:
+
+```bash
+python manage.py seed_allegations
+```
+
+### Running Tests
+
+```bash
+poetry run pytest
+```
+
+### Code Quality
+
+Format code:
+```bash
+poetry run black .
+poetry run isort .
+```
+
+Lint code:
+```bash
+poetry run flake8
+```
+
 ## Features
 
 - Track allegations against public entities
