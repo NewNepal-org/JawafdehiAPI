@@ -13,6 +13,7 @@ class Command(BaseCommand):
             CaseType,
             CaseState,
             DocumentSource,
+            JawafEntity,
         )
 
         db_settings = connection.settings_dict
@@ -32,6 +33,103 @@ class Command(BaseCommand):
         Case.objects.all().delete()
         DocumentSource.objects.all().delete()
 
+        self.stdout.write("Creating entities...")
+        
+        # Helper function to get or create entities
+        def get_entity(nes_id):
+            entity, _ = JawafEntity.objects.get_or_create(nes_id=nes_id)
+            return entity
+
+        self.stdout.write("Creating document sources...")
+        
+        # Create document sources
+        ciaa_report = DocumentSource.objects.create(
+            source_id="source:20180310:ciaa001",
+            title="CIAA Investigation Report - Lalita Niwas Land Grab",
+            description="Comprehensive investigation report by Commission for Investigation of Abuse of Authority documenting forged land ownership certificates and illegal transfers.",
+            url="https://example.com/ciaa-lalita-niwas-report",
+        )
+        ciaa_report.related_entities.set([
+            get_entity("entity:person/balakrishna-khand"),
+            get_entity("entity:organization/government_body/nepal-government"),
+        ])
+        
+        court_files = DocumentSource.objects.create(
+            source_id="source:20180310:court001",
+            title="Supreme Court and District Court Case Files - Lalita Niwas",
+            description="Official court documents including case filings, hearings, and rulings related to the Lalita Niwas land grab case.",
+            url="https://example.com/court-lalita-niwas",
+        )
+        court_files.related_entities.set([
+            get_entity("entity:organization/government_body/nepal-government"),
+        ])
+        
+        coop_complaint = DocumentSource.objects.create(
+            source_id="source:20230520:coop001",
+            title="Police Complaint - Cooperative Fraud",
+            description="Official police complaint filed by victims of Suryadarshan Cooperative alleging embezzlement of funds.",
+            url="https://example.com/cooperative-complaint",
+        )
+        coop_complaint.related_entities.set([
+            get_entity("entity:person/rabi-lamichhane"),
+        ])
+        
+        coop_testimony = DocumentSource.objects.create(
+            source_id="source:20230520:testimony001",
+            title="Cooperative Victims' Testimonies and Financial Records",
+            description="Collection of victim testimonies and financial records showing fund transfers and misappropriation.",
+        )
+        coop_testimony.related_entities.set([
+            get_entity("entity:person/rabi-lamichhane"),
+        ])
+        
+        audit_report = DocumentSource.objects.create(
+            source_id="source:20200101:audit001",
+            title="Government Audit Report - Melamchi Project Cost Escalations",
+            description="Official audit reports documenting cost overruns and delays in the Melamchi Water Supply Project.",
+            url="https://example.com/melamchi-audit",
+        )
+        audit_report.related_entities.set([
+            get_entity("entity:organization/government_body/melamchi-water-supply-board"),
+        ])
+        
+        media_reports = DocumentSource.objects.create(
+            source_id="source:20200101:media001",
+            title="News Reports - Melamchi Project Delays",
+            description="Compilation of news articles documenting repeated delays and failures in the Melamchi project over two decades.",
+        )
+        
+        campaign_videos = DocumentSource.objects.create(
+            source_id="source:20210715:campaign001",
+            title="KP Oli Election Campaign Speeches 2017",
+            description="Video recordings of election campaign speeches where promises were made regarding prosperity, railways, and employment.",
+            url="https://example.com/oli-campaign-2017",
+        )
+        campaign_videos.related_entities.set([
+            get_entity("entity:person/kp-sharma-oli"),
+        ])
+        
+        economic_data = DocumentSource.objects.create(
+            source_id="source:20210715:economic001",
+            title="Economic Data 2017-2021 - Nepal",
+            description="Economic indicators and development data showing lack of promised progress during KP Oli's tenure.",
+        )
+        
+        media_coverage = DocumentSource.objects.create(
+            source_id="source:20220910:media001",
+            title="Media Coverage Analysis - Sandeep Lamichhane Case",
+            description="Collection of news articles with prejudicial language published during the Sandeep Lamichhane case proceedings.",
+        )
+        media_coverage.related_entities.set([
+            get_entity("entity:person/sandeep-lamichhane"),
+        ])
+        
+        ethics_analysis = DocumentSource.objects.create(
+            source_id="source:20220910:ethics001",
+            title="Media Ethics Analysis - Trial by Media",
+            description="Analysis by media ethics organizations examining the impact of media coverage on fair trial rights.",
+        )
+
         self.stdout.write("Creating cases...")
 
         # 1. Lalita Niwas
@@ -39,15 +137,6 @@ class Command(BaseCommand):
             case_type=CaseType.CORRUPTION,
             state=CaseState.PUBLISHED,
             title="Lalita Niwas Land Grab Scandal",
-            alleged_entities=[
-                "entity:person/balakrishna-khand",
-                "entity:person/madhav-prasad-ghimire",
-            ],
-            related_entities=[
-                "entity:organization/government/nepal-government",
-                "entity:organization/government/land-revenue-office-dillibazar",
-            ],
-            locations=["entity:location/district/kathmandu"],
             description="""<h1>Lalita Niwas Land Grab Case</h1>
 
 <h2>Overview</h2>
@@ -79,17 +168,21 @@ class Command(BaseCommand):
             case_start_date=datetime(2018, 3, 15).date(),
             created_at=timezone.make_aware(datetime(2018, 3, 10)),
         )
+        lalita.alleged_entities.set([
+            get_entity("entity:person/balakrishna-khand"),
+            get_entity("entity:person/madhav-prasad-ghimire"),
+        ])
+        lalita.related_entities.set([
+            get_entity("entity:organization/government_body/nepal-government"),
+            get_entity("entity:organization/government_body/land-revenue-office-dillibazar"),
+        ])
+        lalita.locations.set([get_entity("entity:location/district/kathmandu")])
 
         # 2. Rabi Lamichhane
         rabi = Case.objects.create(
             case_type=CaseType.CORRUPTION,
             state=CaseState.PUBLISHED,
             title="Rabi Lamichhane Cooperative Fraud and Citizenship Controversy",
-            alleged_entities=["entity:person/rabi-lamichhane"],
-            related_entities=[
-                "entity:organization/political_party/rastriya-swatantra-party"
-            ],
-            locations=["entity:location/district/chitwan"],
             description="""<h1>Rabi Lamichhane Controversies</h1>
 
 <h2>Overview</h2>
@@ -127,20 +220,17 @@ class Command(BaseCommand):
             case_start_date=datetime(2023, 5, 18).date(),
             created_at=timezone.make_aware(datetime(2023, 5, 20)),
         )
+        rabi.alleged_entities.set([get_entity("entity:person/rabi-lamichhane")])
+        rabi.related_entities.set([
+            get_entity("entity:organization/political_party/rastriya-swatantra-party")
+        ])
+        rabi.locations.set([get_entity("entity:location/district/chitwan")])
 
         # 3. Melamchi
         melamchi = Case.objects.create(
             case_type=CaseType.CORRUPTION,
             state=CaseState.PUBLISHED,
             title="Melamchi Water Supply Project Delays and Cost Overruns",
-            alleged_entities=[
-                "entity:organization/government/nepal-government",
-                "entity:organization/government/melamchi-water-supply-board",
-            ],
-            related_entities=[
-                "entity:organization/government/ministry-of-water-supply"
-            ],
-            locations=["entity:location/region/kathmandu-valley"],
             description="""<h1>Melamchi Water Supply Project Failure</h1>
 
 <h2>Overview</h2>
@@ -179,18 +269,20 @@ class Command(BaseCommand):
             case_start_date=datetime(1998, 6, 1).date(),
             created_at=timezone.make_aware(datetime(2020, 1, 1)),
         )
+        melamchi.alleged_entities.set([
+            get_entity("entity:organization/government_body/nepal-government"),
+            get_entity("entity:organization/government_body/melamchi-water-supply-board"),
+        ])
+        melamchi.related_entities.set([
+            get_entity("entity:organization/government_body/ministry-of-water-supply")
+        ])
+        melamchi.locations.set([get_entity("entity:location/district/kathmandu-valley")])
 
         # 4. KP Oli
         oli = Case.objects.create(
             case_type=CaseType.PROMISES,
             state=CaseState.PUBLISHED,
             title="KP Sharma Oli's Unfulfilled 2017 Election Promises",
-            alleged_entities=["entity:person/kp-sharma-oli"],
-            related_entities=[
-                "entity:organization/political_party/nepal-communist-party",
-                "entity:organization/government/nepal-government",
-            ],
-            locations=["entity:location/country/nepal"],
             description="""<h1>KP Sharma Oli's Broken Election Promises</h1>
 
 <h2>Overview</h2>
@@ -230,15 +322,18 @@ class Command(BaseCommand):
             case_start_date=datetime(2017, 11, 15).date(),
             created_at=timezone.make_aware(datetime(2021, 7, 15)),
         )
+        oli.alleged_entities.set([get_entity("entity:person/kp-sharma-oli")])
+        oli.related_entities.set([
+            get_entity("entity:organization/political_party/nepal-communist-party"),
+            get_entity("entity:organization/government_body/nepal-government"),
+        ])
+        oli.locations.set([get_entity("entity:location/nepal")])
 
         # 5. Media Trial
         media = Case.objects.create(
             case_type=CaseType.CORRUPTION,
             state=CaseState.PUBLISHED,
             title="Sandeep Lamichhane Case: Media Trial and Public Opinion",
-            alleged_entities=["entity:organization/political_party/national-independent-party"],
-            related_entities=["entity:person/sandeep-lamichhane"],
-            locations=["entity:location/district/kathmandu"],
             description="""<h1>Media Trial of Sandeep Lamichhane</h1>
 
 <h2>Overview</h2>
@@ -280,7 +375,11 @@ class Command(BaseCommand):
             case_start_date=datetime(2022, 9, 8).date(),
             created_at=timezone.make_aware(datetime(2022, 9, 10)),
         )
+        media.alleged_entities.set([get_entity("entity:person/sandeep-lamichhane")])
+        media.related_entities.set([get_entity("entity:organization/political_party/national-independent-party")])
+        media.locations.set([get_entity("entity:location/district/kathmandu")])
 
         self.stdout.write(self.style.SUCCESS(f"Successfully created:"))
+        self.stdout.write(f"  - {JawafEntity.objects.count()} entities")
         self.stdout.write(f"  - {Case.objects.count()} cases")
         self.stdout.write(f"  - {DocumentSource.objects.count()} document sources")
