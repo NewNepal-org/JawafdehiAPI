@@ -7,6 +7,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .api_views import CaseViewSet, DocumentSourceViewSet, JawafEntityViewSet, StatisticsView
+from .views import bulk_upload_documents
 
 # Create a router and register our viewsets
 router = DefaultRouter()
@@ -16,5 +17,6 @@ router.register(r'entities', JawafEntityViewSet, basename='jawafentity')
 
 urlpatterns = [
     path('statistics/', StatisticsView.as_view(), name='statistics'),
+    path('bulk-upload/', bulk_upload_documents, name='bulk_upload_documents'),
     path('', include(router.urls)),
 ]

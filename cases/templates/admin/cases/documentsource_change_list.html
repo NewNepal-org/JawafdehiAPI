@@ -1,0 +1,20 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls static %}
+
+{% block submit_buttons_bottom %}
+<div class="submit-row">
+    <a href="/api/bulk-upload/" class="button default" style="background-color: #28a745; color: white;">
+        📤 Bulk Upload Documents
+    </a>
+    {% if has_add_permission %}
+        <a href="{% url opts|admin_urlname:'add' %}" class="button">{% trans 'Add' %} {{ opts.verbose_name }}</a>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block result_list %}
+<div style="margin-bottom: 20px; padding: 15px; background-color: #f0f7ff; border-left: 4px solid #417690; border-radius: 4px;">
+    <strong>💡 Tip:</strong> Use the <strong>"📤 Bulk Upload Documents"</strong> button above to upload multiple documents at once. Each file will automatically create a new document source.
+</div>
+{{ block.super }}
+{% endblock %}

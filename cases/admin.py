@@ -5,8 +5,12 @@ from django import forms
 from django.db import models
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+from django.contrib.admin.views.decorators import staff_member_required
 from tinymce.widgets import TinyMCE
-from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType
+from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType, UploadedDocument, UploadedDocument
+import uuid
 from .widgets import (
     MultiTextField,
     MultiTimelineField,
@@ -504,6 +508,20 @@ class DocumentSourceAdminForm(forms.ModelForm):
         return cleaned_data
 
 
+class UploadedDocumentInline(admin.StackedInline):
+    """
+    Inline admin for UploadedDocument - allows managing uploaded files within DocumentSource.
+    Appears as an integrated section after Basic Information fields.
+    """
+    
+    model = UploadedDocument
+    extra = 1
+    fields = ['file', 'description', 'original_file_name', 'file_type', 'file_size', 'uploaded_by', 'is_deleted']
+    readonly_fields = ['original_file_name', 'file_type', 'file_size', 'uploaded_by']
+    verbose_name = "Upload Document"
+    verbose_name_plural = "Uploaded Documents"
+
+
 @admin.register(DocumentSource)
 class DocumentSourceAdmin(admin.ModelAdmin):
     """
@@ -513,9 +531,15 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     - Custom form with entity ID validation
     - Soft deletion interface
     - Role-based permissions
+    - Upload Document button in Basic Information section
+    - Inline file uploads (UploadedDocumentInline)
     """
     
     form = DocumentSourceAdminForm
+    inlines = [UploadedDocumentInline]
+    
+    class Media:
+        js = ('admin/js/document_upload_button.js',)
     
     list_display = [
         'source_id',
@@ -562,6 +586,12 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     )
     
     filter_horizontal = ['related_entities', 'contributors']
+    
+    def changelist_view(self, request, extra_context=None):
+        """Add custom context with upload button."""
+        extra_context = extra_context or {}
+        extra_context['upload_button_url'] = '/api/bulk-upload/'
+        return super().changelist_view(request, extra_context=extra_context)
     
     def deletion_status(self, obj):
         """Display deletion status as a colored badge."""
@@ -724,7 +754,24 @@ class DocumentSourceAdmin(admin.ModelAdmin):
                 'Restore selected sources'
             )
         
+        # Add bulk upload action (visible to all authorized users)
+        if is_admin_or_moderator(request.user) or is_contributor(request.user):
+            actions['bulk_upload_documents'] = (
+                self.__class__.bulk_upload_documents,
+                'bulk_upload_documents',
+                'Bulk upload documents as new sources'
+            )
+        
         return actions
+    
+    def bulk_upload_documents(self, request, queryset):
+        """
+        Bulk action to create new document sources from uploaded files.
+        Redirects to a custom upload page.
+        """
+        # Redirect to bulk upload view
+        return HttpResponseRedirect('/api/bulk-upload/')
+    bulk_upload_documents.short_description = "Bulk upload documents as new sources"
     
     def soft_delete_sources(self, request, queryset):
         """
