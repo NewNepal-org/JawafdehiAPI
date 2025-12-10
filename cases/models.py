@@ -520,3 +520,91 @@ class DocumentSource(models.Model):
         
         if errors:
             raise ValidationError(errors)
+
+
+class UploadedDocument(models.Model):
+    """
+    Stores uploaded files associated with a DocumentSource.
+    
+    Allows a single DocumentSource to have multiple uploaded files.
+    Preserves file metadata (name, size, upload time) for audit trail.
+    """
+    
+    # Relationship to DocumentSource
+    source = models.ForeignKey(
+        DocumentSource,
+        on_delete=models.CASCADE,
+        related_name='uploaded_documents',
+        help_text="The document source this file belongs to"
+    )
+    
+    # File fields
+    file = models.FileField(
+        upload_to='documents/%Y/%m/',
+        help_text="The uploaded file"
+    )
+    original_file_name = models.CharField(
+        max_length=300,
+        help_text="Original filename as uploaded"
+    )
+    file_size = models.IntegerField(
+        help_text="File size in bytes"
+    )
+    file_type = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="MIME type (e.g., application/pdf)"
+    )
+    
+    # Uploader tracking
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='uploaded_documents',
+        help_text="User who uploaded the file"
+    )
+    
+    # Metadata
+    description = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Optional description of the document"
+    )
+    
+    is_deleted = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Soft deletion flag"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Uploaded Document"
+        verbose_name_plural = "Uploaded Documents"
+    
+    def __str__(self):
+        return f"{self.original_file_name} ({self.source.source_id})"
+    
+    def save(self, *args, **kwargs):
+        """Override save to capture file metadata."""
+        if self.file:
+            # Store file size
+            self.file_size = self.file.size
+            
+            # Store original filename
+            if not self.original_file_name:
+                self.original_file_name = self.file.name
+            
+            # Infer MIME type from file extension if not set
+            if not self.file_type:
+                import mimetypes
+                mime_type, _ = mimetypes.guess_type(self.file.name)
+                self.file_type = mime_type or 'application/octet-stream'
+        
+        super().save(*args, **kwargs)

@@ -1,0 +1,28 @@
+{% extends "admin/change_list.html" %}
+
+{% block search %}
+<div id="toolbar">
+    <form id="changelist-search" method="get">
+        <div>
+            {{ cl.formset.management_form.csrf_token }}
+            <label for="searchbar"><img src="/static/admin/img/search.svg" alt="Search"></label>
+            <input type="text" size="40" name="q" value="{{ cl.query }}" id="searchbar" autofocus placeholder="Search by source ID, title, or description">
+            <input type="submit" value="Search">
+            {% if has_filters %}
+                {% admin_list_filter cl %}
+            {% endif %}
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block submit_buttons_bottom %}
+<div class="submit-row">
+    <a href="/api/bulk-upload/" class="button" style="background-color: #417690; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; margin-right: 10px; display: inline-block;">
+        ⬆️ Bulk Upload Documents
+    </a>
+    {% if has_add_permission %}
+        <a href="{% url opts|admin_urlname:'add' %}" class="button">{% trans 'Add' %} {{ opts.verbose_name }}</a>
+    {% endif %}
+</div>
+{% endblock %}

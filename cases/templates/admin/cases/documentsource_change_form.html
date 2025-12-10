@@ -1,0 +1,11 @@
+{% extends "admin/change_form.html" %}
+{% load i18n static %}
+
+{% block submit_buttons %}
+<div class="submit-row">
+    {% if original %}
+        <a href="/api/bulk-upload/" class="button" style="background-color: #28a745; color: white; margin-right: 10px;">📤 Bulk Upload Documents</a>
+    {% endif %}
+    {{ block.super }}
+</div>
+{% endblock %}
