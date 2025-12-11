@@ -520,3 +520,97 @@ class DocumentSource(models.Model):
         
         if errors:
             raise ValidationError(errors)
+
+
+
+class FeedbackType(models.TextChoices):
+    """Enum for feedback types."""
+    BUG = "bug", "Bug Report"
+    FEATURE = "feature", "Feature Request"
+    USABILITY = "usability", "Usability Issue"
+    CONTENT = "content", "Content Feedback"
+    GENERAL = "general", "General Feedback"
+
+
+class FeedbackStatus(models.TextChoices):
+    """Enum for feedback status."""
+    SUBMITTED = "submitted", "Submitted"
+    IN_REVIEW = "in_review", "In Review"
+    RESOLVED = "resolved", "Resolved"
+    CLOSED = "closed", "Closed"
+
+
+class Feedback(models.Model):
+    """
+    Platform feedback submissions from users.
+    
+    Stores feedback, bug reports, feature requests, and general comments
+    about the Jawafdehi platform.
+    """
+    
+    # Core fields
+    feedback_type = models.CharField(
+        max_length=20,
+        choices=FeedbackType.choices,
+        help_text="Type of feedback"
+    )
+    subject = models.CharField(
+        max_length=200,
+        help_text="Brief summary of feedback"
+    )
+    description = models.TextField(
+        max_length=5000,
+        help_text="Detailed feedback description"
+    )
+    related_page = models.CharField(
+        max_length=300,
+        blank=True,
+        help_text="Page or feature related to feedback"
+    )
+    
+    # Contact information (stored as JSON for flexibility)
+    contact_info = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Optional contact information"
+    )
+    
+    # Status tracking
+    status = models.CharField(
+        max_length=20,
+        choices=FeedbackStatus.choices,
+        default=FeedbackStatus.SUBMITTED,
+        db_index=True,
+        help_text="Current status of feedback"
+    )
+    
+    # Metadata
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text="IP address of submitter (for rate limiting)"
+    )
+    user_agent = models.TextField(
+        blank=True,
+        help_text="User agent string"
+    )
+    
+    # Admin notes
+    admin_notes = models.TextField(
+        blank=True,
+        help_text="Internal notes for administrators"
+    )
+    
+    # Timestamps
+    submitted_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-submitted_at']
+        indexes = [
+            models.Index(fields=['feedback_type', 'status']),
+            models.Index(fields=['status', 'submitted_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.feedback_type.upper()}: {self.subject}"

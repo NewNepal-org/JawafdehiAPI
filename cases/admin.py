@@ -6,7 +6,7 @@ from django.db import models
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 from tinymce.widgets import TinyMCE
-from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType
+from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType, Feedback
 from .widgets import (
     MultiTextField,
     MultiTimelineField,
@@ -889,3 +889,44 @@ class JawafEntityAdmin(admin.ModelAdmin):
 admin.site.site_header = "Jawafdehi"
 admin.site.site_title = "Jawafdehi Contributor Portal"
 admin.site.index_title = "Welcome to Jawafdehi Contributor Portal"
+
+
+
+@admin.register(Feedback)
+class FeedbackAdmin(admin.ModelAdmin):
+    """Admin interface for Feedback model."""
+    
+    list_display = [
+        'id',
+        'feedback_type',
+        'subject',
+        'status',
+        'has_contact_info',
+        'submitted_at'
+    ]
+    list_filter = ['feedback_type', 'status', 'submitted_at']
+    search_fields = ['subject', 'description', 'related_page']
+    readonly_fields = ['submitted_at', 'updated_at', 'ip_address', 'user_agent']
+    
+    fieldsets = (
+        ('Feedback Details', {
+            'fields': ('feedback_type', 'subject', 'description', 'related_page')
+        }),
+        ('Contact Information', {
+            'fields': ('contact_info',),
+            'classes': ('collapse',)
+        }),
+        ('Status', {
+            'fields': ('status', 'admin_notes')
+        }),
+        ('Metadata', {
+            'fields': ('ip_address', 'user_agent', 'submitted_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    def has_contact_info(self, obj):
+        """Check if feedback has contact information."""
+        return bool(obj.contact_info and obj.contact_info.get('contactMethods'))
+    has_contact_info.boolean = True
+    has_contact_info.short_description = 'Has Contact'

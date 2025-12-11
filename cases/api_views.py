@@ -469,3 +469,96 @@ class StatisticsView(APIView):
         cache.set(cache_key, stats, timeout=300)
         
         return Response(stats)
+
+
+
+from rest_framework import status
+from rest_framework.throttling import AnonRateThrottle
+from .models import Feedback
+from .serializers import FeedbackSerializer
+
+
+class FeedbackRateThrottle(AnonRateThrottle):
+    """Rate throttle for feedback submissions: 5 per hour."""
+    rate = '5/hour'
+
+
+@extend_schema(
+    summary="Submit platform feedback",
+    description="""
+    Submit feedback, bug reports, feature requests, or general comments about the platform.
+    
+    Rate limited to 5 submissions per IP address per hour.
+    Contact information is optional - anonymous submissions are welcome.
+    """,
+    request=FeedbackSerializer,
+    responses={
+        201: FeedbackSerializer,
+        400: OpenApiTypes.OBJECT,
+        429: OpenApiTypes.OBJECT,
+    },
+    examples=[
+        OpenApiExample(
+            'Bug Report',
+            value={
+                "feedbackType": "bug",
+                "subject": "Search not working on Cases page",
+                "description": "When I try to search for cases, nothing happens.",
+                "relatedPage": "Cases page",
+                "contactInfo": {
+                    "name": "राम बहादुर",
+                    "contactMethods": [
+                        {"type": "email", "value": "ram@example.com"}
+                    ]
+                }
+            },
+            request_only=True,
+        ),
+        OpenApiExample(
+            'Anonymous Feedback',
+            value={
+                "feedbackType": "general",
+                "subject": "Great platform",
+                "description": "This platform is very helpful!"
+            },
+            request_only=True,
+        ),
+    ]
+)
+class FeedbackView(APIView):
+    """API view for submitting platform feedback."""
+    
+    throttle_classes = [FeedbackRateThrottle]
+    
+    def post(self, request):
+        """Handle feedback submission."""
+        serializer = FeedbackSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            # Capture metadata
+            feedback = serializer.save(
+                ip_address=self.get_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', '')
+            )
+            
+            return Response(
+                serializer.to_representation(feedback),
+                status=status.HTTP_201_CREATED
+            )
+        
+        return Response(
+            {
+                'error': 'Validation error',
+                'details': serializer.errors
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    def get_client_ip(self, request):
+        """Extract client IP address from request."""
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(',')[0].strip()
+        else:
+            ip = request.META.get('REMOTE_ADDR')
+        return ip
