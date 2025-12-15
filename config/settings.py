@@ -177,8 +177,8 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": """
 Public API for the Jawafdehi accountability platform.
 
-This API provides read-only access to published cases of alleged corruption, 
-misconduct, and broken promises by public entities in Nepal.
+This API provides read-only access to published cases of alleged corruption 
+and misconduct by public entities in Nepal.
 
 ## Features
 

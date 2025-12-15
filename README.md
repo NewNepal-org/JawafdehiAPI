@@ -1,6 +1,6 @@
 # Jawafdehi
 
-A Django-based public accountability platform for tracking allegations of corruption, misconduct, and broken promises by public entities in Nepal.
+A Django-based public accountability platform for tracking allegations of corruption and misconduct by public entities in Nepal.
 
 ## Setup Instructions
 

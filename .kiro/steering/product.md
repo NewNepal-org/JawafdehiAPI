@@ -2,7 +2,7 @@
 
 ## Overview
 
-Django-based public accountability platform for tracking allegations of corruption, misconduct, and broken promises by public entities in Nepal. This API serves as the backend for the Jawafdehi project (https://jawafdehi.org, beta at https://beta.jawafdehi.org), a civic tech platform promoting transparency and accountability in Nepali governance.
+Django-based public accountability platform for tracking allegations of corruption and misconduct by public entities in Nepal. This API serves as the backend for the Jawafdehi project (https://jawafdehi.org, beta at https://beta.jawafdehi.org), a civic tech platform promoting transparency and accountability in Nepali governance.
 
 ## Core Features
 
