@@ -51,8 +51,10 @@ INSTALLED_APPS = [
     "corsheaders",
     "tinymce",
     "auditlog",
+    "django_q",
     "rules.apps.AutodiscoverRulesConfig",
     "cases",
+    "agni",
 ]
 
 MIDDLEWARE = [
@@ -73,7 +75,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -146,6 +148,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
+
+# Media files (user uploads)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 # Whitenoise configuration for serving static files
 STORAGES = {
@@ -226,6 +232,26 @@ CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS"]
 # NES API Configuration
 NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
 
+AGNI_UI_DEBUG_URL = os.getenv("AGNI_UI_DEBUG_URL", "http://localhost:7999") if DEBUG else None
+
+# Django Q Configuration
+Q_CLUSTER = {
+    'name': 'agni',
+    'workers': int(os.getenv('DJANGO_Q_WORKERS', '2')),
+    'timeout': int(os.getenv('DJANGO_Q_TIMEOUT', '600')),  # 10 minutes
+    'retry': int(os.getenv('DJANGO_Q_RETRY', '3600')),     # Retry after 1 hour
+    'queue_limit': int(os.getenv('DJANGO_Q_QUEUE_LIMIT', '50')),
+    'bulk': int(os.getenv('DJANGO_Q_BULK', '10')),
+    'orm': 'default',
+    'catch_up': False,  # Don't run missed tasks on startup
+    'save_limit': 250,  # Keep last 250 task results
+    'ack_failures': True,
+    'max_attempts': 1,  # Don't auto-retry failed tasks
+}
+
+# Run Django Q tasks in main thread or not
+SYNC = os.getenv("SYNC", "false").lower() == "true"
+
 # Feature Flags
 EXPOSE_CASES_IN_REVIEW = os.getenv("EXPOSE_CASES_IN_REVIEW", "False") == "True"
 
@@ -272,6 +298,9 @@ JAZZMIN_SETTINGS = {
         "auth.Group": "fas fa-users",
         "cases.Case": "fas fa-gavel",
         "cases.DocumentSource": "fas fa-file-alt",
+        "agni": "fas fa-robot",
+        "agni.StoredExtractionSession": "fas fa-file-upload",
+        "agni.ApprovedEntityChange": "fas fa-check-circle",
     },
     
     # UI Tweaks

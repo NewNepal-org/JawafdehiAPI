@@ -1,0 +1,137 @@
+{% extends "admin/index.html" %}
+{% load i18n admin_urls static %}
+
+{% block content %}
+    
+    {# Agni Upload Document - Flashy banner #}
+    <div id="agni-upload-tile">
+        <div class="upload-card">
+            <div class="upload-icon">🤖</div>
+            <div class="upload-content">
+                <h2>{% trans 'Agni AI Document Processing' %}</h2>
+                <p>{% trans 'Upload documents to extract entities and cases using Agni artificial intelligence' %}</p>
+                <a href="{% url 'admin:agni_storedextractionsession_upload' %}" class="upload-button">
+                    <span class="button-icon">📄</span>
+                    {% trans 'Upload Document' %}
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {# Original Django admin content first #}
+    {{ block.super }}
+
+<style>
+#agni-upload-tile {
+    margin-bottom: 30px;
+    padding: 0;
+    max-width: 700px;
+}
+
+.upload-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    padding: 30px;
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 25px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.upload-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+    pointer-events: none;
+}
+
+.upload-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 35px rgba(102, 126, 234, 0.4);
+}
+
+.upload-icon {
+    font-size: 48px;
+    flex-shrink: 0;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.upload-content {
+    flex: 1;
+    color: white;
+}
+
+.upload-content h2 {
+    margin: 0 0 10px 0;
+    color: white;
+    font-size: 24px;
+    font-weight: 700;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.upload-content p {
+    margin: 0 0 20px 0;
+    color: rgba(255,255,255,0.9);
+    font-size: 16px;
+    line-height: 1.5;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.upload-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 24px;
+    background-color: rgba(255,255,255,0.2);
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: 2px solid rgba(255,255,255,0.3);
+    backdrop-filter: blur(10px);
+}
+
+.upload-button:hover {
+    background-color: rgba(255,255,255,0.3);
+    color: white;
+    text-decoration: none;
+    transform: translateY(-1px);
+    border-color: rgba(255,255,255,0.5);
+}
+
+.button-icon {
+    font-size: 18px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .upload-card {
+        flex-direction: column;
+        text-align: center;
+        padding: 25px 20px;
+    }
+    
+    .upload-content h2 {
+        font-size: 20px;
+    }
+    
+    .upload-content p {
+        font-size: 14px;
+    }
+}
+</style>
+{% endblock %}
