@@ -218,8 +218,8 @@ def valid_source_data(draw):
         "description": draw(st.text(min_size=1, max_size=1000).filter(lambda x: x.strip())),
         "related_entity_ids": draw(entity_id_list(min_size=0, max_size=3)),
         "urls": urls,
-        "publisher": draw(st.one_of(st.none(), st.text(min_size=1, max_size=300).filter(lambda x: x.strip()))),
-        "publication_date": draw(st.one_of(st.none(), st.text(min_size=1, max_size=100).filter(lambda x: x.strip()))),
+        "publisher": draw(st.text(min_size=0, max_size=300)),
+        "publication_date": draw(st.text(min_size=0, max_size=100)),
     }
 
 

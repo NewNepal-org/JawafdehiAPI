@@ -473,11 +473,13 @@ class DocumentSource(models.Model):
     publisher = models.CharField(
         max_length=300,
         blank=True,
+        default='',
         help_text="Publisher of the source"
     )
     publication_date = models.CharField(
         max_length=100,
         blank=True,
+        default='',
         help_text="Publication date of the source"
     )
 
