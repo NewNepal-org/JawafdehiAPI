@@ -4,29 +4,23 @@
 
 This feature flag controls whether cases in `IN_REVIEW` state are exposed via the public API endpoints.
 
+**Default Value:** `True` (IN_REVIEW cases are exposed by default)
+
 ## Configuration
 
 Set the environment variable in your `.env` file:
 
 ```bash
-# Enable the feature
-EXPOSE_CASES_IN_REVIEW=True
-
-# Disable the feature (default)
+# Disable the feature (hide IN_REVIEW cases)
 EXPOSE_CASES_IN_REVIEW=False
+
+# Enable the feature (default - expose IN_REVIEW cases)
+EXPOSE_CASES_IN_REVIEW=True
 ```
 
 ## Behavior
 
-### When Disabled (Default: `EXPOSE_CASES_IN_REVIEW=False`)
-
-- **GET /api/cases/**: Returns only `PUBLISHED` cases
-- **GET /api/cases/{id}/**: Returns only `PUBLISHED` cases
-- **GET /api/sources/**: Returns sources referenced in `PUBLISHED` cases only
-- **Response**: Does NOT include `state` field in case serialization
-- **Audit History**: Includes only `PUBLISHED` versions
-
-### When Enabled (`EXPOSE_CASES_IN_REVIEW=True`)
+### When Enabled (Default: `EXPOSE_CASES_IN_REVIEW=True`)
 
 - **GET /api/cases/**: Returns both `PUBLISHED` and `IN_REVIEW` cases
 - **GET /api/cases/{id}/**: Returns both `PUBLISHED` and `IN_REVIEW` cases
@@ -34,34 +28,46 @@ EXPOSE_CASES_IN_REVIEW=False
 - **Response**: Includes `state` field showing "PUBLISHED" or "IN_REVIEW"
 - **Audit History**: Includes both `PUBLISHED` and `IN_REVIEW` versions
 
+### When Disabled (`EXPOSE_CASES_IN_REVIEW=False`)
+
+- **GET /api/cases/**: Returns only `PUBLISHED` cases
+- **GET /api/cases/{id}/**: Returns only `PUBLISHED` cases
+- **GET /api/sources/**: Returns sources referenced in `PUBLISHED` cases only
+- **Response**: Includes `state` field showing only "PUBLISHED"
+- **Audit History**: Includes only `PUBLISHED` versions
+
 ## Implementation Details
 
 ### Modified Files
 
-1. **config/settings.py**: Added feature flag configuration
-2. **cases/api_views.py**: Modified `CaseViewSet.get_queryset()` and `DocumentSourceViewSet.get_queryset()`
-3. **cases/serializers.py**: Modified `CaseSerializer.__init__()` and `CaseDetailSerializer.get_audit_history()`
-4. **.env.example**: Added feature flag documentation
+1. **config/settings.py**: Feature flag configuration (default: True)
+2. **cases/api_views.py**: `CaseViewSet.get_queryset()` and `DocumentSourceViewSet.get_queryset()` check the flag
+3. **cases/serializers.py**: `CaseSerializer` always includes `state` field, `CaseDetailSerializer.get_audit_history()` respects the flag
+4. **.env.example**: Feature flag documentation updated to reflect new default
 
 ### Logic Changes
 
-- **CaseViewSet**: Filters by `state__in=[PUBLISHED, IN_REVIEW]` when flag is enabled
-- **DocumentSourceViewSet**: Includes sources from IN_REVIEW cases when flag is enabled
-- **CaseSerializer**: Dynamically adds `state` field to response when flag is enabled
-- **Audit History**: Includes IN_REVIEW versions in audit trail when flag is enabled
+- **CaseViewSet**: Filters by `state__in=[PUBLISHED, IN_REVIEW]` when flag is enabled (default)
+- **DocumentSourceViewSet**: Includes sources from IN_REVIEW cases when flag is enabled (default)
+- **CaseSerializer**: Always includes `state` field in response
+- **Audit History**: Includes IN_REVIEW versions in audit trail when flag is enabled (default)
 
 ## Deployment
 
-For emergency deployment to expose IN_REVIEW cases:
+**Default Behavior (No Configuration Required):**
+- IN_REVIEW cases are now publicly accessible by default
+- No environment variable needs to be set
 
-1. Set environment variable: `EXPOSE_CASES_IN_REVIEW=True`
-2. Restart the application
-3. No database migrations required
-4. No code deployment required (if already deployed)
-
-To revert:
+**To Hide IN_REVIEW Cases:**
 
 1. Set environment variable: `EXPOSE_CASES_IN_REVIEW=False`
+2. Restart the application
+3. No database migrations required
+4. No code deployment required
+
+**To Re-enable IN_REVIEW Cases:**
+
+1. Remove or set environment variable: `EXPOSE_CASES_IN_REVIEW=True`
 2. Restart the application
 
 ## Testing
@@ -69,13 +75,15 @@ To revert:
 Test the feature flag behavior:
 
 ```bash
-# Test with flag disabled
+# Test default behavior (IN_REVIEW cases included)
 curl http://localhost:8000/api/cases/
+# Should include both PUBLISHED and IN_REVIEW cases with state field
 
-# Enable flag in .env
-echo "EXPOSE_CASES_IN_REVIEW=True" >> .env
+# Disable flag in .env to hide IN_REVIEW cases
+echo "EXPOSE_CASES_IN_REVIEW=False" >> .env
 
 # Restart server and test again
 curl http://localhost:8000/api/cases/
+# Should now only include PUBLISHED cases
 # Should now include IN_REVIEW cases with state field
 ```
