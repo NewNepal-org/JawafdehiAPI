@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The Jawafdehi platform is a public accountability system for tracking allegations of corruption, misconduct, and broken promises by public entities in Nepal. The system supports a multi-role workflow where Contributors create and edit allegations, Moderators and Admins review and publish content, and the public can browse published cases. The platform implements a revision-based system to track all changes to allegations while maintaining a clear separation between draft work and published content.
+The Jawafdehi platform is a public accountability system for tracking allegations of corruption and misconduct by public entities in Nepal. The system supports a multi-role workflow where Contributors create and edit allegations, Moderators and Admins review and publish content, and the public can browse published cases. The platform implements a revision-based system to track all changes to allegations while maintaining a clear separation between draft work and published content.
 
 ## Glossary
 

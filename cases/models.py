@@ -204,7 +204,6 @@ class Case(models.Model):
         max_length=500,
         help_text="URL to a large banner image for the case"
     )
-
     # Date fields
     case_start_date = models.DateField(
         null=True,
@@ -468,7 +467,7 @@ class DocumentSource(models.Model):
         help_text="Source description"
     )
     url = models.URLField(
-        max_length=500,
+        max_length=2000,
         null=True,
         blank=True,
         help_text="Optional URL to the source"
