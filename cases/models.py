@@ -190,7 +190,20 @@ class Case(models.Model):
         max_length=200,
         help_text="Case title"
     )
-
+    short_description = models.TextField(
+        blank=True,
+        help_text="Short description/summary of the case"
+    )
+    thumbnail_url = models.URLField(
+        blank=True,
+        max_length=500,
+        help_text="URL to a small thumbnail picture for the case"
+    )
+    banner_url = models.URLField(
+        blank=True,
+        max_length=500,
+        help_text="URL to a large banner image for the case"
+    )
     # Date fields
     case_start_date = models.DateField(
         null=True,
@@ -355,6 +368,9 @@ class Case(models.Model):
             case_type=self.case_type,
             state=CaseState.DRAFT,
             title=self.title,
+            short_description=self.short_description,
+            thumbnail_url=self.thumbnail_url,
+            banner_url=self.banner_url,
             case_start_date=self.case_start_date,
             case_end_date=self.case_end_date,
             tags=self.tags.copy() if self.tags else [],

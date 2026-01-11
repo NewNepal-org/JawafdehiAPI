@@ -21,40 +21,40 @@ class JawafEntitySerializer(serializers.ModelSerializer):
     related_cases = serializers.SerializerMethodField(
         help_text="List of case IDs where this entity is related or a location"
     )
-    
+
     class Meta:
         model = JawafEntity
         fields = ['id', 'nes_id', 'display_name', 'alleged_cases', 'related_cases']
-    
+
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_alleged_cases(self, obj):
         """
         Get list of case IDs where this entity is alleged.
-        
+
         Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         """
         from django.conf import settings
-        
+
         if settings.EXPOSE_CASES_IN_REVIEW:
             cases = obj.cases_as_alleged.filter(
                 state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
             )
         else:
             cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
-        
+
         return list(cases.values_list('id', flat=True))
-    
+
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_related_cases(self, obj):
         """
         Get list of case IDs where this entity is related or a location.
-        
+
         Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         Excludes cases where entity is already alleged (to avoid duplicates).
         """
         from django.conf import settings
         from django.db.models import Q
-        
+
         # Get alleged case IDs to exclude
         if settings.EXPOSE_CASES_IN_REVIEW:
             alleged_case_ids = obj.cases_as_alleged.filter(
@@ -64,13 +64,13 @@ class JawafEntitySerializer(serializers.ModelSerializer):
             alleged_case_ids = obj.cases_as_alleged.filter(
                 state=CaseState.PUBLISHED
             ).values_list('id', flat=True)
-        
+
         # Get related and location cases
         if settings.EXPOSE_CASES_IN_REVIEW:
             related_cases = obj.cases_as_related.filter(
                 state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
             ).exclude(id__in=alleged_case_ids)
-            
+
             location_cases = obj.cases_as_location.filter(
                 state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
             ).exclude(id__in=alleged_case_ids)
@@ -78,29 +78,29 @@ class JawafEntitySerializer(serializers.ModelSerializer):
             related_cases = obj.cases_as_related.filter(
                 state=CaseState.PUBLISHED
             ).exclude(id__in=alleged_case_ids)
-            
+
             location_cases = obj.cases_as_location.filter(
                 state=CaseState.PUBLISHED
             ).exclude(id__in=alleged_case_ids)
-        
+
         # Combine and deduplicate
         case_ids = set(related_cases.values_list('id', flat=True))
         case_ids.update(location_cases.values_list('id', flat=True))
-        
+
         return list(case_ids)
 
 
 class CaseSerializer(serializers.ModelSerializer):
     """
     Serializer for Case model.
-    
+
     Exposes all fields except:
     - contributors (internal only)
     - version (internal versioning detail)
-    
+
     The state field is always included to indicate case status (PUBLISHED or IN_REVIEW).
     """
-    
+
     alleged_entities = JawafEntitySerializer(many=True, read_only=True)
     related_entities = JawafEntitySerializer(many=True, read_only=True)
     locations = JawafEntitySerializer(many=True, read_only=True)
@@ -128,7 +128,7 @@ class CaseSerializer(serializers.ModelSerializer):
         help_text="Version metadata tracking changes (version_number, user_id, change_summary, datetime)",
         required=False
     )
-    
+
     class Meta:
         model = Case
         fields = [
@@ -137,6 +137,9 @@ class CaseSerializer(serializers.ModelSerializer):
             'case_type',
             'state',
             'title',
+            'short_description',
+            'thumbnail_url',
+            'banner_url',
             'case_start_date',
             'case_end_date',
             'alleged_entities',
@@ -157,24 +160,24 @@ class CaseSerializer(serializers.ModelSerializer):
 class CaseDetailSerializer(CaseSerializer):
     """
     Serializer for Case detail view with audit history.
-    
+
     Includes audit_history field containing versionInfo from all
     published versions with the same case_id.
     """
     audit_history = serializers.SerializerMethodField(
         help_text="Complete audit trail showing all published versions of this case"
     )
-    
+
     class Meta(CaseSerializer.Meta):
         fields = CaseSerializer.Meta.fields + ['audit_history']
-    
+
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_audit_history(self, obj):
         """
         Get versionInfo from all published versions with the same case_id.
-        
+
         If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes IN_REVIEW versions.
-        
+
         Returns a list of versionInfo objects ordered by version (newest first).
         """
         # Get all published versions with the same case_id
@@ -189,25 +192,25 @@ class CaseDetailSerializer(CaseSerializer):
                 case_id=obj.case_id,
                 state=CaseState.PUBLISHED
             ).order_by('-version')
-        
+
         # Extract versionInfo from each version
         audit_history = []
         for version in all_versions:
             if version.versionInfo:
                 audit_history.append(version.versionInfo)
-        
+
         return audit_history
 
 
 class DocumentSourceSerializer(serializers.ModelSerializer):
     """
     Serializer for DocumentSource model.
-    
+
     Used for public API access to sources associated with published cases.
     """
-    
+
     related_entities = JawafEntitySerializer(many=True, read_only=True)
-    
+
     class Meta:
         model = DocumentSource
         fields = [
@@ -253,7 +256,7 @@ class ContactInfoSerializer(serializers.Serializer):
 
 class FeedbackSerializer(serializers.ModelSerializer):
     """Serializer for Feedback model."""
-    
+
     feedbackType = serializers.CharField(
         source='feedback_type',
         help_text="Type of feedback"
@@ -274,7 +277,7 @@ class FeedbackSerializer(serializers.ModelSerializer):
         read_only=True,
         help_text="Timestamp when feedback was submitted"
     )
-    
+
     class Meta:
         model = Feedback
         fields = [
@@ -288,23 +291,23 @@ class FeedbackSerializer(serializers.ModelSerializer):
             'submittedAt'
         ]
         read_only_fields = ['id', 'status', 'submittedAt']
-    
+
     def validate_feedbackType(self, value):
         """Validate feedback type."""
         from .models import FeedbackType
-        
+
         valid_types = [choice[0] for choice in FeedbackType.choices]
         if value not in valid_types:
             raise serializers.ValidationError(
                 f"Invalid feedback type. Must be one of: {', '.join(valid_types)}"
             )
         return value
-    
+
     def validate_contactInfo(self, value):
         """Validate contact info structure."""
         if not value:
             return {}
-        
+
         # Validate contact methods if present
         if 'contactMethods' in value:
             valid_types = ['email', 'phone', 'whatsapp', 'instagram', 'facebook', 'other']
@@ -313,13 +316,13 @@ class FeedbackSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(
                         f"Invalid contact method type. Must be one of: {', '.join(valid_types)}"
                     )
-        
+
         return value
-    
+
     def to_representation(self, instance):
         """Convert to camelCase response format."""
         data = super().to_representation(instance)
-        
+
         # Return simplified response for API
         return {
             'id': data['id'],
