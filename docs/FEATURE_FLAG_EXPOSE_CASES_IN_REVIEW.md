@@ -85,5 +85,4 @@ echo "EXPOSE_CASES_IN_REVIEW=False" >> .env
 # Restart server and test again
 curl http://localhost:8000/api/cases/
 # Should now only include PUBLISHED cases
-# Should now include IN_REVIEW cases with state field
 ```
