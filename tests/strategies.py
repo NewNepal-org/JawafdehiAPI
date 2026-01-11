@@ -203,16 +203,23 @@ def valid_source_data(draw):
     
     According to Property 11 and Requirement 4.2, required fields are:
     - title
+    - urls (at least one URL required)
     - description (optional but commonly included)
     """
+    # Generate 1-3 URLs
+    num_urls = draw(st.integers(min_value=1, max_value=3))
+    urls = [
+        draw(st.from_regex(r'https?://[a-z0-9\-\.]+\.[a-z]{2,}(/[^\s]*)?', fullmatch=True))
+        for _ in range(num_urls)
+    ]
+    
     return {
         "title": draw(st.text(min_size=1, max_size=300).filter(lambda x: x.strip())),
         "description": draw(st.text(min_size=1, max_size=1000).filter(lambda x: x.strip())),
         "related_entity_ids": draw(entity_id_list(min_size=0, max_size=3)),
-        "url": draw(st.one_of(
-            st.none(),
-            st.from_regex(r'https?://[a-z0-9\-\.]+\.[a-z]{2,}(/[^\s]*)?', fullmatch=True)
-        )),
+        "urls": urls,
+        "publisher": draw(st.text(min_size=0, max_size=300)),
+        "publication_date": draw(st.text(min_size=0, max_size=100)),
     }
 
 

@@ -466,11 +466,21 @@ class DocumentSource(models.Model):
         blank=True,
         help_text="Source description"
     )
-    url = models.URLField(
-        max_length=2000,
-        null=True,
+    urls = models.JSONField(
+        default=list,
+        help_text="List of URLs to the source (at least one required)"
+    )
+    publisher = models.CharField(
+        max_length=300,
         blank=True,
-        help_text="Optional URL to the source"
+        default='',
+        help_text="Publisher of the source"
+    )
+    publication_date = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+        help_text="Publication date of the source"
     )
 
     # Entity relationships
@@ -517,6 +527,15 @@ class DocumentSource(models.Model):
         # Validate required fields before saving
         if not self.title or not self.title.strip():
             raise ValidationError("Title is required and cannot be empty")
+        
+        # Validate URLs: at least one URL is required
+        if not self.urls or not isinstance(self.urls, list) or len(self.urls) == 0:
+            raise ValidationError("At least one URL is required")
+        
+        # Validate that URLs are non-empty strings
+        for url in self.urls:
+            if not url or not isinstance(url, str) or not url.strip():
+                raise ValidationError("All URLs must be non-empty strings")
 
         super().save(*args, **kwargs)
 
@@ -526,13 +545,22 @@ class DocumentSource(models.Model):
 
         Validates:
         - Title is present and non-empty
-        - Entity IDs are valid (validated by EntityListField)
+        - At least one URL is provided
+        - All URLs are non-empty strings
         """
         errors = {}
 
         # Validate title
         if not self.title or not self.title.strip():
             errors['title'] = "Title is required and cannot be empty"
+        
+        # Validate URLs
+        if not self.urls or not isinstance(self.urls, list) or len(self.urls) == 0:
+            errors['urls'] = "At least one URL is required"
+        else:
+            for i, url in enumerate(self.urls):
+                if not url or not isinstance(url, str) or not url.strip():
+                    errors[f'urls[{i}]'] = "URL must be a non-empty string"
 
         if errors:
             raise ValidationError(errors)

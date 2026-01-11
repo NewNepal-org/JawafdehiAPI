@@ -462,23 +462,62 @@ class CaseAdmin(admin.ModelAdmin):
 class DocumentSourceAdminForm(forms.ModelForm):
     """
     Custom form for DocumentSource admin with custom widgets.
+    Handles multiple URLs through individual fields.
     """
 
-    # Override url field to set assume_scheme and silence Django 6.0 warning
-    url = forms.URLField(
+    # Multiple URL fields (up to 5)
+    url_1 = forms.URLField(
+        required=True,
+        max_length=2000,
+        assume_scheme='https',
+        label="URL 1",
+        help_text="Primary URL to the source (required)"
+    )
+    url_2 = forms.URLField(
         required=False,
         max_length=2000,
         assume_scheme='https',
-        help_text="Optional URL to the source"
+        label="URL 2",
+        help_text="Additional URL (optional)"
+    )
+    url_3 = forms.URLField(
+        required=False,
+        max_length=2000,
+        assume_scheme='https',
+        label="URL 3",
+        help_text="Additional URL (optional)"
+    )
+    url_4 = forms.URLField(
+        required=False,
+        max_length=2000,
+        assume_scheme='https',
+        label="URL 4",
+        help_text="Additional URL (optional)"
+    )
+    url_5 = forms.URLField(
+        required=False,
+        max_length=2000,
+        assume_scheme='https',
+        label="URL 5",
+        help_text="Additional URL (optional)"
     )
 
     class Meta:
         model = DocumentSource
         fields = '__all__'
+        exclude = ['urls']  # Exclude the JSONField, we'll handle it manually
 
     def __init__(self, *args, **kwargs):
         self.request = kwargs.pop('request', None)
         super().__init__(*args, **kwargs)
+
+        # Populate URL fields from the urls JSONField
+        if self.instance and self.instance.pk and self.instance.urls:
+            urls = self.instance.urls if isinstance(self.instance.urls, list) else []
+            for i, url in enumerate(urls[:5], start=1):
+                field_name = f'url_{i}'
+                if field_name in self.fields:
+                    self.fields[field_name].initial = url
 
         # Restrict contributors field visibility based on user role
         if self.request:
@@ -493,7 +532,7 @@ class DocumentSourceAdminForm(forms.ModelForm):
 
     def clean(self):
         """
-        Validate the form.
+        Validate the form and collect URLs into the urls field.
         """
         cleaned_data = super().clean()
 
@@ -504,7 +543,39 @@ class DocumentSourceAdminForm(forms.ModelForm):
                 'title': 'Title is required and cannot be empty'
             })
 
+        # Collect all non-empty URLs into a list
+        urls = []
+        for i in range(1, 6):
+            url = cleaned_data.get(f'url_{i}')
+            if url and url.strip():
+                urls.append(url.strip())
+
+        # Validate at least one URL is provided
+        if not urls:
+            raise ValidationError({
+                'url_1': 'At least one URL is required'
+            })
+
+        # Store the URLs list in cleaned_data
+        cleaned_data['urls'] = urls
+
         return cleaned_data
+
+    def save(self, commit=True):
+        """
+        Save the form and populate the urls JSONField.
+        """
+        instance = super().save(commit=False)
+        
+        # Set the urls field from cleaned_data
+        if hasattr(self, 'cleaned_data') and 'urls' in self.cleaned_data:
+            instance.urls = self.cleaned_data['urls']
+        
+        if commit:
+            instance.save()
+            self.save_m2m()
+        
+        return instance
 
 
 @admin.register(DocumentSource)
@@ -550,7 +621,26 @@ class DocumentSourceAdmin(admin.ModelAdmin):
                 'source_id',
                 'title',
                 'description',
-                'url',
+            )
+        }),
+        ('URLs', {
+            'fields': (
+                'url_1',
+                'url_2',
+                'url_3',
+                'url_4',
+                'url_5',
+            ),
+            'description': 'Provide at least one URL to the source. You can add up to 5 URLs.'
+        }),
+        ('Publication Information', {
+            'fields': (
+                'publisher',
+                'publication_date',
+            )
+        }),
+        ('Related Information', {
+            'fields': (
                 'related_entities',
                 'contributors',
             )

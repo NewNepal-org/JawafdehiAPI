@@ -155,7 +155,8 @@ def test_document_source_accepts_missing_description():
     """
     source = create_document_source_with_entities(
         title="Valid Title",
-        related_entity_ids=[]
+        related_entity_ids=[],
+        urls=["https://example.com"]
     )
     source.save()
     
@@ -167,23 +168,41 @@ def test_document_source_accepts_missing_description():
 
 
 @pytest.mark.django_db
-def test_document_source_url_is_optional():
+def test_document_source_requires_at_least_one_url():
     """
-    Edge case: URL field is optional for DocumentSource.
+    Edge case: At least one URL is required for DocumentSource.
     Validates: Requirements 4.1, 4.2
     """
+    # Test that creating a source without URLs raises ValidationError
+    with pytest.raises(ValidationError) as exc_info:
+        source = create_document_source_with_entities(
+            title="Valid Title",
+            description="Valid description",
+            related_entity_ids=[],
+            urls=[]
+        )
+        source.save()
+    
+    # Verify error mentions URLs
+    error_message = str(exc_info.value).lower()
+    assert "url" in error_message, \
+        f"Validation error should mention 'url', but got: {exc_info.value}"
+    
+    # Test that creating a source with at least one URL works
     source = create_document_source_with_entities(
         title="Valid Title",
         description="Valid description",
-        related_entity_ids=[]
+        related_entity_ids=[],
+        urls=["https://example.com"]
     )
     source.save()
     
-    # Should not raise ValidationError without URL
+    # Should not raise ValidationError with URL
     try:
         source.validate()
     except ValidationError as e:
-        pytest.fail(f"DocumentSource should allow missing URL, but raised: {e}")
+        pytest.fail(f"DocumentSource should accept at least one URL, but raised: {e}")
+
 
 
 @pytest.mark.django_db
@@ -195,7 +214,8 @@ def test_document_source_soft_deletion():
     source = create_document_source_with_entities(
         title="Valid Title",
         description="Valid description",
-        related_entity_ids=[]
+        related_entity_ids=[],
+        urls=["https://example.com"]
     )
     source.save()
     
@@ -230,7 +250,8 @@ def test_document_source_has_contributors_field():
     source = create_document_source_with_entities(
         title="Valid Title",
         description="Valid description",
-        related_entity_ids=[]
+        related_entity_ids=[],
+        urls=["https://example.com"]
     )
     source.save()
     

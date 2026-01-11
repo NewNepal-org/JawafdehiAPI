@@ -46,7 +46,8 @@ def document_source(db):
     source = create_document_source_with_entities(
         title='Test Source',
         description='Test description',
-        related_entity_ids=[]
+        related_entity_ids=[],
+        urls=['https://example.com']
     )
     source.save()
     return source
@@ -70,7 +71,8 @@ def source_with_contributor(db, contributor_user):
     source = create_document_source_with_entities(
         title='Test Source',
         description='Test description',
-        related_entity_ids=[]
+        related_entity_ids=[],
+        urls=['https://example.com']
     )
     source.save()
     source.contributors.add(contributor_user)
@@ -92,11 +94,14 @@ class TestDocumentSourceAdmin:
     def test_fieldsets_configured(self, db):
         """Test that fieldsets are properly configured."""
         admin_instance = admin.site._registry[DocumentSource]
-        assert len(admin_instance.fieldsets) == 2
+        assert len(admin_instance.fieldsets) == 5
         
         # Check fieldset names
         fieldset_names = [fs[0] for fs in admin_instance.fieldsets]
         assert 'Basic Information' in fieldset_names
+        assert 'URLs' in fieldset_names
+        assert 'Publication Information' in fieldset_names
+        assert 'Related Information' in fieldset_names
         assert 'Metadata' in fieldset_names
     
     def test_list_display_configured(self, db):
@@ -217,7 +222,8 @@ class TestDocumentSourcePermissions:
         source = create_document_source_with_entities(
             title='New Source',
             description='Test description',
-            related_entity_ids=[]
+            related_entity_ids=[],
+            urls=['https://example.com']
         )
         
         # Simulate save_model and save_related (full admin save flow)
@@ -260,7 +266,9 @@ class TestDocumentSourceAdminForm:
                 'source_id': document_source.source_id,
                 'title': 'Valid Title',
                 'description': '',
-                'related_entity_ids': '[]',
+                'url_1': 'https://example.com',
+                'publisher': '',
+                'publication_date': '',
                 'is_deleted': False,
             }
         )
@@ -277,7 +285,10 @@ class TestDocumentSourceAdminForm:
                 'source_id': document_source.source_id,
                 'title': 'Valid Title',
                 'description': 'Valid description',
-                'related_entity_ids': '[]',
+                'url_1': 'https://example.com',
+                'url_2': 'https://example.org',
+                'publisher': 'Test Publisher',
+                'publication_date': '2024-01-01',
                 'is_deleted': False,
             }
         )
