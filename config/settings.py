@@ -227,7 +227,7 @@ CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS"]
 NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
 
 # Feature Flags
-EXPOSE_CASES_IN_REVIEW = os.getenv("EXPOSE_CASES_IN_REVIEW", "False") == "True"
+EXPOSE_CASES_IN_REVIEW = os.getenv("EXPOSE_CASES_IN_REVIEW", "True") == "True"
 
 # Cache Configuration
 CACHES = {
