@@ -125,17 +125,32 @@ def create_document_source_with_entities(**kwargs):
     Helper function to create a DocumentSource with entity relationships.
     
     Handles conversion of entity ID lists to JawafEntity objects.
+    Handles conversion of single 'url' parameter to 'urls' list for backward compatibility.
     
     Args:
         **kwargs: DocumentSource fields, including:
             - related_entity_ids: List of entity ID strings (legacy name)
             - related_entities: List of entity ID strings
+            - url: Single URL string (backward compatibility - converted to urls list)
+            - urls: List of URLs
     
     Returns:
         DocumentSource object
     """
     # Extract entity fields (support both old and new names)
     related_entity_ids = kwargs.pop('related_entity_ids', kwargs.pop('related_entities', []))
+    
+    # Handle backward compatibility: convert single 'url' to 'urls' list
+    if 'url' in kwargs and 'urls' not in kwargs:
+        url = kwargs.pop('url')
+        if url:
+            kwargs['urls'] = [url]
+        else:
+            kwargs['urls'] = []
+    
+    # Ensure urls is a list if provided
+    if 'urls' not in kwargs:
+        kwargs['urls'] = []
     
     # Create the source without entities
     source = DocumentSource.objects.create(**kwargs)

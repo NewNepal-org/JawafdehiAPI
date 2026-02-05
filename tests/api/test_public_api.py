@@ -557,22 +557,26 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     # Create a source (not linked to any case via ForeignKey)
     draft_source = create_document_source_with_entities(
         title="Draft Source",
-        description="Source for draft case"
+        description="Source for draft case",
+        urls=["https://example.com/draft"]
     )
     
     in_review_source = create_document_source_with_entities(
         title="In Review Source",
-        description="Source for in-review case"
+        description="Source for in-review case",
+        urls=["https://example.com/review"]
     )
     
     published_source = create_document_source_with_entities(
         title="Published Source",
-        description="Source for published case"
+        description="Source for published case",
+        urls=["https://example.com/published"]
     )
     
     unreferenced_source = create_document_source_with_entities(
         title="Unreferenced Source",
-        description="Source not referenced by any case"
+        description="Source not referenced by any case",
+        urls=["https://example.com/unreferenced"]
     )
     
     # Create a draft case that references draft_source in evidence

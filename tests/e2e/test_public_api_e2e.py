@@ -60,7 +60,8 @@ class TestPublicAPIWorkflows:
         self.corruption_source = create_document_source_with_entities(
             title="Land Registry Document",
             description="Official land registry showing illegal transfer",
-            related_entity_ids=["entity:person/test-official"]
+            related_entity_ids=["entity:person/test-official"],
+            urls=["https://example.com/land-registry"]
         )
         
         # Add evidence to the case
@@ -430,7 +431,8 @@ class TestPublicAPIWorkflows:
         # Create a source referenced by the draft case (should not be visible)
         draft_source = create_document_source_with_entities(
             title="Draft Source - Should Not Appear",
-            description="Source for draft case"
+            description="Source for draft case",
+            urls=["https://example.com/draft"]
         )
         
         # Add evidence to draft case referencing this source
