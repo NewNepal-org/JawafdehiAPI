@@ -9,11 +9,10 @@
   align-items: center;
 }
 
-/* Ensure textareas inside flex rows grow vertically instead of being clipped/centered */
 .input-row textarea,
 .input-row .text-input.auto-resize {
-  display: block; /* textarea should be block to size correctly */
-  align-self: flex-start; /* don't vertically center within the row */
+  display: block;
+  align-self: flex-start;
   max-width: 100%;
 }
 
@@ -63,7 +62,7 @@
   border-radius: 4px;
   white-space: pre-wrap;
   word-wrap: break-word;
-  display: block; /* block-level so height updates reliably */
+  display: block;
   line-height: 1.5;
 }
 

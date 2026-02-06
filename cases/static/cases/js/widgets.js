@@ -22,7 +22,6 @@ class MultiWidgetManager {
     this.setupDragAndDrop();
     this.setupFormSubmit();
 
-    // Ensure auto-resize runs after layout/fonts settle so scrollHeight is accurate
     setTimeout(() => {
       requestAnimationFrame(() => {
         this.container
@@ -48,7 +47,6 @@ class MultiWidgetManager {
       this.setupRow(row);
     });
 
-    // Auto-resize existing textareas
     this.container
       .querySelectorAll("textarea.auto-resize")
       .forEach((textarea) => {
@@ -59,22 +57,15 @@ class MultiWidgetManager {
   setupRow(row) {
     // Setup input listeners
     row.querySelectorAll(`.${this.config.inputClass}`).forEach((input) => {
-      // Update the hidden JSON field for Django on every keystroke
       input.addEventListener("input", () => this.updateHidden());
 
       if (input.classList.contains("auto-resize")) {
-        // Recalculate on input
         input.addEventListener("input", () => this.autoResize(input));
 
-        // Also recalculate when the control receives focus or the pointer enters it
-        // so it expands while navigating around (matches behavior when editing).
         input.addEventListener("focus", () => this.autoResize(input));
         input.addEventListener("pointerenter", () => this.autoResize(input));
 
-        // FIX: Manually trigger resize once on setup so
-        // multi-line text isn't clipped immediately upon appearance.
         if (input.value) {
-          // Run in a rAF to ensure styles/layout are settled
           requestAnimationFrame(() => this.autoResize(input));
         }
       }
@@ -99,21 +90,16 @@ class MultiWidgetManager {
   autoResize(textarea) {
     if (!textarea) return;
 
-    // Hide scrollbars while measuring
     textarea.style.overflowY = "hidden";
 
-    // Temporarily clear height so scrollHeight is measured correctly
     textarea.style.height = "0px";
 
-    // Measure on next frame to ensure layout is up-to-date (fixes Chrome clipping)
     requestAnimationFrame(() => {
       const computed = window.getComputedStyle(textarea);
       const cssMinHeight = parseFloat(computed.minHeight) || 0;
 
-      // scrollHeight gives the full height of the content (including padding)
       const scrollH = textarea.scrollHeight;
 
-      // Small extra padding to avoid clipping due to rounding/borders
       const extra = 2;
 
       const finalHeight = Math.max(cssMinHeight, scrollH + extra);
@@ -134,13 +120,10 @@ class MultiWidgetManager {
     this.addBtn.parentElement.insertAdjacentElement("beforebegin", row);
     this.setupRow(row);
 
-    // After inserting into the DOM, measure and apply heights on any textareas
     requestAnimationFrame(() => {
       row.querySelectorAll("textarea.auto-resize").forEach((ta) => {
-        // If the template contains content, ensure it's sized correctly
         this.autoResize(ta);
       });
-      // keep hidden input value in sync after adding
       this.updateHidden();
     });
   }
