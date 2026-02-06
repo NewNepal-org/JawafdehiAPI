@@ -1,143 +1,154 @@
 /* Multi-widget styles */
 .multiple-input-container {
-    margin-bottom: 1rem;
+  margin-bottom: 1rem;
 }
 
 .input-row {
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+}
+
+/* Ensure textareas inside flex rows grow vertically instead of being clipped/centered */
+.input-row textarea,
+.input-row .text-input.auto-resize {
+  display: block; /* textarea should be block to size correctly */
+  align-self: flex-start; /* don't vertically center within the row */
+  max-width: 100%;
 }
 
 .input-row.timeline-row,
 .input-row.evidence-row {
-    margin-bottom: 16px;
-    padding: 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    position: relative;
-    display: block;
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  position: relative;
+  display: block;
 }
 
 .drag-handle {
-    cursor: move;
-    padding: 4px 8px;
-    margin-right: 4px;
+  cursor: move;
+  padding: 4px 8px;
+  margin-right: 4px;
 }
 
 .timeline-row .drag-handle,
 .evidence-row .drag-handle {
-    position: absolute;
-    left: 8px;
-    top: 8px;
+  position: absolute;
+  left: 8px;
+  top: 8px;
 }
 
 .input-row.dragging {
-    opacity: 0.5;
+  opacity: 0.5;
 }
 
 /* Input styles */
 .entity-input {
-    width: 300px;
-    margin-right: 8px;
+  width: 300px;
+  margin-right: 8px;
 }
 
 .text-input.auto-resize {
-    width: 500px;
-    margin-right: 8px;
-    min-height: 38px;
-    resize: none;
-    overflow: hidden;
-    font-family: inherit;
-    padding: 6px 12px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+  box-sizing: border-box;
+  width: 500px;
+  margin-right: 8px;
+  min-height: 60px;
+  resize: none;
+  overflow: hidden;
+  font-family: inherit;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  display: block; /* block-level so height updates reliably */
+  line-height: 1.5;
 }
 
 /* Timeline specific styles */
 .timeline-field-group {
-    margin-bottom: 8px;
-    margin-left: 32px;
+  margin-bottom: 8px;
+  margin-left: 32px;
 }
 
 .timeline-field-group label {
-    display: block;
-    margin-bottom: 4px;
-    font-weight: 500;
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 500;
 }
 
 .timeline-field-group input[type="date"] {
-    width: 200px;
+  width: 200px;
 }
 
 .timeline-field-group textarea {
-    width: calc(100% - 32px);
-    min-height: 38px;
-    resize: none;
-    overflow: hidden;
-    padding: 6px 12px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+  width: calc(100% - 32px);
+  min-height: 38px;
+  resize: none;
+  overflow: hidden;
+  padding: 6px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .timeline-field-group textarea.description {
-    min-height: 60px;
+  min-height: 60px;
 }
 
 /* Evidence specific styles */
 .evidence-field-group {
-    margin-bottom: 8px;
-    margin-left: 32px;
+  margin-bottom: 8px;
+  margin-left: 32px;
 }
 
 .evidence-field-group label {
-    display: block;
-    margin-bottom: 4px;
-    font-weight: 500;
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 500;
 }
 
 .evidence-source-wrapper {
-    display: flex;
-    gap: 8px;
-    align-items: center;
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .evidence-source-wrapper select {
-    flex: 1;
+  flex: 1;
 }
 
 .evidence-source-wrapper .view-source-btn {
-    padding: 2px 8px;
-    white-space: nowrap;
+  padding: 2px 8px;
+  white-space: nowrap;
 }
 
 .evidence-field-group .create-source-link {
-    margin-top: 4px;
-    font-size: 12px;
+  margin-top: 4px;
+  font-size: 12px;
 }
 
 .evidence-field-group textarea {
-    width: calc(100% - 32px);
-    min-height: 60px;
-    resize: vertical;
+  width: calc(100% - 32px);
+  min-height: 60px;
+  resize: vertical;
 }
 
 /* Button styles */
 .remove-input {
-    padding: 2px 8px;
+  padding: 2px 8px;
 }
 
 .timeline-row .remove-input,
 .evidence-row .remove-input {
-    position: absolute;
-    top: 8px;
-    right: 8px;
+  position: absolute;
+  top: 8px;
+  right: 8px;
 }
 
 .add-widget-btn {
-    padding: 2px 8px;
+  padding: 2px 8px;
 }
