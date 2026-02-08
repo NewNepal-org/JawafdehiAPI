@@ -1,6 +1,15 @@
-# Jawafdehi
+# Jawafdehi API
 
 A Django-based public accountability platform for tracking allegations of corruption and misconduct by public entities in Nepal.
+
+## About the Meta Repository
+
+Contributors to this repository should be aware of the [Jawafdehi meta-repository](https://github.com/NewNepal-org/jawafdehi-meta). The meta repo provides documentation, specs, and other shared resources across the Jawafdehi product family. 
+
+**For Jawafdehi team members and interns**: Working from the meta repo setup is strongly encouraged, as it provides rich context for AI-powered development tools (Cursor, Kiro, GitHub Copilot, etc.) and makes cross-service coordination easier.
+
+**For open source contributors**: You can contribute directly to this repository by cloning it and submitting a PR. The meta repo is optional for external contributors.
+
 
 ## Setup Instructions
 
@@ -14,7 +23,7 @@ A Django-based public accountability platform for tracking allegations of corrup
 
 1. **Clone the repository and navigate to the project**
    ```bash
-   cd services/JawafdehiAPI
+   cd services/jawafdehi-api
    ```
 
 2. **Install dependencies with Poetry**

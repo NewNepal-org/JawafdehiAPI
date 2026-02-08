@@ -54,7 +54,7 @@ Enhanced `scrape_case` management command with:
 ## File Structure
 
 ```
-services/JawafdehiAPI/
+services/jawafdehi-api/
 ├── cases/
 │   ├── services/
 │   │   ├── __init__.py              # Exports CaseScraper, CaseImporter
@@ -548,11 +548,11 @@ python manage.py scrape_case case.md --create-db-entry
 ## References
 
 ### Code Files
-- Command: `services/JawafdehiAPI/cases/management/commands/scrape_case.py`
-- Scraper Service: `services/JawafdehiAPI/cases/services/case_scraper.py`
-- Importer Service: `services/JawafdehiAPI/cases/services/case_importer.py`
-- Django Models: `services/JawafdehiAPI/cases/models.py`
-- Field Definitions: `services/JawafdehiAPI/cases/fields.py`
+- Command: `services/jawafdehi-api/cases/management/commands/scrape_case.py`
+- Scraper Service: `services/jawafdehi-api/cases/services/case_scraper.py`
+- Importer Service: `services/jawafdehi-api/cases/services/case_importer.py`
+- Django Models: `services/jawafdehi-api/cases/models.py`
+- Field Definitions: `services/jawafdehi-api/cases/fields.py`
 
 ### Related Documentation
 - Django Models: See `.kiro/specs/accountability-platform-core/design.md`

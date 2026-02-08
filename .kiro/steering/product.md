@@ -28,7 +28,7 @@ Django-based public accountability platform for tracking allegations of corrupti
 ## Project Structure
 
 ```
-services/JawafdehiAPI/
+services/jawafdehi-api/
 ├── config/                # Django project settings
 │   ├── settings.py       # Main settings
 │   ├── urls.py           # URL routing

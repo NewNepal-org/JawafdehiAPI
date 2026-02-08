@@ -58,7 +58,7 @@ related_cases = Case.objects.filter(
 
 ### Endpoint Location
 
-- **File**: `services/JawafdehiAPI/cases/api_views.py`
+- **File**: `services/jawafdehi-api/cases/api_views.py`
 - **View**: `EntityDetailView` or similar entity detail view
 - **Method**: `GET /api/entities/{id}/`
 
@@ -163,9 +163,9 @@ The Jawafdehi frontend will need updates to:
 
 ### Files Changed
 
-- `services/JawafdehiAPI/cases/serializers.py` - Added case relationship fields
-- `services/JawafdehiAPI/tests/api/test_entity_cases_relationship.py` - New test file with 22 tests
-- `services/JawafdehiAPI/docs/design-entity-cases-relationship.md` - This design doc
+- `services/jawafdehi-api/cases/serializers.py` - Added case relationship fields
+- `services/jawafdehi-api/tests/api/test_entity_cases_relationship.py` - New test file with 22 tests
+- `services/jawafdehi-api/docs/design-entity-cases-relationship.md` - This design doc
 
 ### No Database Changes Required
 
