@@ -9,13 +9,6 @@
   align-items: center;
 }
 
-.input-row textarea,
-.input-row .text-input.auto-resize {
-  display: block;
-  align-self: flex-start;
-  max-width: 100%;
-}
-
 .input-row.timeline-row,
 .input-row.evidence-row {
   margin-bottom: 16px;
@@ -50,20 +43,17 @@
 }
 
 .text-input.auto-resize {
-  box-sizing: border-box;
   width: 500px;
   margin-right: 8px;
-  min-height: 60px;
+  min-height: 38px;
   resize: none;
   overflow: hidden;
   font-family: inherit;
-  padding: 8px 12px;
+  padding: 6px 12px;
   border: 1px solid #ccc;
   border-radius: 4px;
   white-space: pre-wrap;
   word-wrap: break-word;
-  display: block;
-  line-height: 1.5;
 }
 
 /* Timeline specific styles */

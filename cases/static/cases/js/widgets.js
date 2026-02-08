@@ -22,6 +22,13 @@ class MultiWidgetManager {
     this.setupDragAndDrop();
     this.setupFormSubmit();
 
+    /**
+     * We use setTimeout & requestAnimationFrame to ensure the browser has finished
+     * the initial layout/paint and tab transitions. If we measure scrollHeight
+     * synchronously while the tab is hidden or rendering, it returns an
+     * incorrect value (often only 1 line height), causing text clipping.
+     * This delay ensures the DOM is ready for accurate height calculation.
+     */
     setTimeout(() => {
       requestAnimationFrame(() => {
         this.container
@@ -58,13 +65,14 @@ class MultiWidgetManager {
     // Setup input listeners
     row.querySelectorAll(`.${this.config.inputClass}`).forEach((input) => {
       input.addEventListener("input", () => this.updateHidden());
-
       if (input.classList.contains("auto-resize")) {
         input.addEventListener("input", () => this.autoResize(input));
 
+        // Force height update when user interacts, ensuring no text is clipped on entry
         input.addEventListener("focus", () => this.autoResize(input));
         input.addEventListener("pointerenter", () => this.autoResize(input));
 
+        // Immediately size the box if it contains pre-loaded data or pasted text
         if (input.value) {
           requestAnimationFrame(() => this.autoResize(input));
         }
@@ -91,15 +99,17 @@ class MultiWidgetManager {
     if (!textarea) return;
 
     textarea.style.overflowY = "hidden";
-
+    // Resetting to 0px forces an aggressive recalculation of scrollHeight,
+    // preventing the box from getting "stuck" at larger sizes.
     textarea.style.height = "0px";
 
     requestAnimationFrame(() => {
+      // Dynamically read min-height from CSS (widgets.css) to stay UI-consistent
       const computed = window.getComputedStyle(textarea);
       const cssMinHeight = parseFloat(computed.minHeight) || 0;
 
       const scrollH = textarea.scrollHeight;
-
+      // Small buffer to prevent rounding errors from clipping the bottom border/line
       const extra = 2;
 
       const finalHeight = Math.max(cssMinHeight, scrollH + extra);
