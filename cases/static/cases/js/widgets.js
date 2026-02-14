@@ -64,7 +64,8 @@ class MultiWidgetManager {
                 // Resize on focus and initial load
                 input.addEventListener('focus', () => this.autoResize(input));
                 if (input.value) {
-                requestAnimationFrame(() => this.autoResize(input));
+                    // Delaying calculation to account for slow tab transitions
+                    setTimeout(() => this.autoResize(input), 2000);
                 }
                 input.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') e.preventDefault();
@@ -101,9 +102,9 @@ class MultiWidgetManager {
         this.addBtn.parentElement.insertAdjacentElement('beforebegin', row);
         this.setupRow(row);
         // Size the new row immediately
-        requestAnimationFrame(() => {
+        setTimeout(() => {
             row.querySelectorAll('textarea.auto-resize').forEach(ta => this.autoResize(ta));
-        });
+        }, 2000);
     }
     
     updateHidden() {
