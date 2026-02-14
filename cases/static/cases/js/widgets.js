@@ -101,7 +101,7 @@ class MultiWidgetManager {
         
         this.addBtn.parentElement.insertAdjacentElement('beforebegin', row);
         this.setupRow(row);
-        // Size the new row immediately
+        // Wait 2s to ensure CSS transitions and tab rendering are complete before calculating height
         setTimeout(() => {
             row.querySelectorAll('textarea.auto-resize').forEach(ta => this.autoResize(ta));
         }, 2000);
