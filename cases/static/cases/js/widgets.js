@@ -21,19 +21,6 @@ class MultiWidgetManager {
         this.setupExistingRows();
         this.setupDragAndDrop();
         this.setupFormSubmit();
-        // Watch for the container becoming visible
-        if (window.ResizeObserver) {
-            const ro = new ResizeObserver((entries) => {
-                for (const entry of entries) {
-                    if (entry.contentRect && entry.contentRect.height > 0) {
-                        this.container.querySelectorAll('textarea.auto-resize').forEach(ta => this.autoResize(ta));
-                        ro.disconnect();
-                        break;
-                    }
-                }
-            });
-            ro.observe(this.container);
-        }
     }
     
     setupAddButton() {
@@ -61,12 +48,6 @@ class MultiWidgetManager {
             
             if (input.classList.contains('auto-resize')) {
                 input.addEventListener('input', () => this.autoResize(input));
-                // Resize on focus and initial load
-                input.addEventListener('focus', () => this.autoResize(input));
-                if (input.value) {
-                    // Delaying calculation to account for slow tab transitions
-                    setTimeout(() => this.autoResize(input), 2000);
-                }
                 input.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') e.preventDefault();
                 });
@@ -101,10 +82,6 @@ class MultiWidgetManager {
         
         this.addBtn.parentElement.insertAdjacentElement('beforebegin', row);
         this.setupRow(row);
-        // Wait 2s to ensure CSS transitions and tab rendering are complete before calculating height
-        setTimeout(() => {
-            row.querySelectorAll('textarea.auto-resize').forEach(ta => this.autoResize(ta));
-        }, 2000);
     }
     
     updateHidden() {
@@ -113,6 +90,10 @@ class MultiWidgetManager {
     }
     
     autoResize(textarea) {
+        if(textarea.scrollHeight === 0){
+            // Wait for DOM/CSS initialization before calculating height.
+            return setTimeout(() => this.autoResize(textarea), 200);
+        }
         textarea.style.height = 'auto';
         textarea.style.height = textarea.scrollHeight + 'px';
     }
