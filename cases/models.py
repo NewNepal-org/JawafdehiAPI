@@ -466,11 +466,10 @@ class DocumentSource(models.Model):
         blank=True,
         help_text="Source description"
     )
-    url = models.URLField(
-        max_length=2000,
-        null=True,
+    url = models.JSONField(
+        default=list,
         blank=True,
-        help_text="Optional URL to the source"
+        help_text="List of URLs for this source"
     )
 
     # Entity relationships

@@ -153,3 +153,47 @@ class MultiEvidenceField(Field):
             return json.loads(value) if value else []
         except:
             return []
+
+
+class MultiURLWidget(BaseMultiWidget):
+    template_name = 'cases/widgets/multi_url_widget.html'
+    
+    def __init__(self, attrs=None, button_label=None):
+        super().__init__(attrs)
+        self.button_label = button_label or 'Add URL'
+    
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        context['button_label'] = self.button_label
+        return context
+
+
+class MultiURLField(Field):
+    def __init__(self, *args, button_label='Add URL', **kwargs):
+        self.button_label = button_label
+        super().__init__(*args, **kwargs)
+        self.widget = MultiURLWidget(button_label=button_label)
+    
+    def to_python(self, value):
+        if value in self.empty_values:
+            return []
+        if isinstance(value, list):
+            return value
+        try:
+            return json.loads(value) if value else []
+        except:
+            return []
+    
+    def validate(self, value):
+        super().validate(value)
+        # Validate each URL
+        if value:
+            from django.core.validators import URLValidator
+            from django.core.exceptions import ValidationError as DjangoValidationError
+            validator = URLValidator()
+            for url in value:
+                if url and url.strip():
+                    try:
+                        validator(url.strip())
+                    except DjangoValidationError:
+                        raise ValidationError(f"Invalid URL: {url}")
