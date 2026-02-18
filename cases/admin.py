@@ -11,6 +11,7 @@ from .widgets import (
     MultiTextField,
     MultiTimelineField,
     MultiEvidenceField,
+    MultiURLField,
 )
 from .rules.predicates import (
     is_admin,
@@ -464,12 +465,12 @@ class DocumentSourceAdminForm(forms.ModelForm):
     Custom form for DocumentSource admin with custom widgets.
     """
 
-    # Override url field to set assume_scheme and silence Django 6.0 warning
-    url = forms.URLField(
+    # Override url field to use MultiURLField widget
+    url = MultiURLField(
         required=False,
-        max_length=2000,
-        assume_scheme='https',
-        help_text="Optional URL to the source"
+        button_label="Add URL",
+        label="URLs",
+        help_text="URLs to the source (you can add multiple)"
     )
 
     class Meta:
