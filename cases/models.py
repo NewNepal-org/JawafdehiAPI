@@ -153,6 +153,18 @@ class CaseState(models.TextChoices):
     CLOSED = "CLOSED", "Closed"
 
 
+class SourceType(models.TextChoices):
+    """Enum for document source types."""
+    OFFICIAL_GOVERNMENT = "OFFICIAL_GOVERNMENT", "Official (Government)"
+    MEDIA_NEWS = "MEDIA_NEWS", "Media/News"
+    SOCIAL_MEDIA = "SOCIAL_MEDIA", "Social Media"
+    INTERNAL_DOCUMENT = "INTERNAL_DOCUMENT", "Internal Document"
+    ACADEMIC_RESEARCH = "ACADEMIC_RESEARCH", "Academic/Research"
+    LEGAL_DOCUMENT = "LEGAL_DOCUMENT", "Legal Document"
+    WHISTLEBLOWER = "WHISTLEBLOWER", "Whistleblower"
+    OTHER = "OTHER", "Other"
+
+
 class Case(models.Model):
     """
     Core model representing a case of alleged misconduct.
@@ -465,6 +477,12 @@ class DocumentSource(models.Model):
     description = models.TextField(
         blank=True,
         help_text="Source description"
+    )
+    source_type = models.CharField(
+        max_length=50,
+        choices=SourceType.choices,
+        default=SourceType.OTHER,
+        help_text="Type of source"
     )
     url = models.JSONField(
         default=list,
