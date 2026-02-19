@@ -6,7 +6,7 @@ from django.db import models
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 from tinymce.widgets import TinyMCE
-from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType, Feedback
+from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType, SourceType, Feedback
 from .widgets import (
     MultiTextField,
     MultiTimelineField,
@@ -524,11 +524,13 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     list_display = [
         'source_id',
         'title',
+        'source_type',
         'deletion_status',
         'created_at',
     ]
 
     list_filter = [
+        'source_type',
         'is_deleted',
         'created_at',
     ]
@@ -551,6 +553,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
                 'source_id',
                 'title',
                 'description',
+                'source_type',
                 'url',
                 'related_entities',
                 'contributors',
