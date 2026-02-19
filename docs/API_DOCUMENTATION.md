@@ -184,14 +184,32 @@ All responses are in JSON format with the following structure:
   "source_id": "source:20240115:abc123",
   "title": "Source Title",
   "description": "Source description",
-  "url": "https://example.com/document.pdf",
-  "related_entity_ids": [
-    "entity:person/john-doe"
+  "source_type": "MEDIA_NEWS",
+  "url": [
+    "https://example.com/document.pdf",
+    "https://example.com/backup-link.pdf"
+  ],
+  "related_entities": [
+    {
+      "id": 1,
+      "nes_id": "entity:person/john-doe",
+      "display_name": "John Doe"
+    }
   ],
   "created_at": "2024-01-15T10:00:00Z",
   "updated_at": "2024-01-15T10:00:00Z"
 }
 ```
+
+**Source Type Values:**
+- `OFFICIAL_GOVERNMENT` - Official (Government)
+- `MEDIA_NEWS` - Media/News
+- `SOCIAL_MEDIA` - Social Media
+- `INTERNAL_DOCUMENT` - Internal Document
+- `ACADEMIC_RESEARCH` - Academic/Research
+- `LEGAL_DOCUMENT` - Legal Document
+- `WHISTLEBLOWER` - Whistleblower
+- `OTHER` - Other
 
 ## Entity ID Format
 

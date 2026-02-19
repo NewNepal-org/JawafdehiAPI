@@ -3,27 +3,61 @@
 from django.db import migrations, models
 
 
-def convert_url_to_list(apps, schema_editor):
-    """Convert existing single URL strings to lists."""
+def migrate_urls_to_list(apps, schema_editor):
+    """
+    Convert existing single URL strings to JSON lists.
+    This runs BEFORE the field type change to ensure data compatibility.
+    """
     DocumentSource = apps.get_model('cases', 'DocumentSource')
-    for source in DocumentSource.objects.all():
-        if source.url and isinstance(source.url, str):
-            # Convert single URL string to list
-            source.url = [source.url] if source.url.strip() else []
-            source.save(update_fields=['url'])
-        elif source.url is None:
-            # Convert None to empty list
-            source.url = []
-            source.save(update_fields=['url'])
+    db_alias = schema_editor.connection.alias
+    
+    for source in DocumentSource.objects.using(db_alias).all():
+        # Get the raw value from the database
+        url_value = source.url
+        
+        # Handle different cases
+        if url_value is None or url_value == '':
+            # Convert None or empty string to empty list JSON
+            source.url = '[]'
+        elif isinstance(url_value, str):
+            # Check if it's already JSON (shouldn't be, but just in case)
+            if url_value.startswith('['):
+                continue  # Already in list format
+            else:
+                # Convert single URL string to JSON list
+                # Escape quotes and wrap in JSON array
+                import json
+                source.url = json.dumps([url_value])
+        
+        source.save(update_fields=['url'])
 
 
-def reverse_url_to_string(apps, schema_editor):
-    """Convert URL lists back to single strings (for rollback)."""
+def reverse_urls_to_string(apps, schema_editor):
+    """
+    Convert URL lists back to single strings (for rollback).
+    Takes the first URL from the list, or sets to None if empty.
+    """
     DocumentSource = apps.get_model('cases', 'DocumentSource')
-    for source in DocumentSource.objects.all():
-        if source.url and isinstance(source.url, list):
-            # Take first URL from list, or None if empty
-            source.url = source.url[0] if source.url else None
+    db_alias = schema_editor.connection.alias
+    
+    for source in DocumentSource.objects.using(db_alias).all():
+        import json
+        
+        try:
+            # Parse the JSON list
+            if isinstance(source.url, str):
+                url_list = json.loads(source.url)
+            elif isinstance(source.url, list):
+                url_list = source.url
+            else:
+                url_list = []
+            
+            # Take first URL or set to None
+            source.url = url_list[0] if url_list else None
+            source.save(update_fields=['url'])
+        except (json.JSONDecodeError, TypeError, IndexError):
+            # If parsing fails, set to None
+            source.url = None
             source.save(update_fields=['url'])
 
 
@@ -34,10 +68,13 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Step 1: Convert existing string URLs to JSON format (while still URLField)
+        migrations.RunPython(migrate_urls_to_list, reverse_urls_to_string),
+        
+        # Step 2: Change field type to JSONField (data is already in JSON format)
         migrations.AlterField(
             model_name='documentsource',
             name='url',
             field=models.JSONField(blank=True, default=list, help_text='List of URLs for this source'),
         ),
-        migrations.RunPython(convert_url_to_list, reverse_url_to_string),
     ]
