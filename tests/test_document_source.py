@@ -7,24 +7,23 @@ Validates: Requirements 4.2
 """
 
 import pytest
-
 from django.core.exceptions import ValidationError
 from hypothesis import given, settings
 
 from cases.models import DocumentSource
 from tests.conftest import create_document_source_with_entities
 from tests.strategies import (
-    valid_source_data,
-    source_data_missing_title,
     source_data_missing_description,
-    source_data_with_empty_title,
+    source_data_missing_title,
     source_data_with_empty_description,
+    source_data_with_empty_title,
+    valid_source_data,
 )
-
 
 # ============================================================================
 # Property 11: Source validation enforces required fields
 # ============================================================================
+
 
 @pytest.mark.django_db
 @settings(max_examples=100)
@@ -32,14 +31,14 @@ from tests.strategies import (
 def test_document_source_accepts_valid_data(source_data):
     """
     Feature: accountability-platform-core, Property 11: Source validation enforces required fields
-    
+
     For any DocumentSource with all required fields (title, description),
     validation should pass without raising ValidationError.
     Validates: Requirements 4.2
     """
     source = create_document_source_with_entities(**source_data)
     source.save()
-    
+
     # Should not raise ValidationError
     try:
         source.validate()
@@ -53,7 +52,7 @@ def test_document_source_accepts_valid_data(source_data):
 def test_document_source_rejects_missing_title(source_data):
     """
     Feature: accountability-platform-core, Property 11: Source validation enforces required fields
-    
+
     For any DocumentSource creation attempt missing title,
     the Platform should reject the operation.
     Validates: Requirements 4.2
@@ -63,11 +62,12 @@ def test_document_source_rejects_missing_title(source_data):
         source = create_document_source_with_entities(**source_data)
         source.save()
         source.validate()
-    
+
     # Verify error mentions title
     error_message = str(exc_info.value).lower()
-    assert "title" in error_message, \
-        f"Validation error should mention 'title', but got: {exc_info.value}"
+    assert (
+        "title" in error_message
+    ), f"Validation error should mention 'title', but got: {exc_info.value}"
 
 
 @pytest.mark.django_db
@@ -75,16 +75,17 @@ def test_document_source_rejects_missing_title(source_data):
 @given(source_data=source_data_missing_description())
 def test_document_source_accepts_missing_description(source_data):
     """
-    Feature: accountability-platform-core, Property 11: Source validation enforces required fields
-    
-    For any DocumentSource creation attempt missing description,
-    the Platform should accept it (description is optional).
+    Property-based test: DocumentSource accepts missing/None description.
+
+    For any valid combination of other fields, omitting description entirely
+    should pass validation (description is optional).
+    Feature: accountability-platform-core, Property 11
     Validates: Requirements 4.2
     """
     # Should not raise ValidationError when missing description
     source = create_document_source_with_entities(**source_data)
     source.save()
-    
+
     try:
         source.validate()
     except ValidationError as e:
@@ -97,7 +98,7 @@ def test_document_source_accepts_missing_description(source_data):
 def test_document_source_rejects_empty_title(source_data):
     """
     Feature: accountability-platform-core, Property 11: Source validation enforces required fields
-    
+
     For any DocumentSource with empty title (whitespace only),
     the Platform should reject the operation.
     Validates: Requirements 4.2
@@ -114,7 +115,7 @@ def test_document_source_rejects_empty_title(source_data):
 def test_document_source_accepts_empty_description(source_data):
     """
     Feature: accountability-platform-core, Property 11: Source validation enforces required fields
-    
+
     For any DocumentSource with empty description (whitespace only),
     the Platform should accept it (description is optional).
     Validates: Requirements 4.2
@@ -122,7 +123,7 @@ def test_document_source_accepts_empty_description(source_data):
     # Should not raise ValidationError when description is empty
     source = create_document_source_with_entities(**source_data)
     source.save()
-    
+
     try:
         source.validate()
     except ValidationError as e:
@@ -133,6 +134,7 @@ def test_document_source_accepts_empty_description(source_data):
 # Edge Cases
 # ============================================================================
 
+
 @pytest.mark.django_db
 def test_document_source_requires_title():
     """
@@ -141,29 +143,25 @@ def test_document_source_requires_title():
     """
     with pytest.raises(ValidationError):
         source = create_document_source_with_entities(
-            description="Valid description",
-            related_entity_ids=[]
+            description="Valid description", related_entity_ids=[]
         )
         source.save()
 
 
-@pytest.mark.django_db
-def test_document_source_accepts_missing_description():
-    """
-    Edge case: DocumentSource can be created without description (description is optional).
-    Validates: Requirements 4.2
-    """
-    source = create_document_source_with_entities(
-        title="Valid Title",
-        related_entity_ids=[]
-    )
-    source.save()
-    
-    # Should not raise ValidationError without description
-    try:
-        source.validate()
-    except ValidationError as e:
-        pytest.fail(f"DocumentSource should allow missing description, but raised: {e}")
+# @pytest.mark.django_db
+# def test_document_source_accepts_missing_description():
+#     """
+#     Edge case: DocumentSource can be created without description (description is optional).
+#     Validates: Requirements 4.2
+#     """
+#     source = create_document_source_with_entities(title="Valid Title", related_entity_ids=[])
+#     source.save()
+
+#     # Should not raise ValidationError without description
+#     try:
+#         source.validate()
+#     except ValidationError as e:
+#         pytest.fail(f"DocumentSource should allow missing description, but raised: {e}")
 
 
 @pytest.mark.django_db
@@ -173,12 +171,10 @@ def test_document_source_url_is_optional():
     Validates: Requirements 4.1, 4.2
     """
     source = create_document_source_with_entities(
-        title="Valid Title",
-        description="Valid description",
-        related_entity_ids=[]
+        title="Valid Title", description="Valid description", related_entity_ids=[]
     )
     source.save()
-    
+
     # Should not raise ValidationError without URL
     try:
         source.validate()
@@ -193,24 +189,22 @@ def test_document_source_soft_deletion():
     Validates: Design document soft deletion requirement
     """
     source = create_document_source_with_entities(
-        title="Valid Title",
-        description="Valid description",
-        related_entity_ids=[]
+        title="Valid Title", description="Valid description", related_entity_ids=[]
     )
     source.save()
-    
+
     # Soft delete
     source.is_deleted = True
     source.save()
-    
+
     # Should still exist in database
-    assert DocumentSource.objects.filter(id=source.id).exists(), \
-        "Soft-deleted source should still exist in database"
-    
+    assert DocumentSource.objects.filter(
+        id=source.id
+    ).exists(), "Soft-deleted source should still exist in database"
+
     # Verify is_deleted flag is set
     source.refresh_from_db()
-    assert source.is_deleted is True, \
-        "is_deleted flag should be True after soft deletion"
+    assert source.is_deleted is True, "is_deleted flag should be True after soft deletion"
 
 
 @pytest.mark.django_db
@@ -220,27 +214,23 @@ def test_document_source_has_contributors_field():
     Validates: Design document - sources have contributors for access control
     """
     from django.contrib.auth import get_user_model
-    
+
     User = get_user_model()
-    
+
     # Create a user
-    user = User.objects.create_user(username='testuser', password='test123')
-    
+    user = User.objects.create_user(username="testuser", password="test123")
+
     # Create a source
     source = create_document_source_with_entities(
-        title="Valid Title",
-        description="Valid description",
-        related_entity_ids=[]
+        title="Valid Title", description="Valid description", related_entity_ids=[]
     )
     source.save()
-    
+
     # Add contributor
     source.contributors.add(user)
-    
+
     # Verify contributor is assigned
-    assert user in source.contributors.all(), \
-        "User should be in source contributors"
-    
+    assert user in source.contributors.all(), "User should be in source contributors"
+
     # Verify reverse relationship
-    assert source in user.assigned_sources.all(), \
-        "Source should be in user's assigned_sources"
+    assert source in user.assigned_sources.all(), "Source should be in user's assigned_sources"

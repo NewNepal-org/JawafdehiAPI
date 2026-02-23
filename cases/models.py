@@ -4,18 +4,18 @@ Models for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
-from django.db import models
-from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
-from django.utils import timezone
 import uuid
 
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils import timezone
+
 from .fields import (
+    EvidenceListField,
     TextListField,
     TimelineListField,
-    EvidenceListField,
 )
-
 
 User = get_user_model()
 
@@ -38,14 +38,14 @@ class JawafEntity(models.Model):
         blank=True,
         unique=True,
         db_index=True,
-        help_text="Entity ID from Nepal Entity Service (NES) database (unique)"
+        help_text="Entity ID from Nepal Entity Service (NES) database (unique)",
     )
 
     display_name = models.CharField(
         max_length=300,
         null=True,
         blank=True,
-        help_text="Display name for the entity (optional if nes_id is present, required otherwise)"
+        help_text="Display name for the entity (optional if nes_id is present, required otherwise)",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -54,11 +54,11 @@ class JawafEntity(models.Model):
     class Meta:
         verbose_name = "Jawaf Entity"
         verbose_name_plural = "Jawaf Entities"
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
         constraints = [
             models.CheckConstraint(
                 condition=~models.Q(nes_id__isnull=True, display_name__isnull=True),
-                name='jawafentity_must_have_nes_id_or_display_name'
+                name="jawafentity_must_have_nes_id_or_display_name",
             )
         ]
 
@@ -82,15 +82,16 @@ class JawafEntity(models.Model):
         has_display_name = self.display_name and self.display_name.strip()
 
         if not has_nes_id and not has_display_name:
-            errors['__all__'] = "Entity must have either nes_id or display_name"
+            errors["__all__"] = "Entity must have either nes_id or display_name"
 
         # Validate nes_id format if provided
         if has_nes_id:
             from nes.core.identifiers.validators import validate_entity_id
+
             try:
                 validate_entity_id(self.nes_id)
             except ValueError as e:
-                errors['nes_id'] = str(e)
+                errors["nes_id"] = str(e)
 
         if errors:
             raise ValidationError(errors)
@@ -141,12 +142,14 @@ class JawafEntity(models.Model):
 
 class CaseType(models.TextChoices):
     """Enum for case types."""
+
     CORRUPTION = "CORRUPTION", "Corruption"
     PROMISES = "PROMISES", "Broken Promises"
 
 
 class CaseState(models.TextChoices):
     """Enum for case states."""
+
     DRAFT = "DRAFT", "Draft"
     IN_REVIEW = "IN_REVIEW", "In Review"
     PUBLISHED = "PUBLISHED", "Published"
@@ -165,112 +168,74 @@ class Case(models.Model):
     case_id = models.CharField(
         max_length=100,
         db_index=True,
-        help_text="Unique identifier shared across versions of the same case"
+        help_text="Unique identifier shared across versions of the same case",
     )
     version = models.IntegerField(
-        default=1,
-        db_index=True,
-        help_text="Version number, increments with each published update"
+        default=1, db_index=True, help_text="Version number, increments with each published update"
     )
 
     # Core fields
     case_type = models.CharField(
         max_length=20,
         choices=CaseType.choices,
-        help_text="Type of case (corruption, broken promises, etc.)"
+        help_text="Type of case (corruption, broken promises, etc.)",
     )
     state = models.CharField(
         max_length=20,
         choices=CaseState.choices,
         default=CaseState.DRAFT,
         db_index=True,
-        help_text="Current state in the workflow"
+        help_text="Current state in the workflow",
     )
-    title = models.CharField(
-        max_length=200,
-        help_text="Case title"
-    )
+    title = models.CharField(max_length=200, help_text="Case title")
     short_description = models.TextField(
-        blank=True,
-        help_text="Short description/summary of the case"
+        blank=True, help_text="Short description/summary of the case"
     )
     thumbnail_url = models.URLField(
-        blank=True,
-        max_length=500,
-        help_text="URL to a small thumbnail picture for the case"
+        blank=True, max_length=500, help_text="URL to a small thumbnail picture for the case"
     )
     banner_url = models.URLField(
-        blank=True,
-        max_length=500,
-        help_text="URL to a large banner image for the case"
+        blank=True, max_length=500, help_text="URL to a large banner image for the case"
     )
     # Date fields
     case_start_date = models.DateField(
-        null=True,
-        blank=True,
-        help_text="When the alleged incident began"
+        null=True, blank=True, help_text="When the alleged incident began"
     )
     case_end_date = models.DateField(
-        null=True,
-        blank=True,
-        help_text="When the alleged incident ended"
+        null=True, blank=True, help_text="When the alleged incident ended"
     )
 
     # Entity relationships (many-to-many)
     alleged_entities = models.ManyToManyField(
-        JawafEntity,
-        blank=True,
-        related_name="cases_as_alleged",
-        help_text="Entities being accused"
+        JawafEntity, blank=True, related_name="cases_as_alleged", help_text="Entities being accused"
     )
     related_entities = models.ManyToManyField(
-        JawafEntity,
-        blank=True,
-        related_name="cases_as_related",
-        help_text="Related entities"
+        JawafEntity, blank=True, related_name="cases_as_related", help_text="Related entities"
     )
     locations = models.ManyToManyField(
-        JawafEntity,
-        blank=True,
-        related_name="cases_as_location",
-        help_text="Location entities"
+        JawafEntity, blank=True, related_name="cases_as_location", help_text="Location entities"
     )
 
     # Content fields
-    tags = TextListField(
-        blank=True,
-        help_text="List of tags for categorization"
-    )
-    description = models.TextField(
-        blank=True,
-        help_text="Rich text description of the case"
-    )
-    key_allegations = TextListField(
-        blank=True,
-        help_text="List of key allegation statements"
-    )
+    tags = TextListField(blank=True, help_text="List of tags for categorization")
+    description = models.TextField(blank=True, help_text="Rich text description of the case")
+    key_allegations = TextListField(blank=True, help_text="List of key allegation statements")
 
     # Structured data fields
-    timeline = TimelineListField(
-        help_text="List of timeline entries"
-    )
-    evidence = EvidenceListField(
-        help_text="List of evidence entries with source references"
-    )
+    timeline = TimelineListField(help_text="List of timeline entries")
+    evidence = EvidenceListField(help_text="List of evidence entries with source references")
 
     # Relationships
     contributors = models.ManyToManyField(
         User,
         blank=True,
         related_name="assigned_cases",
-        help_text="Contributors assigned to this case"
+        help_text="Contributors assigned to this case",
     )
 
     # Metadata
     versionInfo = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="Version metadata tracking changes"
+        default=dict, blank=True, help_text="Version metadata tracking changes"
     )
 
     # Timestamps
@@ -279,10 +244,10 @@ class Case(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=['case_id', 'state', 'version']),
-            models.Index(fields=['state', 'version']),
+            models.Index(fields=["case_id", "state", "version"]),
+            models.Index(fields=["state", "version"]),
         ]
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.case_id} v{self.version} - {self.title} ({self.state})"
@@ -310,19 +275,23 @@ class Case(models.Model):
 
         # Always require title
         if not self.title or not self.title.strip():
-            errors['title'] = "Title is required"
+            errors["title"] = "Title is required"
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
             # Require at least one alleged entity for published cases
             if self.alleged_entities.count() == 0:
-                errors['alleged_entities'] = "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+                errors["alleged_entities"] = (
+                    "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+                )
 
             if not self.key_allegations or len(self.key_allegations) == 0:
-                errors['key_allegations'] = "At least one key allegation is required for IN_REVIEW or PUBLISHED state"
+                errors["key_allegations"] = (
+                    "At least one key allegation is required for IN_REVIEW or PUBLISHED state"
+                )
 
             if not self.description or not self.description.strip():
-                errors['description'] = "Description is required for IN_REVIEW or PUBLISHED state"
+                errors["description"] = "Description is required for IN_REVIEW or PUBLISHED state"
 
         if errors:
             raise ValidationError(errors)
@@ -334,7 +303,9 @@ class Case(models.Model):
         Transitions state from DRAFT to IN_REVIEW after validation.
         """
         if self.state != CaseState.DRAFT:
-            raise ValidationError(f"Can only submit cases in DRAFT state, current state is {self.state}")
+            raise ValidationError(
+                f"Can only submit cases in DRAFT state, current state is {self.state}"
+            )
 
         # Validate before submission
         self.state = CaseState.IN_REVIEW
@@ -342,9 +313,9 @@ class Case(models.Model):
 
         # Update versionInfo
         self.versionInfo = {
-            'version_number': self.version,
-            'action': 'submitted',
-            'datetime': timezone.now().isoformat(),
+            "version_number": self.version,
+            "action": "submitted",
+            "datetime": timezone.now().isoformat(),
         }
 
         self.save()
@@ -379,11 +350,11 @@ class Case(models.Model):
             timeline=self.timeline.copy() if self.timeline else [],
             evidence=self.evidence.copy() if self.evidence else [],
             versionInfo={
-                'version_number': self.version + 1,
-                'action': 'draft_created',
-                'source_version': self.version,
-                'datetime': timezone.now().isoformat(),
-            }
+                "version_number": self.version + 1,
+                "action": "draft_created",
+                "source_version": self.version,
+                "datetime": timezone.now().isoformat(),
+            },
         )
 
         draft.save()
@@ -403,7 +374,9 @@ class Case(models.Model):
         Sets state to PUBLISHED and updates versionInfo.
         """
         if self.state not in [CaseState.IN_REVIEW, CaseState.DRAFT]:
-            raise ValidationError(f"Can only publish cases in IN_REVIEW or DRAFT state, current state is {self.state}")
+            raise ValidationError(
+                f"Can only publish cases in IN_REVIEW or DRAFT state, current state is {self.state}"
+            )
 
         # Validate before publishing
         self.state = CaseState.PUBLISHED
@@ -411,9 +384,9 @@ class Case(models.Model):
 
         # Update versionInfo
         self.versionInfo = {
-            'version_number': self.version,
-            'action': 'published',
-            'datetime': timezone.now().isoformat(),
+            "version_number": self.version,
+            "action": "published",
+            "datetime": timezone.now().isoformat(),
         }
 
         self.save()
@@ -429,9 +402,9 @@ class Case(models.Model):
 
         # Update versionInfo to track the deletion
         self.versionInfo = {
-            'version_number': self.version,
-            'action': 'deleted',
-            'datetime': timezone.now().isoformat(),
+            "version_number": self.version,
+            "action": "deleted",
+            "datetime": timezone.now().isoformat(),
         }
 
         self.save()
@@ -451,26 +424,14 @@ class DocumentSource(models.Model):
 
     # Unique identifier
     source_id = models.CharField(
-        max_length=100,
-        unique=True,
-        db_index=True,
-        help_text="Unique identifier for the source"
+        max_length=100, unique=True, db_index=True, help_text="Unique identifier for the source"
     )
 
     # Core fields
-    title = models.CharField(
-        max_length=300,
-        help_text="Source title"
-    )
-    description = models.TextField(
-        blank=True,
-        help_text="Source description"
-    )
+    title = models.CharField(max_length=300, help_text="Source title")
+    description = models.TextField(blank=True, help_text="Source description")
     url = models.URLField(
-        max_length=2000,
-        null=True,
-        blank=True,
-        help_text="Optional URL to the source"
+        max_length=2000, null=True, blank=True, help_text="Optional URL to the source"
     )
 
     # Entity relationships
@@ -478,7 +439,7 @@ class DocumentSource(models.Model):
         JawafEntity,
         blank=True,
         related_name="document_sources",
-        help_text="Entities related to this source"
+        help_text="Entities related to this source",
     )
 
     # Contributors (for access control)
@@ -486,22 +447,18 @@ class DocumentSource(models.Model):
         User,
         blank=True,
         related_name="assigned_sources",
-        help_text="Contributors assigned to manage this source"
+        help_text="Contributors assigned to manage this source",
     )
 
     # Soft deletion
-    is_deleted = models.BooleanField(
-        default=False,
-        db_index=True,
-        help_text="Soft deletion flag"
-    )
+    is_deleted = models.BooleanField(default=False, db_index=True, help_text="Soft deletion flag")
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.source_id} - {self.title}"
@@ -511,6 +468,7 @@ class DocumentSource(models.Model):
         if not self.source_id:
             # Generate unique source_id for new sources
             from datetime import datetime
+
             timestamp = datetime.now().strftime("%Y%m%d")
             self.source_id = f"source:{timestamp}:{uuid.uuid4().hex[:8]}"
 
@@ -532,15 +490,15 @@ class DocumentSource(models.Model):
 
         # Validate title
         if not self.title or not self.title.strip():
-            errors['title'] = "Title is required and cannot be empty"
+            errors["title"] = "Title is required and cannot be empty"
 
         if errors:
             raise ValidationError(errors)
 
 
-
 class FeedbackType(models.TextChoices):
     """Enum for feedback types."""
+
     BUG = "bug", "Bug Report"
     FEATURE = "feature", "Feature Request"
     USABILITY = "usability", "Usability Issue"
@@ -550,6 +508,7 @@ class FeedbackType(models.TextChoices):
 
 class FeedbackStatus(models.TextChoices):
     """Enum for feedback status."""
+
     SUBMITTED = "submitted", "Submitted"
     IN_REVIEW = "in_review", "In Review"
     RESOLVED = "resolved", "Resolved"
@@ -566,29 +525,17 @@ class Feedback(models.Model):
 
     # Core fields
     feedback_type = models.CharField(
-        max_length=20,
-        choices=FeedbackType.choices,
-        help_text="Type of feedback"
+        max_length=20, choices=FeedbackType.choices, help_text="Type of feedback"
     )
-    subject = models.CharField(
-        max_length=200,
-        help_text="Brief summary of feedback"
-    )
-    description = models.TextField(
-        max_length=5000,
-        help_text="Detailed feedback description"
-    )
+    subject = models.CharField(max_length=200, help_text="Brief summary of feedback")
+    description = models.TextField(max_length=5000, help_text="Detailed feedback description")
     related_page = models.CharField(
-        max_length=300,
-        blank=True,
-        help_text="Page or feature related to feedback"
+        max_length=300, blank=True, help_text="Page or feature related to feedback"
     )
 
     # Contact information (stored as JSON for flexibility)
     contact_info = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="Optional contact information"
+        default=dict, blank=True, help_text="Optional contact information"
     )
 
     # Status tracking
@@ -597,35 +544,27 @@ class Feedback(models.Model):
         choices=FeedbackStatus.choices,
         default=FeedbackStatus.SUBMITTED,
         db_index=True,
-        help_text="Current status of feedback"
+        help_text="Current status of feedback",
     )
 
     # Metadata
     ip_address = models.GenericIPAddressField(
-        null=True,
-        blank=True,
-        help_text="IP address of submitter (for rate limiting)"
+        null=True, blank=True, help_text="IP address of submitter (for rate limiting)"
     )
-    user_agent = models.TextField(
-        blank=True,
-        help_text="User agent string"
-    )
+    user_agent = models.TextField(blank=True, help_text="User agent string")
 
     # Admin notes
-    admin_notes = models.TextField(
-        blank=True,
-        help_text="Internal notes for administrators"
-    )
+    admin_notes = models.TextField(blank=True, help_text="Internal notes for administrators")
 
     # Timestamps
     submitted_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['-submitted_at']
+        ordering = ["-submitted_at"]
         indexes = [
-            models.Index(fields=['feedback_type', 'status']),
-            models.Index(fields=['status', 'submitted_at']),
+            models.Index(fields=["feedback_type", "status"]),
+            models.Index(fields=["status", "submitted_at"]),
         ]
 
     def __str__(self):

@@ -1,1 +1,1 @@
-from .predicates import *
+from .predicates import *  # noqa: F403
