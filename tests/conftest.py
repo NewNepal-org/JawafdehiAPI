@@ -15,6 +15,9 @@ from cases.models import Case, DocumentSource, JawafEntity
 
 User = get_user_model()
 
+# Test password constant
+TEST_PASSWORD = "testpass123"  # Test credential
+
 # Configure Hypothesis settings globally
 # Double the default deadline from 200ms to 400ms for slower test environments
 hypothesis_settings.register_profile(
@@ -144,7 +147,7 @@ def create_document_source_with_entities(**kwargs):
     return source
 
 
-def create_user_with_role(username, email, role, password="testpass123"):
+def create_user_with_role(username, email, role, password=TEST_PASSWORD):
     """
     Create a user with the specified role.
 
@@ -155,7 +158,7 @@ def create_user_with_role(username, email, role, password="testpass123"):
         username: Username for the user
         email: Email for the user
         role: Role name ('Admin', 'Moderator', 'Contributor')
-        password: Password for the user (default: 'testpass123')
+        password: Password for the user (default: TEST_PASSWORD)
 
     Returns:
         User object with role assigned

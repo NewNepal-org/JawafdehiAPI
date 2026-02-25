@@ -11,7 +11,7 @@ from django.core.exceptions import ValidationError
 from hypothesis import given, settings
 
 from cases.models import DocumentSource
-from tests.conftest import create_document_source_with_entities
+from tests.conftest import TEST_PASSWORD, create_document_source_with_entities
 from tests.strategies import (
     source_data_missing_description,
     source_data_missing_title,
@@ -218,7 +218,7 @@ def test_document_source_has_contributors_field():
     User = get_user_model()
 
     # Create a user
-    user = User.objects.create_user(username="testuser", password="test123")
+    user = User.objects.create_user(username="testuser", password=TEST_PASSWORD)
 
     # Create a source
     source = create_document_source_with_entities(

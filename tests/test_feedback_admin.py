@@ -27,7 +27,7 @@ def feedback_admin():
 class TestFeedbackAdmin:
     """Test suite for Feedback admin interface."""
 
-    def test_admin_can_view_feedback(self, admin_user, feedback_admin):
+    def test_admin_can_view_feedback(self, feedback_admin):
         """Test that admin can view feedback list."""
         # Create some feedback
         Feedback.objects.create(
@@ -38,7 +38,7 @@ class TestFeedbackAdmin:
         queryset = feedback_admin.get_queryset(RequestFactory().get("/"))
         assert queryset.count() == 1
 
-    def test_admin_can_change_feedback_status(self, admin_user):
+    def test_admin_can_change_feedback_status(self):
         """Test that admin can change feedback status."""
         feedback = Feedback.objects.create(
             feedback_type=FeedbackType.BUG,
@@ -54,7 +54,7 @@ class TestFeedbackAdmin:
         feedback.refresh_from_db()
         assert feedback.status == FeedbackStatus.IN_REVIEW
 
-    def test_admin_can_add_notes(self, admin_user):
+    def test_admin_can_add_notes(self):
         """Test that admin can add notes to feedback."""
         feedback = Feedback.objects.create(
             feedback_type=FeedbackType.BUG, subject="Test bug", description="Test description"

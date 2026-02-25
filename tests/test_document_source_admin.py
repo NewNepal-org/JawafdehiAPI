@@ -21,19 +21,19 @@ from tests.conftest import (
 
 
 @pytest.fixture
-def admin_user(db):
+def admin_user(db):  # noqa: ARG001
     """Create an admin user."""
     return create_user_with_role("testadmin", "admin@test.com", "Admin")
 
 
 @pytest.fixture
-def moderator_user(db):
+def moderator_user(db):  # noqa: ARG001
     """Create a moderator user."""
     return create_user_with_role("testmod", "mod@test.com", "Moderator")
 
 
 @pytest.fixture
-def contributor_user(db):
+def contributor_user(db):  # noqa: ARG001
     """Create a contributor user."""
     return create_user_with_role("testcontrib", "contrib@test.com", "Contributor")
 

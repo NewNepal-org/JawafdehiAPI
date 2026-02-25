@@ -4,6 +4,7 @@ Management command to scrape case information using Google AI.
 Usage: python manage.py scrape_case <source_path> [<source_path> ...] [options]
 """
 
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -74,7 +75,7 @@ class Command(BaseCommand):
             help="Initial case state (default: DRAFT)",
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *args, **options):  # noqa: ARG002
         """Execute the scrape command."""
         start_time = datetime.now()
 
@@ -86,9 +87,8 @@ class Command(BaseCommand):
         location = options["location"]
         model = options["model"]
 
-        # Create work directory
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        work_dir = Path(work_dir_base) / f"scrape-case-{timestamp}"
+        # Create secure work directory using tempfile
+        work_dir = Path(tempfile.mkdtemp(prefix="scrape-case-", dir=work_dir_base))
 
         # Output work directory to stdout
         print(str(work_dir))

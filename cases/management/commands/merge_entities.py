@@ -26,7 +26,7 @@ class Command(BaseCommand):
             "entity_ids", nargs="+", type=int, help="IDs of entities to merge (minimum 2 required)"
         )
 
-    def handle(self, *args, **options):
+    def handle(self, *_args, **options):
         """Merge entities after confirmation."""
         entity_ids = options["entity_ids"]
 

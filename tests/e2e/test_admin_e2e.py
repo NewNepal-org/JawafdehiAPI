@@ -14,6 +14,7 @@ from django.test import Client
 from cases.admin import CaseAdmin
 from cases.models import Case, CaseState, CaseType, DocumentSource
 from tests.conftest import (
+    TEST_PASSWORD,
     create_case_with_entities,
     create_entities_from_ids,
     create_user_with_role,
@@ -897,7 +898,7 @@ class TestDjangoAdminWorkflows:
         Validates: Requirements 1.1, 3.1, 3.2
         """
         # Step 1: Contributor logs into Django Admin
-        login_success = self.client.login(username="contributor1", password="testpass123")
+        login_success = self.client.login(username="contributor1", password=TEST_PASSWORD)
         assert login_success, "Contributor should be able to log in"
 
         # Verify contributor can access admin

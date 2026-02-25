@@ -14,13 +14,13 @@ from tests.conftest import create_case_with_entities, create_mock_request, creat
 
 
 @pytest.fixture
-def contributor_user(db):
+def contributor_user(db):  # noqa: ARG001
     """Create a contributor user with proper permissions."""
     return create_user_with_role("testcontrib", "contrib@test.com", "Contributor")
 
 
 @pytest.fixture
-def another_contributor(db):
+def another_contributor(db):  # noqa: ARG001
     """Create another contributor user with proper permissions."""
     return create_user_with_role("anothercontrib", "another@test.com", "Contributor")
 

@@ -12,7 +12,7 @@ class BaseMultiWidget(Widget):
     template_name = None
 
     class Media:
-        css = {"all": ("cases/css/widgets.css",)}
+        css = {"all": ("cases/css/widgets.css",)}  # noqa: RUF012
         js = ("cases/js/widgets.js",)
 
     def get_context(self, name, value, attrs):
@@ -31,11 +31,11 @@ class BaseMultiWidget(Widget):
             "values_json": json.dumps(value),
         }
 
-    def render(self, name, value, attrs=None, renderer=None):
+    def render(self, name, value, attrs=None, renderer=None):  # noqa: ARG002
         context = self.get_context(name, value, attrs)
-        return mark_safe(render_to_string(self.template_name, context))
+        return mark_safe(render_to_string(self.template_name, context))  # noqa: S308
 
-    def value_from_datadict(self, data, files, name):
+    def value_from_datadict(self, data, files, name):  # noqa: ARG002
         value = data.get(name, "[]")
         if isinstance(value, list):
             return value

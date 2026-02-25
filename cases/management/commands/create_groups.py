@@ -14,7 +14,7 @@ from cases.models import Case, DocumentSource, JawafEntity
 class Command(BaseCommand):
     help = "Create user groups (Admin, Moderator, Contributor) with appropriate permissions"
 
-    def handle(self, *args, **options):
+    def handle(self, *args, **options):  # noqa: ARG002
         """Create groups and assign permissions."""
 
         # Get content types
