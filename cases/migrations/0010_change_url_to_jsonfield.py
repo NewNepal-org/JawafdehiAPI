@@ -6,43 +6,57 @@ from django.db import migrations, models
 def migrate_urls_to_list(apps, schema_editor):
     """
     Convert existing single URL strings to JSON lists.
-    This runs BEFORE the field type change to ensure data compatibility.
+    
+    Raises ValueError if transformation fails to prevent silent data loss.
     """
     DocumentSource = apps.get_model('cases', 'DocumentSource')
     db_alias = schema_editor.connection.alias
     
+    import json
+    
     for source in DocumentSource.objects.using(db_alias).all():
-        # Get the raw value from the database
         url_value = source.url
         
-        # Handle different cases
-        if url_value is None or url_value == '':
-            # Convert None or empty string to empty list JSON
-            source.url = '[]'
-        elif isinstance(url_value, str):
-            # Check if it's already JSON (shouldn't be, but just in case)
-            if url_value.startswith('['):
-                continue  # Already in list format
+        try:
+            if url_value is None or url_value == '':
+                source.url = '[]'
+            elif isinstance(url_value, str):
+                if url_value.startswith('['):
+                    # Already JSON format, validate it
+                    json.loads(url_value)
+                    continue
+                else:
+                    # Convert single URL string to JSON array
+                    source.url = json.dumps([url_value])
             else:
-                # Convert single URL string to JSON list
-                # Escape quotes and wrap in JSON array
-                import json
-                source.url = json.dumps([url_value])
-        
-        source.save(update_fields=['url'])
+                # Unexpected type - fail loud
+                raise ValueError(
+                    f"DocumentSource {source.id} has unexpected url type: {type(url_value)}. "
+                    f"Expected str or None, got {url_value!r}"
+                )
+            
+            source.save(update_fields=['url'])
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            # Fail loud - do not silently skip or set to None
+            raise ValueError(
+                f"Failed to migrate url for DocumentSource {source.id} (source_id: {source.source_id}). "
+                f"Original value: {url_value!r}. Error: {e}"
+            ) from e
 
 
 def reverse_urls_to_string(apps, schema_editor):
     """
     Convert URL lists back to single strings (for rollback).
-    Takes the first URL from the list, or sets to None if empty.
+    
+    Raises ValueError if transformation fails.
     """
     DocumentSource = apps.get_model('cases', 'DocumentSource')
     db_alias = schema_editor.connection.alias
     
+    import json
+    
     for source in DocumentSource.objects.using(db_alias).all():
-        import json
-        
         try:
             # Parse the JSON list
             if isinstance(source.url, str):
@@ -50,15 +64,20 @@ def reverse_urls_to_string(apps, schema_editor):
             elif isinstance(source.url, list):
                 url_list = source.url
             else:
-                url_list = []
+                raise ValueError(
+                    f"DocumentSource {source.id} has unexpected url type: {type(source.url)}. "
+                    f"Expected str or list, got {source.url!r}"
+                )
             
             # Take first URL or set to None
             source.url = url_list[0] if url_list else None
             source.save(update_fields=['url'])
-        except (json.JSONDecodeError, TypeError, IndexError):
-            # If parsing fails, set to None
-            source.url = None
-            source.save(update_fields=['url'])
+            
+        except (json.JSONDecodeError, ValueError) as e:
+            raise ValueError(
+                f"Failed to reverse url for DocumentSource {source.id} (source_id: {source.source_id}). "
+                f"Original value: {source.url!r}. Error: {e}"
+            ) from e
 
 
 class Migration(migrations.Migration):
@@ -68,10 +87,13 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # Step 1: Convert existing string URLs to JSON format (while still URLField)
-        migrations.RunPython(migrate_urls_to_list, reverse_urls_to_string),
-        
-        # Step 2: Change field type to JSONField (data is already in JSON format)
+        # Convert existing string URLs to JSON format (atomic transaction)
+        migrations.RunPython(
+            migrate_urls_to_list, 
+            reverse_urls_to_string,
+            atomic=True
+        ),
+        # Change field type to JSONField
         migrations.AlterField(
             model_name='documentsource',
             name='url',

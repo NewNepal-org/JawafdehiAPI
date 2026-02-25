@@ -499,7 +499,8 @@ class DocumentSource(models.Model):
     source_type = models.CharField(
         max_length=50,
         choices=SourceType.choices,
-        default=SourceType.OTHER_VISUAL,
+        null=True,
+        blank=True,
         help_text="Type of source"
     )
     url = models.JSONField(
