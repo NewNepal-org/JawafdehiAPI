@@ -155,14 +155,32 @@ class CaseState(models.TextChoices):
 
 class SourceType(models.TextChoices):
     """Enum for document source types."""
+    # Legal Documents (Court & Procedural)
+    LEGAL_COURT_ORDER = "LEGAL_COURT_ORDER", "Legal: Court Order/Verdict"
+    LEGAL_PROCEDURAL = "LEGAL_PROCEDURAL", "Legal: Procedural/Law Enforcement"
+    
+    # Official Government
     OFFICIAL_GOVERNMENT = "OFFICIAL_GOVERNMENT", "Official (Government)"
+    
+    # Financial & Corporate
+    FINANCIAL_FORENSIC = "FINANCIAL_FORENSIC", "Financial/Forensic Record"
+    INTERNAL_CORPORATE = "INTERNAL_CORPORATE", "Internal Corporate Doc"
+    
+    # Media & Investigations
     MEDIA_NEWS = "MEDIA_NEWS", "Media/News"
+    INVESTIGATIVE_REPORT = "INVESTIGATIVE_REPORT", "Investigative Report"
+    
+    # Public Input
+    PUBLIC_COMPLAINT = "PUBLIC_COMPLAINT", "Public Complaint/Whistleblower"
+    
+    # Legislative
+    LEGISLATIVE_DOC = "LEGISLATIVE_DOC", "Legislative/Policy Doc"
+    
+    # Social Media
     SOCIAL_MEDIA = "SOCIAL_MEDIA", "Social Media"
-    INTERNAL_DOCUMENT = "INTERNAL_DOCUMENT", "Internal Document"
-    ACADEMIC_RESEARCH = "ACADEMIC_RESEARCH", "Academic/Research"
-    LEGAL_DOCUMENT = "LEGAL_DOCUMENT", "Legal Document"
-    WHISTLEBLOWER = "WHISTLEBLOWER", "Whistleblower"
-    OTHER = "OTHER", "Other"
+    
+    # Other
+    OTHER_VISUAL = "OTHER_VISUAL", "Other / Visual Assets"
 
 
 class Case(models.Model):
@@ -481,7 +499,7 @@ class DocumentSource(models.Model):
     source_type = models.CharField(
         max_length=50,
         choices=SourceType.choices,
-        default=SourceType.OTHER,
+        default=SourceType.OTHER_VISUAL,
         help_text="Type of source"
     )
     url = models.JSONField(
