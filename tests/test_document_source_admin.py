@@ -39,7 +39,7 @@ def contributor_user(db):  # noqa: ARG001
 
 
 @pytest.fixture
-def document_source(db):
+def document_source(db):  # noqa: ARG001
     """Create a test document source."""
     source = create_document_source_with_entities(
         title="Test Source", description="Test description", related_entity_ids=[]

@@ -128,8 +128,9 @@ class Command(BaseCommand):
             confirm = "yes"
         else:
             try:
-                confirm = self.stdin.readline().strip()
                 self.stdout.write("Do you want to proceed with the merge? (yes/no): ")
+                self.stdout.flush()
+                confirm = self.stdin.readline().strip()
             except (KeyboardInterrupt, EOFError):
                 self.stdout.write(self.style.ERROR("\nMerge cancelled"))
                 return
@@ -177,7 +178,8 @@ class Command(BaseCommand):
                         source.related_entities.add(target_entity)
 
                     # Delete the source entity (now that all references are updated)
-                    # Use base model delete to avoid skipping intermediate MRO classes
+                    # Intentionally call models.Model.delete() to bypass JawafEntity.delete()'s
+                    # validation and force removal after all references have been updated
                     models.Model.delete(source_entity)
                     self.stdout.write(f"  Deleted entity {source_entity.id}")
 

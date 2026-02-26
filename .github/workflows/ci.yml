@@ -57,6 +57,12 @@
         - name: Check formatting
           run: ./scripts/format.sh --check
 
+        - name: Collect static files
+          env:
+            DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_jawafdehi
+            DJANGO_SETTINGS_MODULE: config.settings
+          run: poetry run python manage.py collectstatic --noinput
+
         - name: Run tests
           env:
             DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_jawafdehi

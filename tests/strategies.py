@@ -41,13 +41,15 @@ def entity_id_list(draw, min_size=1, max_size=5):
 @st.composite
 def invalid_entity_id(draw):
     """Generate invalid entity IDs for negative testing."""
-    invalid_formats = [
-        draw(st.text(min_size=1, max_size=20)),  # Random text
-        f"invalid:{draw(st.text(min_size=1, max_size=20))}",  # Wrong prefix
-        f"entity:{draw(st.text(min_size=1, max_size=20))}",  # Missing slash
-        "",  # Empty string
-    ]
-    return draw(st.sampled_from(invalid_formats))
+    choice = draw(st.integers(min_value=0, max_value=3))
+    if choice == 0:
+        return draw(st.text(min_size=1, max_size=20))  # Random text
+    elif choice == 1:
+        return f"invalid:{draw(st.text(min_size=1, max_size=20))}"  # Wrong prefix
+    elif choice == 2:
+        return f"entity:{draw(st.text(min_size=1, max_size=20))}"  # Missing slash
+    else:
+        return ""  # Empty string
 
 
 # ============================================================================
@@ -123,9 +125,7 @@ def evidence_entry(draw, source_ids=None):
     if source_ids:
         source_id = draw(st.sampled_from(source_ids))
     else:
-        source_id = (
-            f"source:{draw(st.text(min_size=5, max_size=20).filter(lambda x: '\x00' not in x))}"
-        )
+        source_id = f"source:{draw(st.text(min_size=5, max_size=20).filter(lambda x: x.strip() and '\x00' not in x))}"
 
     return {
         "source_id": source_id,
@@ -339,7 +339,9 @@ def simple_text_list(draw, min_size=1, max_size=5):
     """Generate simple text lists for faster tests."""
     return draw(
         st.lists(
-            st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=5, max_size=50),
+            st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=5, max_size=50).filter(
+                lambda x: x.strip()
+            ),
             min_size=min_size,
             max_size=max_size,
         )

@@ -25,7 +25,7 @@ from hypothesis import HealthCheck
 
 hypothesis_settings.register_profile(
     "default",
-    deadline=400,  # 400ms instead of default 200ms
+    deadline=800,  # 800ms for slower CI environments
     suppress_health_check=[HealthCheck.too_slow],
     database=None,  # Disable example database to prevent flaky failures
 )

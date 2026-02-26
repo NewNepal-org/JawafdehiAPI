@@ -7,6 +7,7 @@ Validates: Requirements 1.5, 3.1, 3.2, 3.3, 5.1, 5.2, 5.3
 """
 
 import pytest
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from hypothesis import given, settings
@@ -335,29 +336,14 @@ def test_moderators_cannot_manage_other_moderators(moderator1_data, moderator2_d
     )
 
     # Create mock request for moderator1
-    create_mock_request(moderator1)
+    request = create_mock_request(moderator1)
 
-    # For this property, we need to check User admin permissions
-    # Since we're testing the concept, we'll verify that moderators
-    # should not have permission to manage other moderators
-
-    # Get moderator1's groups
-    moderator1_groups = list(moderator1.groups.values_list("name", flat=True))
-    moderator2_groups = list(moderator2.groups.values_list("name", flat=True))
-
-    # Both should be moderators
-    assert "Moderator" in moderator1_groups, "moderator1 should be in Moderator group"
-    assert "Moderator" in moderator2_groups, "moderator2 should be in Moderator group"
-
-    # Moderator1 should not be a superuser (only Admins are superusers)
-    assert not moderator1.is_superuser, "Moderator should not be a superuser"
-
-    # This property is enforced at the User admin level
-    # The implementation should prevent moderators from editing other moderators
-    # We verify the constraint exists by checking that moderator1 is not an admin
+    # Test that moderator1 cannot edit moderator2 using the User admin
+    user_admin = admin.site._registry[User]
+    can_edit_other_moderator = user_admin.has_change_permission(request, moderator2)
     assert (
-        "Admin" not in moderator1_groups
-    ), "Moderator should not have Admin privileges to manage other moderators"
+        not can_edit_other_moderator
+    ), "Moderator should not be able to manage another moderator account"
 
 
 @pytest.mark.django_db(transaction=True)
