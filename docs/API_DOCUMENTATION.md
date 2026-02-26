@@ -184,7 +184,7 @@ All responses are in JSON format with the following structure:
   "source_id": "source:20240115:abc123",
   "title": "Source Title",
   "description": "Source description",
-  "source_type": "MEDIA_NEWS",
+  "source_type": "MEDIA_NEWS",  // nullable - may be null if not classified
   "url": [
     "https://example.com/document.pdf",
     "https://example.com/backup-link.pdf"
@@ -194,6 +194,7 @@ All responses are in JSON format with the following structure:
       "id": 1,
       "nes_id": "entity:person/john-doe",
       "display_name": "John Doe"
+      // Additional fields: alleged_cases, related_cases may be present
     }
   ],
   "created_at": "2024-01-15T10:00:00Z",
@@ -202,14 +203,22 @@ All responses are in JSON format with the following structure:
 ```
 
 **Source Type Values:**
+
+The `source_type` field is optional and may be `null` if the source has not been classified. When present, it must be one of the following values:
+
+- `LEGAL_COURT_ORDER` - Legal: Court Order/Verdict
+- `LEGAL_PROCEDURAL` - Legal: Procedural/Law Enforcement
 - `OFFICIAL_GOVERNMENT` - Official (Government)
+- `FINANCIAL_FORENSIC` - Financial/Forensic Record
+- `INTERNAL_CORPORATE` - Internal Corporate Doc
 - `MEDIA_NEWS` - Media/News
+- `INVESTIGATIVE_REPORT` - Investigative Report
+- `PUBLIC_COMPLAINT` - Public Complaint/Whistleblower
+- `LEGISLATIVE_DOC` - Legislative/Policy Doc
 - `SOCIAL_MEDIA` - Social Media
-- `INTERNAL_DOCUMENT` - Internal Document
-- `ACADEMIC_RESEARCH` - Academic/Research
-- `LEGAL_DOCUMENT` - Legal Document
-- `WHISTLEBLOWER` - Whistleblower
-- `OTHER` - Other
+- `OTHER_VISUAL` - Other / Visual Assets
+
+> **Note:** The authoritative list of source type values is defined in the backend `SourceType` enum (see `cases/models.py`). For the most current list, consult the OpenAPI schema at `/api/schema/` or `/api/schema/?format=json`.
 
 ## Entity ID Format
 
