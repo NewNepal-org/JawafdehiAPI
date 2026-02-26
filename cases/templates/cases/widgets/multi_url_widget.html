@@ -3,14 +3,14 @@
     <div class="input-row" draggable="true">
         <span class="drag-handle">⋮⋮</span>
         <input type="url" class="url-input" value="{{ value }}" placeholder="https://example.com">
-        <button type="button" class="btn btn-sm btn-danger remove-input">
-            <i class="fas fa-times"></i>
+        <button type="button" class="btn btn-sm btn-danger remove-input" aria-label="Remove URL">
+            <i class="fas fa-times" aria-hidden="true"></i>
         </button>
     </div>
     {% endfor %}
     <div style="margin-bottom: 8px;">
-        <button type="button" id="{{ widget_id }}_add" class="btn btn-sm btn-success add-widget-btn">
-            <i class="fas fa-plus"></i> {{ button_label }}
+        <button type="button" id="{{ widget_id }}_add" class="btn btn-sm btn-success add-widget-btn" aria-label="{{ button_label }}">
+            <i class="fas fa-plus" aria-hidden="true"></i> {{ button_label }}
         </button>
     </div>
 </div>
@@ -25,8 +25,8 @@ window.initMultiWidget(
         rowTemplate: [
             '<span class="drag-handle">⋮⋮</span>',
             '<input type="url" class="url-input" placeholder="https://example.com">',
-            '<button type="button" class="btn btn-sm btn-danger remove-input">',
-            '<i class="fas fa-times"></i>',
+            '<button type="button" class="btn btn-sm btn-danger remove-input" aria-label="Remove URL">',
+            '<i class="fas fa-times" aria-hidden="true"></i>',
             '</button>'
         ].join(' ')
     }

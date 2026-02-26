@@ -628,15 +628,15 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """
         Customize list filters based on user role.
 
-        - Admins: See is_deleted and created_at filters
-        - Moderators: Only see created_at filter
-        - Contributors: Only see created_at filter
+        - Admins: See source_type, is_deleted and created_at filters
+        - Moderators: See source_type and created_at filters
+        - Contributors: See source_type and created_at filters
         """
         if is_admin(request.user):
-            return ['is_deleted', 'created_at']
+            return ['source_type', 'is_deleted', 'created_at']
 
-        # Moderators and Contributors only see created_at
-        return ['created_at']
+        # Moderators and Contributors see source_type and created_at
+        return ['source_type', 'created_at']
 
     def has_view_permission(self, request, obj=None):
         """
