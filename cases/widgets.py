@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.template.loader import render_to_string
 from nes.core.identifiers.validators import validate_entity_id
 import json
+from json import JSONDecodeError
 
 
 class BaseMultiWidget(Widget):
@@ -180,9 +181,13 @@ class MultiURLField(Field):
         if isinstance(value, list):
             return value
         try:
-            return json.loads(value) if value else []
-        except:
-            return []
+            parsed = json.loads(value) if value else []
+        except (JSONDecodeError, TypeError) as err:
+            raise ValidationError("Invalid URL payload format.") from err
+        
+        if not isinstance(parsed, list):
+            raise ValidationError("Expected a list of URLs.")
+        return parsed
     
     def validate(self, value):
         super().validate(value)
@@ -195,5 +200,5 @@ class MultiURLField(Field):
                 if url and url.strip():
                     try:
                         validator(url.strip())
-                    except DjangoValidationError:
-                        raise ValidationError(f"Invalid URL: {url}")
+                    except DjangoValidationError as err:
+                        raise ValidationError(f"Invalid URL: {url}") from err

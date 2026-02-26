@@ -7,6 +7,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.utils import timezone
 import uuid
 
@@ -18,6 +19,30 @@ from .fields import (
 
 
 User = get_user_model()
+
+
+def validate_url_list(value):
+    """
+    Validate that the url field contains a list of valid URLs.
+    
+    Args:
+        value: The value to validate (should be a list of URL strings)
+        
+    Raises:
+        ValidationError: If value is not a list or contains invalid URLs
+    """
+    if value in (None, []):
+        return
+    
+    if not isinstance(value, list):
+        raise ValidationError("url must be a list of URLs.")
+    
+    validator = URLValidator()
+    for item in value:
+        if not isinstance(item, str):
+            raise ValidationError("Each URL must be a string.")
+        if item.strip():
+            validator(item.strip())
 
 
 class JawafEntity(models.Model):
@@ -506,6 +531,7 @@ class DocumentSource(models.Model):
     url = models.JSONField(
         default=list,
         blank=True,
+        validators=[validate_url_list],
         help_text="List of URLs for this source"
     )
 
