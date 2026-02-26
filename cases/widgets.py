@@ -8,6 +8,29 @@ from django.utils.safestring import mark_safe
 from nes.core.identifiers.validators import validate_entity_id
 
 
+def _parse_json_list(value):
+    """
+    Parse a value into a list, handling JSON strings and ensuring list output.
+
+    Args:
+        value: Raw value (list, string, or None)
+
+    Returns:
+        list: Parsed list, or empty list on error
+    """
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
+
+
 class BaseMultiWidget(Widget):
     template_name = None
 
@@ -16,10 +39,7 @@ class BaseMultiWidget(Widget):
         js = ("cases/js/widgets.js",)
 
     def get_context(self, name, value, attrs):
-        if value is None:
-            value = []
-        elif isinstance(value, str):
-            value = json.loads(value) if value else []
+        value = _parse_json_list(value)
 
         final_attrs = self.build_attrs(self.attrs, attrs)
         widget_id = final_attrs.get("id", name)
@@ -37,12 +57,7 @@ class BaseMultiWidget(Widget):
 
     def value_from_datadict(self, data, files, name):  # noqa: ARG002
         value = data.get(name, "[]")
-        if isinstance(value, list):
-            return value
-        try:
-            return json.loads(value) if value else []
-        except (json.JSONDecodeError, TypeError):
-            return []
+        return _parse_json_list(value)
 
 
 class MultiEntityIDWidget(BaseMultiWidget):
@@ -55,12 +70,7 @@ class MultiEntityIDField(Field):
     def to_python(self, value):
         if value in self.empty_values:
             return []
-        if isinstance(value, list):
-            return value
-        try:
-            return json.loads(value) if value else []
-        except (json.JSONDecodeError, TypeError):
-            return []
+        return _parse_json_list(value)
 
     def validate(self, value):
         super().validate(value)
@@ -93,12 +103,7 @@ class MultiTextField(Field):
     def to_python(self, value):
         if value in self.empty_values:
             return []
-        if isinstance(value, list):
-            return value
-        try:
-            return json.loads(value) if value else []
-        except (json.JSONDecodeError, TypeError):
-            return []
+        return _parse_json_list(value)
 
     def validate(self, value):
         super().validate(value)
@@ -117,12 +122,7 @@ class MultiTimelineField(Field):
     def to_python(self, value):
         if value in self.empty_values:
             return []
-        if isinstance(value, list):
-            return value
-        try:
-            return json.loads(value) if value else []
-        except (json.JSONDecodeError, TypeError):
-            return []
+        return _parse_json_list(value)
 
 
 class MultiEvidenceWidget(BaseMultiWidget):
@@ -147,9 +147,4 @@ class MultiEvidenceField(Field):
     def to_python(self, value):
         if value in self.empty_values:
             return []
-        if isinstance(value, list):
-            return value
-        try:
-            return json.loads(value) if value else []
-        except (json.JSONDecodeError, TypeError):
-            return []
+        return _parse_json_list(value)

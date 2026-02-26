@@ -30,8 +30,8 @@ class Command(BaseCommand):
         parser.add_argument(
             "--work-dir",
             type=str,
-            default="/tmp",
-            help="Base directory for work files (default: /tmp)",
+            default=None,
+            help="Base directory for work files (default: system temp directory)",
         )
         parser.add_argument(
             "--service-account",
@@ -88,6 +88,8 @@ class Command(BaseCommand):
         model = options["model"]
 
         # Create secure work directory using tempfile
+        # Note: The created directory and its contents are intentionally left in place
+        # for inspection and debugging. Operators are responsible for cleanup.
         work_dir = Path(tempfile.mkdtemp(prefix="scrape-case-", dir=work_dir_base))
 
         # Output work directory to stdout
@@ -117,7 +119,7 @@ class Command(BaseCommand):
 
             # Scrape case
             self.log_error("\nPhase 1: Extracting information...")
-            case, phase1_file, result_file = scraper.scrape_case(
+            case, _phase1_file, result_file = scraper.scrape_case(
                 source_paths=source_paths, work_dir=work_dir
             )
 

@@ -179,7 +179,7 @@ def create_user_with_role(username, email, role, password=TEST_PASSWORD):
         user.is_staff = True
     if role == "Admin":
         user.is_superuser = True
-    
+
     # Save once after setting all flags
     user.save()
 

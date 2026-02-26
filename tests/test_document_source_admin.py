@@ -107,7 +107,7 @@ class TestDocumentSourceAdmin:
         admin_instance = admin.site._registry[DocumentSource]
         assert hasattr(admin_instance, "restore_sources")
 
-    def test_hard_delete_disabled(self, db, admin_user, document_source):
+    def test_hard_delete_disabled(self, admin_user, document_source):
         """Test that hard deletion is disabled."""
         admin_instance = admin.site._registry[DocumentSource]
         request = create_mock_request(admin_user)
@@ -115,14 +115,14 @@ class TestDocumentSourceAdmin:
         # Hard delete should be disabled for everyone
         assert not admin_instance.has_delete_permission(request, document_source)
 
-    def test_admin_can_change_source(self, db, admin_user, document_source):
+    def test_admin_can_change_source(self, admin_user, document_source):
         """Test that admin can change sources."""
         admin_instance = admin.site._registry[DocumentSource]
         request = create_mock_request(admin_user)
 
         assert admin_instance.has_change_permission(request, document_source)
 
-    def test_moderator_can_change_source(self, db, moderator_user, document_source):
+    def test_moderator_can_change_source(self, moderator_user, document_source):
         """Test that moderator can change sources."""
         admin_instance = admin.site._registry[DocumentSource]
         request = create_mock_request(moderator_user)
@@ -159,7 +159,7 @@ class TestDocumentSourceAdmin:
         assert source_with_contributor in queryset
         assert document_source not in queryset
 
-    def test_soft_deletion_preserves_record(self, db, document_source):
+    def test_soft_deletion_preserves_record(self, document_source):
         """Test that soft deletion preserves the record in database."""
         source_id = document_source.id
 
@@ -174,7 +174,7 @@ class TestDocumentSourceAdmin:
         document_source.refresh_from_db()
         assert document_source.is_deleted is True
 
-    def test_deletion_status_badge_for_active(self, db, document_source):
+    def test_deletion_status_badge_for_active(self, document_source):
         """Test deletion status badge for active sources."""
         admin_instance = admin.site._registry[DocumentSource]
         badge_html = admin_instance.deletion_status(document_source)
@@ -182,7 +182,7 @@ class TestDocumentSourceAdmin:
         assert "Active" in badge_html
         assert "#28a745" in badge_html  # Green color
 
-    def test_deletion_status_badge_for_deleted(self, db, document_source):
+    def test_deletion_status_badge_for_deleted(self, document_source):
         """Test deletion status badge for deleted sources."""
         document_source.is_deleted = True
         document_source.save()
@@ -197,7 +197,7 @@ class TestDocumentSourceAdmin:
 class TestDocumentSourcePermissions:
     """Test DocumentSource admin permissions and access control."""
 
-    def test_creator_auto_assigned_as_contributor(self, db, contributor_user):
+    def test_creator_auto_assigned_as_contributor(self, contributor_user):
         """Test that creator is automatically assigned as contributor when creating a source."""
 
         admin_instance = DocumentSourceAdmin(DocumentSource, admin.site)
@@ -243,7 +243,7 @@ class TestDocumentSourceAdminForm:
         assert not form.is_valid()
         assert "title" in form.errors
 
-    def test_form_accepts_empty_description(self, db, document_source):
+    def test_form_accepts_empty_description(self, document_source):
         """Test that form accepts empty description."""
 
         # Use an existing instance to avoid source_id validation
@@ -260,7 +260,7 @@ class TestDocumentSourceAdminForm:
 
         assert form.is_valid(), f"Form errors: {form.errors}"
 
-    def test_form_accepts_valid_data(self, db, document_source):
+    def test_form_accepts_valid_data(self, document_source):
         """Test that form accepts valid data."""
 
         # Use an existing instance to avoid source_id validation

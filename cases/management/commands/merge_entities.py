@@ -13,7 +13,7 @@ This command will:
 """
 
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import models, transaction
 
 from cases.models import JawafEntity
 
@@ -24,6 +24,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "entity_ids", nargs="+", type=int, help="IDs of entities to merge (minimum 2 required)"
+        )
+        parser.add_argument(
+            "--yes",
+            action="store_true",
+            help="Skip confirmation prompt and proceed with merge",
         )
 
     def handle(self, *_args, **options):
@@ -119,7 +124,15 @@ class Command(BaseCommand):
 
         # Ask for confirmation
         self.stdout.write("")
-        confirm = input("Do you want to proceed with the merge? (yes/no): ")
+        if options.get("yes"):
+            confirm = "yes"
+        else:
+            try:
+                confirm = self.stdin.readline().strip()
+                self.stdout.write("Do you want to proceed with the merge? (yes/no): ")
+            except (KeyboardInterrupt, EOFError):
+                self.stdout.write(self.style.ERROR("\nMerge cancelled"))
+                return
 
         if confirm.lower() != "yes":
             self.stdout.write(self.style.ERROR("Merge cancelled"))
@@ -164,9 +177,8 @@ class Command(BaseCommand):
                         source.related_entities.add(target_entity)
 
                     # Delete the source entity (now that all references are updated)
-                    # We need to use the actual delete method, not the overridden one
-                    # that checks for usage
-                    super(JawafEntity, source_entity).delete()
+                    # Use base model delete to avoid skipping intermediate MRO classes
+                    models.Model.delete(source_entity)
                     self.stdout.write(f"  Deleted entity {source_entity.id}")
 
             self.stdout.write(
@@ -176,4 +188,4 @@ class Command(BaseCommand):
             )
 
         except Exception as e:
-            raise CommandError(f"Error during merge: {str(e)}") from e
+            raise CommandError(f"Error during merge: {e!s}") from e

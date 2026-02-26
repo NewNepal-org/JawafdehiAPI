@@ -97,8 +97,12 @@ def timeline_entry(draw):
 
     return {
         "date": (base_date + timedelta(days=days_offset)).isoformat(),
-        "title": draw(st.text(min_size=5, max_size=100).filter(lambda x: x.strip() and "\x00" not in x)),
-        "description": draw(st.text(min_size=10, max_size=500).filter(lambda x: x.strip() and "\x00" not in x)),
+        "title": draw(
+            st.text(min_size=5, max_size=100).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
+        "description": draw(
+            st.text(min_size=10, max_size=500).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
     }
 
 
@@ -119,11 +123,15 @@ def evidence_entry(draw, source_ids=None):
     if source_ids:
         source_id = draw(st.sampled_from(source_ids))
     else:
-        source_id = f"source:{draw(st.text(min_size=5, max_size=20).filter(lambda x: '\x00' not in x))}"
+        source_id = (
+            f"source:{draw(st.text(min_size=5, max_size=20).filter(lambda x: '\x00' not in x))}"
+        )
 
     return {
         "source_id": source_id,
-        "description": draw(st.text(min_size=1, max_size=500).filter(lambda x: x.strip() and "\x00" not in x)),
+        "description": draw(
+            st.text(min_size=1, max_size=500).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
     }
 
 
@@ -150,7 +158,9 @@ def minimal_case_data(draw):
     """
 
     return {
-        "title": draw(st.text(min_size=1, max_size=200).filter(lambda x: x.strip() and "\x00" not in x)),
+        "title": draw(
+            st.text(min_size=1, max_size=200).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
         "alleged_entities": draw(entity_id_list(min_size=1, max_size=3)),
         "case_type": draw(st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES])),
     }
@@ -166,11 +176,15 @@ def complete_case_data(draw):
     """
 
     return {
-        "title": draw(st.text(min_size=1, max_size=200).filter(lambda x: x.strip() and "\x00" not in x)),
+        "title": draw(
+            st.text(min_size=1, max_size=200).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
         "alleged_entities": draw(entity_id_list(min_size=1, max_size=3)),
         "key_allegations": draw(text_list(min_size=1, max_size=5)),
         "case_type": draw(st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES])),
-        "description": draw(st.text(min_size=10, max_size=1000).filter(lambda x: x.strip() and "\x00" not in x)),
+        "description": draw(
+            st.text(min_size=10, max_size=1000).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
     }
 
 
@@ -183,13 +197,17 @@ def complete_case_data_with_timeline(draw):
     """
 
     return {
-        "title": draw(st.text(min_size=5, max_size=200).filter(lambda x: x.strip() and "\x00" not in x)),
+        "title": draw(
+            st.text(min_size=5, max_size=200).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
         "alleged_entities": draw(entity_id_list(min_size=1, max_size=3)),
         "related_entities": draw(entity_id_list(min_size=0, max_size=3)),
         "locations": draw(entity_id_list(min_size=0, max_size=2)),
         "key_allegations": draw(text_list(min_size=1, max_size=5)),
         "case_type": draw(st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES])),
-        "description": draw(st.text(min_size=20, max_size=1000).filter(lambda x: x.strip() and "\x00" not in x)),
+        "description": draw(
+            st.text(min_size=20, max_size=1000).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
         "tags": draw(tag_list(min_size=0, max_size=5)),
         "timeline": draw(timeline_list(min_size=0, max_size=3)),
         "evidence": [],  # Will be populated with valid source references
@@ -211,8 +229,12 @@ def valid_source_data(draw):
     - description (optional but commonly included)
     """
     return {
-        "title": draw(st.text(min_size=1, max_size=300).filter(lambda x: x.strip() and "\x00" not in x)),
-        "description": draw(st.text(min_size=1, max_size=1000).filter(lambda x: x.strip() and "\x00" not in x)),
+        "title": draw(
+            st.text(min_size=1, max_size=300).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
+        "description": draw(
+            st.text(min_size=1, max_size=1000).filter(lambda x: x.strip() and "\x00" not in x)
+        ),
         "related_entity_ids": draw(entity_id_list(min_size=0, max_size=3)),
         "url": draw(
             st.one_of(
