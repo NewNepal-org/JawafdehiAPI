@@ -178,13 +178,15 @@ All responses are in JSON format with the following structure:
 ```
 
 ### Document Source Object
+
+**Example Response:**
 ```json
 {
   "id": 1,
   "source_id": "source:20240115:abc123",
   "title": "Source Title",
   "description": "Source description",
-  "source_type": "MEDIA_NEWS",  // nullable - may be null if not classified
+  "source_type": "MEDIA_NEWS",
   "url": [
     "https://example.com/document.pdf",
     "https://example.com/backup-link.pdf"
@@ -194,13 +196,16 @@ All responses are in JSON format with the following structure:
       "id": 1,
       "nes_id": "entity:person/john-doe",
       "display_name": "John Doe"
-      // Additional fields: alleged_cases, related_cases may be present
     }
   ],
   "created_at": "2024-01-15T10:00:00Z",
   "updated_at": "2024-01-15T10:00:00Z"
 }
 ```
+
+**Field Notes:**
+- `source_type`: Optional field, may be `null` if the source has not been classified
+- `related_entities`: May include additional fields such as `alleged_cases` and `related_cases`
 
 **Source Type Values:**
 
