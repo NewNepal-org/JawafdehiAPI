@@ -569,16 +569,15 @@ class DocumentSource(models.Model):
         return f"{self.source_id} - {self.title}"
 
     def save(self, *args, **kwargs):
-        """Override save to generate source_id and validate required fields."""
+        """Override save to generate source_id and validate all fields."""
         if not self.source_id:
             # Generate unique source_id for new sources
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d")
             self.source_id = f"source:{timestamp}:{uuid.uuid4().hex[:8]}"
 
-        # Validate required fields before saving
-        if not self.title or not self.title.strip():
-            raise ValidationError("Title is required and cannot be empty")
+        # Run full model and field validation (includes validate_url_list)
+        self.full_clean()
 
         super().save(*args, **kwargs)
 
