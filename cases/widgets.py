@@ -197,6 +197,10 @@ class MultiURLField(Field):
             from django.core.exceptions import ValidationError as DjangoValidationError
             validator = URLValidator()
             for url in value:
+                # Check type before calling .strip()
+                if not isinstance(url, str):
+                    raise ValidationError(f"Invalid URL type: expected string, got {type(url).__name__} ({url!r})")
+                
                 if url and url.strip():
                     try:
                         validator(url.strip())
