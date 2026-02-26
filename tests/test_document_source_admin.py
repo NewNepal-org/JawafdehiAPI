@@ -72,16 +72,16 @@ def source_with_contributor(db, contributor_user):
 class TestDocumentSourceAdmin:
     """Test DocumentSource admin configuration."""
 
-    def test_admin_is_registered(self, db):
+    def test_admin_is_registered(self):
         """Test that DocumentSource is registered in admin."""
         assert admin.site.is_registered(DocumentSource)
 
-    def test_custom_form_is_used(self, db):
+    def test_custom_form_is_used(self):
         """Test that custom form is configured."""
         admin_instance = admin.site._registry[DocumentSource]
         assert admin_instance.form.__name__ == "DocumentSourceAdminForm"
 
-    def test_fieldsets_configured(self, db):
+    def test_fieldsets_configured(self):
         """Test that fieldsets are properly configured."""
         admin_instance = admin.site._registry[DocumentSource]
         assert len(admin_instance.fieldsets) == 2
@@ -91,18 +91,18 @@ class TestDocumentSourceAdmin:
         assert "Basic Information" in fieldset_names
         assert "Metadata" in fieldset_names
 
-    def test_list_display_configured(self, db):
+    def test_list_display_configured(self):
         """Test that list display is properly configured."""
         admin_instance = admin.site._registry[DocumentSource]
         expected_fields = ["source_id", "title", "deletion_status", "created_at"]
         assert admin_instance.list_display == expected_fields
 
-    def test_soft_delete_action_exists(self, db):
+    def test_soft_delete_action_exists(self):
         """Test that soft delete action is available."""
         admin_instance = admin.site._registry[DocumentSource]
         assert hasattr(admin_instance, "soft_delete_sources")
 
-    def test_restore_action_exists(self, db):
+    def test_restore_action_exists(self):
         """Test that restore action is available."""
         admin_instance = admin.site._registry[DocumentSource]
         assert hasattr(admin_instance, "restore_sources")

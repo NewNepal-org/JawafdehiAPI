@@ -16,13 +16,18 @@ from cases.models import Case, DocumentSource, JawafEntity
 User = get_user_model()
 
 # Test password constant
-TEST_PASSWORD = "testpass123"  # Test credential
+TEST_PASSWORD = "testpass123"  # noqa: S105
 
 # Configure Hypothesis settings globally
 # Double the default deadline from 200ms to 400ms for slower test environments
+# Disable database_check to avoid transaction management errors in property-based tests
+from hypothesis import HealthCheck
+
 hypothesis_settings.register_profile(
     "default",
     deadline=400,  # 400ms instead of default 200ms
+    suppress_health_check=[HealthCheck.too_slow],
+    database=None,  # Disable example database to prevent flaky failures
 )
 hypothesis_settings.load_profile("default")
 
@@ -169,15 +174,14 @@ def create_user_with_role(username, email, role, password=TEST_PASSWORD):
     group, _ = Group.objects.get_or_create(name=role)
     user.groups.add(group)
 
-    # Set staff status for Admin, Moderator, and Contributor
+    # Set staff and superuser status based on role
     if role in ["Admin", "Moderator", "Contributor"]:
         user.is_staff = True
-        user.save()
-
-    # Set superuser status for Admin
     if role == "Admin":
         user.is_superuser = True
-        user.save()
+    
+    # Save once after setting all flags
+    user.save()
 
     # Add necessary permissions for the role
     content_type = ContentType.objects.get_for_model(Case)

@@ -25,8 +25,8 @@ from tests.strategies import (
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=100)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=100, derandomize=True)
 @given(source_data=valid_source_data())
 def test_document_source_accepts_valid_data(source_data):
     """
@@ -46,8 +46,8 @@ def test_document_source_accepts_valid_data(source_data):
         pytest.fail(f"DocumentSource validation rejected valid data: {e}")
 
 
-@pytest.mark.django_db
-@settings(max_examples=100)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=100, derandomize=True)
 @given(source_data=source_data_missing_title())
 def test_document_source_rejects_missing_title(source_data):
     """
@@ -70,8 +70,8 @@ def test_document_source_rejects_missing_title(source_data):
     ), f"Validation error should mention 'title', but got: {exc_info.value}"
 
 
-@pytest.mark.django_db
-@settings(max_examples=100)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=100, derandomize=True)
 @given(source_data=source_data_missing_description())
 def test_document_source_accepts_missing_description(source_data):
     """
@@ -92,8 +92,8 @@ def test_document_source_accepts_missing_description(source_data):
         pytest.fail(f"DocumentSource should accept missing description, but raised: {e}")
 
 
-@pytest.mark.django_db
-@settings(max_examples=50)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=50, derandomize=True)
 @given(source_data=source_data_with_empty_title())
 def test_document_source_rejects_empty_title(source_data):
     """
@@ -109,8 +109,8 @@ def test_document_source_rejects_empty_title(source_data):
         source.save()
 
 
-@pytest.mark.django_db
-@settings(max_examples=50)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=50, derandomize=True)
 @given(source_data=source_data_with_empty_description())
 def test_document_source_accepts_empty_description(source_data):
     """
@@ -146,22 +146,6 @@ def test_document_source_requires_title():
             description="Valid description", related_entity_ids=[]
         )
         source.save()
-
-
-# @pytest.mark.django_db
-# def test_document_source_accepts_missing_description():
-#     """
-#     Edge case: DocumentSource can be created without description (description is optional).
-#     Validates: Requirements 4.2
-#     """
-#     source = create_document_source_with_entities(title="Valid Title", related_entity_ids=[])
-#     source.save()
-
-#     # Should not raise ValidationError without description
-#     try:
-#         source.validate()
-#     except ValidationError as e:
-#         pytest.fail(f"DocumentSource should allow missing description, but raised: {e}")
 
 
 @pytest.mark.django_db

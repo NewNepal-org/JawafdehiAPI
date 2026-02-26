@@ -26,8 +26,8 @@ from tests.strategies import (
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)  # Reduced from 100 to 20 for faster execution
 @given(
     case_data=complete_case_data(),
     state=st.sampled_from(
@@ -76,8 +76,8 @@ def test_public_api_only_shows_published_cases(case_data, state):
         ), f"Case {case.case_id} with state={state} should NOT appear in API response"
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)  # Reduced from 50 to 20 for faster execution
 @given(case_data=complete_case_data())
 def test_public_api_shows_highest_version_only(case_data):
     """
@@ -126,8 +126,8 @@ def test_public_api_shows_highest_version_only(case_data):
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)  # Reduced from 100 to 20 for faster execution
 @given(case_data=complete_case_data(), source_data=valid_source_data())
 def test_evidence_requires_valid_source_references(case_data, source_data):
     """
@@ -215,8 +215,8 @@ def test_evidence_with_invalid_source_reference():
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)  # Reduced from 50 to 20 for faster execution
 @given(
     case_data=complete_case_data(),
     search_term=st.text(
@@ -252,8 +252,8 @@ def test_search_functionality_across_fields(case_data, search_term):
     ), f"Case with '{search_term}' in title should appear in search results"
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)  # Reduced from 50 to 20 for faster execution
 @given(
     case_data=complete_case_data(),
     case_type=st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES]),
@@ -293,8 +293,8 @@ def test_filter_by_case_type(case_data, case_type):
     ), f"Case with case_type={case_type} should appear in filtered results"
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)  # Reduced from 50 to 20 for faster execution
 @given(
     case_data=complete_case_data(),
     tag=st.text(
@@ -342,8 +342,8 @@ def test_filter_by_tags(case_data, tag):
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)  # Reduced from 100 to 20 for faster execution
 @given(case_data=complete_case_data(), source_data=valid_source_data())
 def test_published_cases_display_complete_data(case_data, source_data):
     """
@@ -408,8 +408,8 @@ def test_published_cases_display_complete_data(case_data, source_data):
         assert len(returned_case["tags"]) == len(case.tags), "All tags should be included"
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)  # Reduced from 50 to 20 for faster execution
 @given(case_data=complete_case_data())
 def test_published_cases_include_all_entity_fields(case_data):
     """

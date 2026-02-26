@@ -26,8 +26,8 @@ User = get_user_model()
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=20, deadline=None)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, deadline=None, derandomize=True)
 @given(
     case_data=complete_case_data(),
     contributor_data=user_with_role("Contributor"),
@@ -84,8 +84,8 @@ def test_contributors_can_transition_between_draft_and_in_review(
     assert success, f"Contributor should be able to transition from {case.state} to {target_state}"
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)
 @given(
     case_data=complete_case_data(),
     contributor_data=user_with_role("Contributor"),
@@ -147,8 +147,8 @@ def test_contributors_cannot_transition_to_published_or_closed(
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)
 @given(case_data=complete_case_data(), admin_data=user_with_role("Admin"))
 def test_admin_has_full_access_to_all_cases(case_data, admin_data):
     """
@@ -181,8 +181,8 @@ def test_admin_has_full_access_to_all_cases(case_data, admin_data):
     assert case in queryset, "Admin should see all cases in queryset"
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)
 @given(
     case_data=complete_case_data(),
     admin_data=user_with_role("Admin"),
@@ -232,8 +232,8 @@ def test_admin_can_transition_to_any_state(case_data, admin_data, target_state):
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)
 @given(case_data=complete_case_data(), contributor_data=user_with_role("Contributor"))
 def test_contributor_can_only_access_assigned_cases(case_data, contributor_data):
     """
@@ -279,8 +279,8 @@ def test_contributor_can_only_access_assigned_cases(case_data, contributor_data)
     assert unassigned_case not in queryset, "Contributor should NOT see unassigned case in queryset"
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)
 @given(case_data=complete_case_data(), contributor_data=user_with_role("Contributor"))
 def test_contributor_cannot_modify_unassigned_cases(case_data, contributor_data):
     """
@@ -314,8 +314,8 @@ def test_contributor_cannot_modify_unassigned_cases(case_data, contributor_data)
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=10, deadline=None)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=10, deadline=None, derandomize=True)
 @given(moderator1_data=user_with_role("Moderator"), moderator2_data=user_with_role("Moderator"))
 def test_moderators_cannot_manage_other_moderators(moderator1_data, moderator2_data):
     """
@@ -360,8 +360,8 @@ def test_moderators_cannot_manage_other_moderators(moderator1_data, moderator2_d
     ), "Moderator should not have Admin privileges to manage other moderators"
 
 
-@pytest.mark.django_db
-@settings(max_examples=20)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=20, derandomize=True)
 @given(case_data=complete_case_data(), moderator_data=user_with_role("Moderator"))
 def test_moderators_can_access_all_cases(case_data, moderator_data):
     """

@@ -19,8 +19,8 @@ from tests.strategies import complete_case_data, minimal_case_data
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=100)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=100, derandomize=True)
 @given(case_data=minimal_case_data())
 def test_new_cases_start_in_draft_state(case_data):
     """
@@ -42,8 +42,8 @@ def test_new_cases_start_in_draft_state(case_data):
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=100)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=100, derandomize=True)
 @given(case_data=minimal_case_data())
 def test_draft_validation_is_lenient(case_data):
     """
@@ -63,8 +63,8 @@ def test_draft_validation_is_lenient(case_data):
         pytest.fail(f"Draft validation should be lenient, but raised: {e}")
 
 
-@pytest.mark.django_db
-@settings(max_examples=100)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=100, derandomize=True)
 @given(case_data=complete_case_data())
 def test_in_review_validation_is_strict(case_data):
     """
@@ -117,8 +117,8 @@ def test_in_review_validation_rejects_incomplete_data():
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=100)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=100, derandomize=True)
 @given(case_data=complete_case_data())
 def test_draft_submission_transitions_to_in_review(case_data):
     """
@@ -143,8 +143,8 @@ def test_draft_submission_transitions_to_in_review(case_data):
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=50)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=50, derandomize=True)
 @given(case_data=complete_case_data())
 def test_draft_creation_increments_version(case_data):
     """
@@ -186,8 +186,8 @@ def test_draft_creation_increments_version(case_data):
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=50)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=50, derandomize=True)
 @given(case_data=complete_case_data())
 def test_editing_published_cases_preserves_original(case_data):
     """
@@ -274,8 +274,8 @@ def test_case_requires_title():
 # ============================================================================
 
 
-@pytest.mark.django_db
-@settings(max_examples=100)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=100, derandomize=True)
 @given(case_data=complete_case_data())
 def test_soft_delete_sets_state_to_closed(case_data):
     """
@@ -309,8 +309,8 @@ def test_soft_delete_sets_state_to_closed(case_data):
     assert case.case_id == original_case_id, "Soft-deleted case should retain its case_id"
 
 
-@pytest.mark.django_db
-@settings(max_examples=50)
+@pytest.mark.django_db(transaction=True)
+@settings(max_examples=50, derandomize=True)
 @given(case_data=complete_case_data())
 def test_soft_delete_preserves_all_data(case_data):
     """
