@@ -3,6 +3,7 @@ from django.forms.widgets import Widget
 from django.forms.fields import Field
 from django.utils.safestring import mark_safe
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.template.loader import render_to_string
 from nes.core.identifiers.validators import validate_entity_id
 import json
@@ -201,8 +202,6 @@ class MultiURLField(Field):
         super().validate(value)
         # Validate each URL
         if value:
-            from django.core.validators import URLValidator
-            from django.core.exceptions import ValidationError as DjangoValidationError
             validator = URLValidator()
             for url in value:
                 # Check type before calling .strip()
@@ -212,5 +211,5 @@ class MultiURLField(Field):
                 if url and url.strip():
                     try:
                         validator(url.strip())
-                    except DjangoValidationError as err:
+                    except ValidationError as err:
                         raise ValidationError(f"Invalid URL: {url}") from err
