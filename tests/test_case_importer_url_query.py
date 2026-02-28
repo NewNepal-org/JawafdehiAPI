@@ -83,3 +83,53 @@ class TestCaseImporterURLQuery:
         # Should reuse existing source
         assert result.source_id == existing.source_id
         assert importer.stats['sources_reused'] == 1
+
+    def test_ignores_soft_deleted_sources_by_url(self):
+        """Verify soft-deleted sources are ignored when matching by URL."""
+        # Create a soft-deleted source with target URL
+        deleted_source = DocumentSource.objects.create(
+            title="Deleted Source",
+            url=["https://example.com/deleted.pdf"],
+            is_deleted=True
+        )
+        
+        # Try to import with same URL
+        importer = CaseImporter()
+        source_data = {
+            'title': 'New Source',
+            'url': 'https://example.com/deleted.pdf',
+            'description': 'Test description'
+        }
+        
+        result = importer.get_or_create_source(source_data)
+        
+        # Should create new source, not reuse deleted one
+        assert result.source_id != deleted_source.source_id
+        assert result.title == 'New Source'
+        assert importer.stats['sources_created'] == 1
+        assert importer.stats['sources_reused'] == 0
+
+    def test_ignores_soft_deleted_sources_by_title(self):
+        """Verify soft-deleted sources are ignored when matching by title."""
+        # Create a soft-deleted source with target title
+        deleted_source = DocumentSource.objects.create(
+            title="Deleted Source",
+            url=["https://example.com/deleted.pdf"],
+            is_deleted=True
+        )
+        
+        # Try to import with same title but no URL
+        importer = CaseImporter()
+        source_data = {
+            'title': 'Deleted Source',
+            'url': '',
+            'description': 'Test description'
+        }
+        
+        result = importer.get_or_create_source(source_data)
+        
+        # Should create new source, not reuse deleted one
+        assert result.source_id != deleted_source.source_id
+        assert result.title == 'Deleted Source'
+        assert importer.stats['sources_created'] == 1
+        assert importer.stats['sources_reused'] == 0
