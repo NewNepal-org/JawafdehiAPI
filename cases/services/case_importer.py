@@ -96,12 +96,16 @@ class CaseImporter:
         
         # Try to find existing source by URL (if provided)
         if url_list:
-            # JSONField query: check if url list contains the URL
-            source = DocumentSource.objects.filter(url__contains=url).first()
-            if source:
-                self.stats['sources_reused'] += 1
-                self.log(f"  Reusing source: {title}")
-                return source
+            # Database-agnostic approach: iterate through active sources to find URL match
+            # Note: PostgreSQL supports url__contains lookup for better performance,
+            # but SQLite doesn't support it. This approach works with both databases.
+            # For large datasets on PostgreSQL, consider using:
+            # source = DocumentSource.objects.filter(url__contains=url_list, is_deleted=False).first()
+            for source in DocumentSource.objects.filter(is_deleted=False):
+                if isinstance(source.url, list) and url in source.url:
+                    self.stats['sources_reused'] += 1
+                    self.log(f"  Reusing source: {title}")
+                    return source
         
         # Try to find by title
         source = DocumentSource.objects.filter(title=title).first()
