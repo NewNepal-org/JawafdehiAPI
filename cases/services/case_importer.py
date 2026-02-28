@@ -91,9 +91,13 @@ class CaseImporter:
         if not title:
             return None
         
+        # Normalize URL to list format for JSONField
+        url_list = [url] if url else []
+        
         # Try to find existing source by URL (if provided)
-        if url:
-            source = DocumentSource.objects.filter(url=url).first()
+        if url_list:
+            # JSONField query: check if url list contains the URL
+            source = DocumentSource.objects.filter(url__contains=url).first()
             if source:
                 self.stats['sources_reused'] += 1
                 self.log(f"  Reusing source: {title}")
@@ -106,11 +110,11 @@ class CaseImporter:
             self.log(f"  Reusing source: {title}")
             return source
         
-        # Create new source
+        # Create new source with URL as list
         source = DocumentSource.objects.create(
             title=title,
             description=description,
-            url=url if url else None
+            url=url_list
         )
         
         self.stats['sources_created'] += 1

@@ -47,7 +47,7 @@ class Command(BaseCommand):
             source_id="source:20180310:ciaa001",
             title="CIAA Investigation Report - Lalita Niwas Land Grab",
             description="Comprehensive investigation report by Commission for Investigation of Abuse of Authority documenting forged land ownership certificates and illegal transfers.",
-            url="https://example.com/ciaa-lalita-niwas-report",
+            url=["https://example.com/ciaa-lalita-niwas-report"],
         )
         ciaa_report.related_entities.set([
             get_entity("entity:person/balakrishna-khand"),
@@ -58,7 +58,7 @@ class Command(BaseCommand):
             source_id="source:20180310:court001",
             title="Supreme Court and District Court Case Files - Lalita Niwas",
             description="Official court documents including case filings, hearings, and rulings related to the Lalita Niwas land grab case.",
-            url="https://example.com/court-lalita-niwas",
+            url=["https://example.com/court-lalita-niwas"],
         )
         court_files.related_entities.set([
             get_entity("entity:organization/government_body/nepal-government"),
@@ -68,7 +68,7 @@ class Command(BaseCommand):
             source_id="source:20230520:coop001",
             title="Police Complaint - Cooperative Fraud",
             description="Official police complaint filed by victims of Suryadarshan Cooperative alleging embezzlement of funds.",
-            url="https://example.com/cooperative-complaint",
+            url=["https://example.com/cooperative-complaint"],
         )
         coop_complaint.related_entities.set([
             get_entity("entity:person/rabi-lamichhane"),
@@ -87,7 +87,7 @@ class Command(BaseCommand):
             source_id="source:20200101:audit001",
             title="Government Audit Report - Melamchi Project Cost Escalations",
             description="Official audit reports documenting cost overruns and delays in the Melamchi Water Supply Project.",
-            url="https://example.com/melamchi-audit",
+            url=["https://example.com/melamchi-audit"],
         )
         audit_report.related_entities.set([
             get_entity("entity:organization/government_body/melamchi-water-supply-board"),
@@ -103,7 +103,7 @@ class Command(BaseCommand):
             source_id="source:20210715:campaign001",
             title="KP Oli Election Campaign Speeches 2017",
             description="Video recordings of election campaign speeches where promises were made regarding prosperity, railways, and employment.",
-            url="https://example.com/oli-campaign-2017",
+            url=["https://example.com/oli-campaign-2017"],
         )
         campaign_videos.related_entities.set([
             get_entity("entity:person/kp-sharma-oli"),
