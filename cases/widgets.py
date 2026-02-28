@@ -167,6 +167,14 @@ class MultiURLWidget(BaseMultiWidget):
         context = super().get_context(name, value, attrs)
         context['button_label'] = self.button_label
         return context
+    
+    def value_from_datadict(self, data, files, name):
+        """
+        Extract value from form data without silently converting parse errors to [].
+        Let MultiURLField.to_python() handle JSON parsing and raise ValidationError.
+        """
+        value = data.get(name, '[]')
+        return value if value is not None else '[]'
 
 
 class MultiURLField(Field):

@@ -1,5 +1,13 @@
 """
 Tests for URL field migration from URLField to JSONField.
+
+These tests verify the post-migration behavior of the url field:
+- Confirms the field accepts and stores lists of URLs
+- Validates serialization works correctly with the new JSONField type
+- Ensures backward compatibility with the new schema
+
+Note: The actual migration logic is in cases/migrations/0010_change_url_to_jsonfield.py
+which converts existing string URLs to JSON arrays during deployment.
 """
 import pytest
 from cases.models import DocumentSource
@@ -9,37 +17,26 @@ from cases.models import DocumentSource
 class TestURLMigration:
     """Test suite for URL field after migration to JSONField."""
 
-    def test_url_field_is_list(self):
-        """Test that url field stores data as a list."""
+    def test_url_field_stores_list(self):
+        """Verify url field accepts and persists a list of URLs."""
         source = DocumentSource.objects.create(
             title="Test Source",
             url=["https://example.com"]
         )
         
         assert isinstance(source.url, list)
-        assert len(source.url) == 1
-        assert source.url[0] == "https://example.com"
+        assert source.url == ["https://example.com"]
 
-    def test_multiple_urls(self):
-        """Test that multiple URLs can be stored."""
-        urls = [
-            "https://example.com",
-            "https://backup.example.com",
-            "https://mirror.example.com"
-        ]
-        
-        source = DocumentSource.objects.create(
-            title="Test Source",
-            url=urls
-        )
+    def test_multiple_urls_storage(self):
+        """Verify multiple URLs can be stored and retrieved."""
+        urls = ["https://example.com", "https://backup.example.com"]
+        source = DocumentSource.objects.create(title="Test Source", url=urls)
         
         source.refresh_from_db()
-        assert isinstance(source.url, list)
-        assert len(source.url) == 3
         assert source.url == urls
 
     def test_url_serialization(self):
-        """Test that URLs are properly serialized in API."""
+        """Verify URLs serialize correctly in API responses."""
         from cases.serializers import DocumentSourceSerializer
         
         source = DocumentSource.objects.create(
@@ -48,6 +45,4 @@ class TestURLMigration:
         )
         
         serializer = DocumentSourceSerializer(source)
-        assert 'url' in serializer.data
-        assert isinstance(serializer.data['url'], list)
-        assert len(serializer.data['url']) == 2
+        assert serializer.data['url'] == ["https://example.com", "https://backup.com"]
