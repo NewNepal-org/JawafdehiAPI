@@ -39,6 +39,10 @@ class Command(BaseCommand):
         if len(entity_ids) < 2:
             raise CommandError("At least 2 entity IDs are required for merging")
 
+        # Validate uniqueness of entity IDs
+        if len(entity_ids) != len(set(entity_ids)):
+            raise CommandError("Duplicate entity IDs are not allowed")
+
         # Fetch all entities
         entities = []
         for entity_id in entity_ids:
