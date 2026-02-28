@@ -42,3 +42,23 @@ class TestSourceTypeField:
         
         serializer = DocumentSourceSerializer(source)
         assert serializer.data['source_type'] == "LEGAL_COURT_ORDER"
+
+    def test_source_type_invalid_value_rejected(self):
+        """Verify invalid enum values are rejected at model validation layer."""
+        from django.core.exceptions import ValidationError
+        
+        # Test: Model layer validation - invalid value should be rejected
+        # Django's choices validation happens when calling full_clean()
+        source = DocumentSource(
+            title="Test Source",
+            source_type="INVALID_TYPE"
+        )
+        
+        # Calling full_clean() should raise ValidationError for invalid choice
+        with pytest.raises(ValidationError) as exc_info:
+            source.full_clean()
+        
+        # Verify the error is specifically for source_type field
+        assert 'source_type' in exc_info.value.error_dict
+        error_messages = str(exc_info.value.error_dict['source_type'])
+        assert 'not a valid choice' in error_messages.lower() or 'invalid choice' in error_messages.lower()
