@@ -55,3 +55,4 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_jawafdehi
           DJANGO_SETTINGS_MODULE: config.settings
+        run: poetry run pytest
