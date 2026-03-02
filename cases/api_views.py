@@ -127,39 +127,41 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
         Implementation:
         1. Filter to appropriate states based on action
-        2. For each case_id, return only the highest version
+        2. For retrieve action, return cases directly without version filtering
+        3. For list action, return only the highest version per case_id
         """
         # Determine which states to include based on action
         if self.action == 'retrieve':
-            # Detail endpoint: show PUBLISHED or IN_REVIEW
-            allowed_cases = Case.objects.filter(
+            # Detail endpoint: show PUBLISHED or IN_REVIEW without version filtering
+            # This allows accessing any version directly by ID
+            queryset = Case.objects.filter(
                 state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
             )
         else:
-            # List endpoint: show only PUBLISHED
+            # List endpoint: show only PUBLISHED cases with highest version per case_id
             allowed_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+            
+            # Find the highest version for each case_id
+            # Group by case_id and get the max version
+            highest_versions = allowed_cases.values('case_id').annotate(
+                max_version=Max('version')
+            )
 
-        # Find the highest version for each case_id
-        # Group by case_id and get the max version
-        highest_versions = allowed_cases.values('case_id').annotate(
-            max_version=Max('version')
-        )
+            # Build a list of (case_id, version) tuples for filtering
+            case_version_pairs = [
+                (item['case_id'], item['max_version']) 
+                for item in highest_versions
+            ]
 
-        # Build a list of (case_id, version) tuples for filtering
-        case_version_pairs = [
-            (item['case_id'], item['max_version']) 
-            for item in highest_versions
-        ]
+            # Filter to only include cases matching (case_id, version) pairs
+            q_objects = Q()
+            for case_id, version in case_version_pairs:
+                q_objects |= Q(case_id=case_id, version=version)
 
-        # Filter to only include cases matching (case_id, version) pairs
-        q_objects = Q()
-        for case_id, version in case_version_pairs:
-            q_objects |= Q(case_id=case_id, version=version)
-
-        if q_objects:
-            queryset = allowed_cases.filter(q_objects)
-        else:
-            queryset = allowed_cases.none()
+            if q_objects:
+                queryset = allowed_cases.filter(q_objects)
+            else:
+                queryset = allowed_cases.none()
 
         # Apply tag filtering if provided
         tags_param = self.request.query_params.get('tags', None)
