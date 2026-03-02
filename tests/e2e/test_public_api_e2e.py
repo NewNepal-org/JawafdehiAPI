@@ -212,7 +212,8 @@ class TestPublicAPIWorkflows:
         assert response.status_code == 404, \
             "Closed cases should not be accessible via detail endpoint"
         
-        # Test 4: Create an IN_REVIEW case and verify accessibility based on feature flag
+        # Test 4: Create an IN_REVIEW case and verify accessibility
+        # Detail endpoint should show IN_REVIEW, list endpoint should not
         in_review_case = create_case_with_entities(
             title="In Review Case",
             alleged_entities=["entity:person/test-person"],
@@ -223,28 +224,18 @@ class TestPublicAPIWorkflows:
             version=1
         )
         
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            # When flag is enabled, IN_REVIEW cases should be accessible
-            response = self.client.get(f'/api/cases/{in_review_case.id}/')
-            assert response.status_code == 200, \
-                "In Review cases should be accessible when EXPOSE_CASES_IN_REVIEW is enabled"
-            
-            # Verify it appears in list
-            response = self.client.get('/api/cases/')
-            case_ids = [case['case_id'] for case in response.data.get('results', [])]
-            assert in_review_case.case_id in case_ids, \
-                "In Review cases should appear in list when EXPOSE_CASES_IN_REVIEW is enabled"
-        else:
-            # When flag is disabled, IN_REVIEW cases should NOT be accessible
-            response = self.client.get(f'/api/cases/{in_review_case.id}/')
-            assert response.status_code == 404, \
-                "In Review cases should not be accessible when EXPOSE_CASES_IN_REVIEW is disabled"
-            
-            # Verify it doesn't appear in list
-            response = self.client.get('/api/cases/')
-            case_ids = [case['case_id'] for case in response.data.get('results', [])]
-            assert in_review_case.case_id not in case_ids, \
-                "In Review cases should not appear in list when EXPOSE_CASES_IN_REVIEW is disabled"
+        # IN_REVIEW cases should be accessible via detail endpoint
+        response = self.client.get(f'/api/cases/{in_review_case.id}/')
+        assert response.status_code == 200, \
+            "In Review cases should be accessible via detail endpoint"
+        assert response.data['state'] == CaseState.IN_REVIEW, \
+            "State field should show IN_REVIEW"
+        
+        # IN_REVIEW cases should NOT appear in list endpoint
+        response = self.client.get('/api/cases/')
+        case_ids = [case['case_id'] for case in response.data.get('results', [])]
+        assert in_review_case.case_id not in case_ids, \
+            "In Review cases should not appear in list endpoint"
     
     def test_audit_history_retrieval(self):
         """

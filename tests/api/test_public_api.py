@@ -53,20 +53,25 @@ def test_public_api_only_shows_published_cases(case_data, state):
     # Check if case appears in results
     case_ids_in_response = [c.get('case_id') for c in response.data.get('results', [])]
     
-    # Determine expected visibility based on feature flag
-    if django_settings.EXPOSE_CASES_IN_REVIEW:
-        should_appear = state in [CaseState.PUBLISHED, CaseState.IN_REVIEW]
-    else:
-        should_appear = state == CaseState.PUBLISHED
+    # List endpoint only shows PUBLISHED cases
+    should_appear = state == CaseState.PUBLISHED
     
     if should_appear:
         # Cases should appear
         assert case.case_id in case_ids_in_response, \
-            f"Case {case.case_id} with state={state} should appear in API response"
+            f"Case {case.case_id} with state={state} should appear in API list response"
     else:
         # Cases should NOT appear
         assert case.case_id not in case_ids_in_response, \
-            f"Case {case.case_id} with state={state} should NOT appear in API response"
+            f"Case {case.case_id} with state={state} should NOT appear in API list response"
+    
+    # Test detail endpoint for IN_REVIEW cases
+    if state == CaseState.IN_REVIEW:
+        detail_response = client.get(f'/api/cases/{case.id}/')
+        assert detail_response.status_code == 200, \
+            f"IN_REVIEW case should be accessible via detail endpoint"
+        assert detail_response.data['state'] == CaseState.IN_REVIEW, \
+            "State field should show IN_REVIEW"
 
 
 @pytest.mark.django_db
