@@ -686,14 +686,10 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         """
         Save the model with validation.
+        
+        Note: Model's save() method calls full_clean() which handles all validation.
+        No need for explicit validation here.
         """
-        # Validate before saving
-        try:
-            obj.validate()
-        except ValidationError as e:
-            # Re-raise with form context
-            raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e))
-
         super().save_model(request, obj, form, change)
 
     def save_related(self, request, form, formsets, change):
