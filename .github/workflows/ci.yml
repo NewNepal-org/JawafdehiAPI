@@ -7,6 +7,10 @@ on:
 jobs:
   test-and-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_jawafdehi
+      DJANGO_SETTINGS_MODULE: config.settings
     services:
       postgres:
         image: postgres:15
@@ -47,12 +51,6 @@ jobs:
       - name: Check formatting
         run: ./scripts/format.sh --check
       - name: Collect static files
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_jawafdehi
-          DJANGO_SETTINGS_MODULE: config.settings
         run: poetry run python manage.py collectstatic --noinput
       - name: Run tests
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_jawafdehi
-          DJANGO_SETTINGS_MODULE: config.settings
         run: poetry run pytest
