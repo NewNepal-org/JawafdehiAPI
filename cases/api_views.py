@@ -384,7 +384,6 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
             return JawafEntity.objects.all()
 
         # For list action, filter by case association
-        from django.core.cache import cache
 
         # Try to get entity IDs from cache
         entity_ids = cache.get("public_entities_list")
@@ -471,7 +470,12 @@ class StatisticsView(APIView):
                 state__in=[CaseState.DRAFT, CaseState.IN_REVIEW]
             ).count(),
             "cases_closed": Case.objects.filter(state=CaseState.CLOSED).count(),
-            "entities_tracked": JawafEntity.objects.count(),
+            "entities_tracked": JawafEntity.objects.filter(
+                Q(cases_as_alleged__state=CaseState.PUBLISHED)
+                | Q(cases_as_related__state=CaseState.PUBLISHED)
+            )
+            .distinct()
+            .count(),
             "last_updated": timezone.now().isoformat(),
         }
 
