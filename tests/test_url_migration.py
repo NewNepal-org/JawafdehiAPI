@@ -27,13 +27,15 @@ class TestURLMigrationProcess(TransactionTestCase):
     def setUp(self):
         """Set up test by migrating to the state before our migration."""
         from django.utils import timezone
+        from django.db.migrations.executor import MigrationExecutor
         
         # Migrate to the state before our URL migration
         call_command('migrate', 'cases', '0009_merge_20260112_0309', verbosity=0)
         
-        # Get the historical model at the old schema state
-        from django.apps import apps
-        DocumentSource = apps.get_model('cases', 'DocumentSource')
+        # Get the historical model at migration 0009 using MigrationExecutor
+        executor = MigrationExecutor(connection)
+        project_state = executor.loader.project_state(('cases', '0009_merge_20260112_0309'))
+        DocumentSource = project_state.apps.get_model('cases', 'DocumentSource')
         
         # Create test data with old URLField format (single string) using ORM
         now = timezone.now()
@@ -78,12 +80,15 @@ class TestURLMigrationProcess(TransactionTestCase):
     
     def test_migration_converts_string_urls_to_lists(self):
         """Test that migration converts single URL strings to JSON arrays."""
+        from django.db.migrations.executor import MigrationExecutor
+        
         # Run the migration
         call_command('migrate', 'cases', '0010_change_url_to_jsonfield', verbosity=0)
         
-        # Get the model at migration 0010 state
-        from django.apps import apps
-        DocumentSource = apps.get_model('cases', 'DocumentSource')
+        # Get the historical model at migration 0010 state
+        executor = MigrationExecutor(connection)
+        project_state = executor.loader.project_state(('cases', '0010_change_url_to_jsonfield'))
+        DocumentSource = project_state.apps.get_model('cases', 'DocumentSource')
         
         # Verify the data was converted correctly
         source1 = DocumentSource.objects.get(source_id='source:test:001')
@@ -95,34 +100,43 @@ class TestURLMigrationProcess(TransactionTestCase):
     
     def test_migration_handles_empty_urls(self):
         """Test that migration converts empty strings to empty lists."""
+        from django.db.migrations.executor import MigrationExecutor
+        
         call_command('migrate', 'cases', '0010_change_url_to_jsonfield', verbosity=0)
         
-        # Get the model at migration 0010 state
-        from django.apps import apps
-        DocumentSource = apps.get_model('cases', 'DocumentSource')
+        # Get the historical model at migration 0010 state
+        executor = MigrationExecutor(connection)
+        project_state = executor.loader.project_state(('cases', '0010_change_url_to_jsonfield'))
+        DocumentSource = project_state.apps.get_model('cases', 'DocumentSource')
         
         source = DocumentSource.objects.get(source_id='source:test:003')
         assert source.url == [], "Empty string should become empty list"
     
     def test_migration_handles_null_urls(self):
         """Test that migration converts NULL values to empty lists."""
+        from django.db.migrations.executor import MigrationExecutor
+        
         call_command('migrate', 'cases', '0010_change_url_to_jsonfield', verbosity=0)
         
-        # Get the model at migration 0010 state
-        from django.apps import apps
-        DocumentSource = apps.get_model('cases', 'DocumentSource')
+        # Get the historical model at migration 0010 state
+        executor = MigrationExecutor(connection)
+        project_state = executor.loader.project_state(('cases', '0010_change_url_to_jsonfield'))
+        DocumentSource = project_state.apps.get_model('cases', 'DocumentSource')
         
         source = DocumentSource.objects.get(source_id='source:test:004')
         assert source.url == [], "NULL should become empty list"
     
     def test_reverse_migration_converts_lists_back_to_strings(self):
         """Test that reverse migration converts lists back to single URL strings."""
+        from django.db.migrations.executor import MigrationExecutor
+        
         # First migrate forward
         call_command('migrate', 'cases', '0010_change_url_to_jsonfield', verbosity=0)
         
-        # Get the model at migration 0010 state
-        from django.apps import apps
-        DocumentSource = apps.get_model('cases', 'DocumentSource')
+        # Get the historical model at migration 0010 state
+        executor = MigrationExecutor(connection)
+        project_state = executor.loader.project_state(('cases', '0010_change_url_to_jsonfield'))
+        DocumentSource = project_state.apps.get_model('cases', 'DocumentSource')
         
         # Verify forward migration worked
         source = DocumentSource.objects.get(source_id='source:test:001')
