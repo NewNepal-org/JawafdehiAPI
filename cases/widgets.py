@@ -165,8 +165,29 @@ class MultiURLWidget(BaseMultiWidget):
         self.button_label = button_label or 'Add URL'
     
     def get_context(self, name, value, attrs):
-        context = super().get_context(name, value, attrs)
-        context['button_label'] = self.button_label
+        """
+        Override to handle invalid JSON gracefully.
+        If JSON parsing fails, treat as empty list so form can render with validation error.
+        """
+        if value is None:
+            value = []
+        elif isinstance(value, str):
+            try:
+                value = json.loads(value) if value else []
+            except (JSONDecodeError, TypeError):
+                # Invalid JSON - use empty list so form can render and show validation error
+                value = []
+        
+        final_attrs = self.build_attrs(self.attrs, attrs)
+        widget_id = final_attrs.get('id', name)
+        
+        context = {
+            'widget_id': widget_id,
+            'name': name,
+            'values': value,
+            'values_json': json.dumps(value),
+            'button_label': self.button_label,
+        }
         return context
     
     def value_from_datadict(self, data, files, name):

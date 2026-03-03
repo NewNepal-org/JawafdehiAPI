@@ -2,6 +2,7 @@
 
 from django.db import migrations, models
 import json
+import cases.models
 
 
 def migrate_urls_to_list(apps, schema_editor):
@@ -111,6 +112,11 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='documentsource',
             name='url',
-            field=models.JSONField(blank=True, default=list, help_text='List of URLs for this source'),
+            field=models.JSONField(
+                blank=True, 
+                default=list, 
+                validators=[cases.models.validate_url_list],
+                help_text='List of URLs for this source'
+            ),
         ),
     ]

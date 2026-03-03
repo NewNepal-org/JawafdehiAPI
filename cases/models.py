@@ -598,6 +598,14 @@ class DocumentSource(models.Model):
             timestamp = datetime.now().strftime("%Y%m%d")
             self.source_id = f"source:{timestamp}:{uuid.uuid4().hex[:8]}"
 
+        # Normalize url to a list before validation for backward compatibility
+        # Older call sites may still pass a single string or None
+        if isinstance(self.url, str):
+            url_str = self.url.strip()
+            self.url = [url_str] if url_str else []
+        elif self.url is None:
+            self.url = []
+
         # Run full model and field validation (includes validate_url_list)
         # This calls clean() which normalizes data, then validates
         self.full_clean()
