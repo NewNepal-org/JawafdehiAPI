@@ -21,8 +21,8 @@ class TestURLMigrationProcess(TransactionTestCase):
     """
     
     # Specify which migrations to start from and migrate to
-    migrate_from = [('cases', '0009_merge_20260112_0309')]
-    migrate_to = [('cases', '0010_change_url_to_jsonfield')]
+    migrate_from = (('cases', '0009_merge_20260112_0309'),)
+    migrate_to = (('cases', '0010_change_url_to_jsonfield'),)
     
     def setUp(self):
         """Set up test by migrating to the state before our migration."""
@@ -139,6 +139,13 @@ class TestURLMigrationProcess(TransactionTestCase):
             )
             url_value = cursor.fetchone()[0]
             assert url_value == 'https://example.com/doc1.pdf', "Should revert to first URL string"
+    
+    @classmethod
+    def tearDownClass(cls):
+        """Restore DB schema to latest migrations after migration tests."""
+        # Re-apply all migrations to restore schema for subsequent tests
+        call_command('migrate', verbosity=0)
+        super().tearDownClass()
 
 
 @pytest.mark.django_db
