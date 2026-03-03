@@ -463,6 +463,12 @@ class StatisticsView(APIView):
             return Response(cached_data)
 
         # Calculate statistics
+        # Determine which states to include based on feature flag
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            entity_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
+        else:
+            entity_states = [CaseState.PUBLISHED]
+
         stats = {
             "published_cases": Case.objects.filter(state=CaseState.PUBLISHED).count(),
             "cases_under_investigation": Case.objects.filter(
@@ -470,8 +476,8 @@ class StatisticsView(APIView):
             ).count(),
             "cases_closed": Case.objects.filter(state=CaseState.CLOSED).count(),
             "entities_tracked": JawafEntity.objects.filter(
-                Q(cases_as_alleged__state=CaseState.PUBLISHED)
-                | Q(cases_as_related__state=CaseState.PUBLISHED)
+                Q(cases_as_alleged__state__in=entity_states)
+                | Q(cases_as_related__state__in=entity_states)
             )
             .distinct()
             .count(),
@@ -567,5 +573,5 @@ class FeedbackView(APIView):
         if getattr(settings, "TRUST_PROXY_HEADERS", False) and x_forwarded_for:
             ip = x_forwarded_for.split(",")[0].strip()
         else:
-            ip = request.META.get("REMOTE_ADDR", "")
+            ip = request.META.get("REMOTE_ADDR") or "unknown"
         return ip
