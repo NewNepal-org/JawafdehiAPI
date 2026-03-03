@@ -228,6 +228,10 @@ NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
 # Feature Flags
 EXPOSE_CASES_IN_REVIEW = os.getenv("EXPOSE_CASES_IN_REVIEW", "False") == "True"
 
+# Security Settings
+# Only trust X-Forwarded-For header when behind a trusted proxy (e.g., in production)
+TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "False") == "True"
+
 # Cache Configuration
 CACHES = {
     "default": {

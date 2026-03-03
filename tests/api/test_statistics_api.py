@@ -127,10 +127,17 @@ class TestStatisticsCounting:
         assert data["cases_closed"] == 2
 
     def test_entities_tracked_count(self, api_client):
-        """Test that all entities in the system are counted."""
-        JawafEntity.objects.create(nes_id="entity:person/test1")
-        JawafEntity.objects.create(nes_id="entity:person/test2")
-        JawafEntity.objects.create(display_name="Custom Entity")
+        """Test that only entities in published cases are counted."""
+        entity1 = JawafEntity.objects.create(nes_id="entity:person/test1")
+        entity2 = JawafEntity.objects.create(nes_id="entity:person/test2")
+        entity3 = JawafEntity.objects.create(display_name="Custom Entity")
+
+        # Create a published case and link entities to it
+        published_case = Case.objects.create(
+            case_type=CaseType.CORRUPTION, state=CaseState.PUBLISHED, title="Published Case"
+        )
+        published_case.alleged_entities.add(entity1, entity2)
+        published_case.related_entities.add(entity3)
 
         response = api_client.get("/api/statistics/")
         data = response.json()
@@ -141,7 +148,7 @@ class TestStatisticsCounting:
         """Test statistics with cases in all different states."""
         # Create entities
         entity1 = JawafEntity.objects.create(nes_id="entity:person/test1")
-        JawafEntity.objects.create(nes_id="entity:person/test2")
+        entity2 = JawafEntity.objects.create(nes_id="entity:person/test2")
 
         # Create cases in different states
         published_case = Case.objects.create(
@@ -149,9 +156,12 @@ class TestStatisticsCounting:
         )
         published_case.alleged_entities.add(entity1)
 
-        Case.objects.create(
+        # Create a draft case with entity2 (should not be counted)
+        draft_case = Case.objects.create(
             case_type=CaseType.CORRUPTION, state=CaseState.DRAFT, title="Draft Case"
         )
+        draft_case.alleged_entities.add(entity2)
+
         Case.objects.create(
             case_type=CaseType.CORRUPTION, state=CaseState.IN_REVIEW, title="In Review Case"
         )
@@ -165,7 +175,7 @@ class TestStatisticsCounting:
         assert data["published_cases"] == 1
         assert data["cases_under_investigation"] == 2
         assert data["cases_closed"] == 1
-        assert data["entities_tracked"] == 2
+        assert data["entities_tracked"] == 1  # Only entity1 in published case
 
 
 @pytest.mark.django_db
@@ -265,15 +275,17 @@ class TestStatisticsPerformance:
     def test_statistics_with_large_dataset(self, api_client):
         """Test statistics calculation with a larger dataset."""
         # Create multiple entities
-        [JawafEntity.objects.create(nes_id=f"entity:person/test{i}") for i in range(10)]
+        entities = [JawafEntity.objects.create(nes_id=f"entity:person/test{i}") for i in range(10)]
 
         # Create multiple cases in different states
         for i in range(5):
-            Case.objects.create(
+            case = Case.objects.create(
                 case_type=CaseType.CORRUPTION,
                 state=CaseState.PUBLISHED,
                 title=f"Published Case {i}",
             )
+            # Link 2 entities to each published case
+            case.alleged_entities.add(entities[i * 2 % 10], entities[(i * 2 + 1) % 10])
 
         for i in range(3):
             Case.objects.create(
@@ -291,7 +303,7 @@ class TestStatisticsPerformance:
         assert data["published_cases"] == 5
         assert data["cases_under_investigation"] == 3
         assert data["cases_closed"] == 2
-        assert data["entities_tracked"] == 10
+        assert data["entities_tracked"] == 10  # All 10 entities are linked to published cases
 
     def test_multiple_concurrent_requests(self, api_client):
         """Test that multiple requests return consistent results."""

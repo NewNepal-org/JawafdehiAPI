@@ -20,7 +20,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import filters, status, viewsets
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 # Local app
@@ -389,20 +389,19 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
         entity_ids = cache.get("public_entities_list")
 
         if entity_ids is None:
-            # Cache miss - compute entity IDs
-            if settings.EXPOSE_CASES_IN_REVIEW:
-                published_cases = Case.objects.filter(
-                    state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            # Cache miss - compute entity IDs with a single DB query
+            states = (
+                [CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                if settings.EXPOSE_CASES_IN_REVIEW
+                else [CaseState.PUBLISHED]
+            )
+            entity_ids = list(
+                JawafEntity.objects.filter(
+                    Q(cases_as_alleged__state__in=states) | Q(cases_as_related__state__in=states)
                 )
-            else:
-                published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
-
-            entity_ids = set()
-            for case in published_cases:
-                # Add alleged entities
-                entity_ids.update(case.alleged_entities.values_list("id", flat=True))
-                # Add related entities
-                entity_ids.update(case.related_entities.values_list("id", flat=True))
+                .values_list("id", flat=True)
+                .distinct()
+            )
 
             # Cache for 10 minutes - stale cache is acceptable
             cache.set("public_entities_list", entity_ids, timeout=600)
@@ -485,10 +484,18 @@ class StatisticsView(APIView):
         return Response(stats)
 
 
-class FeedbackRateThrottle(AnonRateThrottle):
+class FeedbackRateThrottle(SimpleRateThrottle):
     """Rate throttle for feedback submissions: 5 per hour."""
 
+    scope = "feedback"
     rate = "5/hour"
+
+    def get_cache_key(self, request, view):
+        """Generate cache key based on client IP address."""
+        ident = self.get_ident(request)
+        if ident is None:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": ident}
 
 
 @extend_schema(
@@ -557,8 +564,8 @@ class FeedbackView(APIView):
     def get_client_ip(self, request):
         """Extract client IP address from request."""
         x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-        if x_forwarded_for:
+        if getattr(settings, "TRUST_PROXY_HEADERS", False) and x_forwarded_for:
             ip = x_forwarded_for.split(",")[0].strip()
         else:
-            ip = request.META.get("REMOTE_ADDR")
+            ip = request.META.get("REMOTE_ADDR", "")
         return ip
