@@ -26,7 +26,6 @@ class CaseImporter:
         """
         self.logger = logger
         self.entity_cache = {}
-        self.source_url_cache = None  # Lazy-loaded cache for URL lookups
         self.stats = {
             'entities_created': 0,
             'entities_reused': 0,
@@ -79,6 +78,8 @@ class CaseImporter:
         """
         Get or create DocumentSource with deduplication by URL.
         
+        Uses PostgreSQL JSON containment query for efficient URL lookup.
+        
         Args:
             source_data: Dict with 'title', 'url', 'description' keys
         
@@ -95,21 +96,16 @@ class CaseImporter:
         # Normalize URL to list format for JSONField
         url_list = [url] if url else []
         
-        # Try to find existing source by URL (if provided)
-        if url_list:
-            # Lazy-load source URL cache on first use for performance
-            if self.source_url_cache is None:
-                self.source_url_cache = {}
-                # Load only necessary fields to reduce memory usage
-                for source in DocumentSource.objects.filter(is_deleted=False).only('url', 'source_id', 'title').iterator():
-                    if isinstance(source.url, list):
-                        for source_url in source.url:
-                            if source_url not in self.source_url_cache:
-                                self.source_url_cache[source_url] = source
+        # Try to find existing source by URL using PostgreSQL JSON containment
+        # TODO: Consider adding GIN index on url field for better performance:
+        #   CREATE INDEX idx_documentsource_url_gin ON cases_documentsource USING gin (url);
+        if url:
+            source = DocumentSource.objects.filter(
+                is_deleted=False,
+                url__contains=[url]  # PostgreSQL JSON containment operator
+            ).only('source_id', 'title').first()
             
-            # Check cache for URL match
-            if url in self.source_url_cache:
-                source = self.source_url_cache[url]
+            if source:
                 self.stats['sources_reused'] += 1
                 self.log(f"  Reusing source: {title}")
                 return source
@@ -127,10 +123,6 @@ class CaseImporter:
             description=description,
             url=url_list
         )
-        
-        # Add to cache if URL was provided
-        if url_list and self.source_url_cache is not None:
-            self.source_url_cache[url] = source
         
         self.stats['sources_created'] += 1
         self.log(f"  Created source: {title}")

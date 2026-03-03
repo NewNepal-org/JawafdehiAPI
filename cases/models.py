@@ -41,8 +41,13 @@ def validate_url_list(value):
     for item in value:
         if not isinstance(item, str):
             raise ValidationError("Each URL must be a string.")
-        if item.strip():
-            validator(item.strip())
+        
+        # Strip whitespace and validate
+        stripped = item.strip()
+        if not stripped:
+            raise ValidationError("URLs cannot be blank or whitespace-only.")
+        
+        validator(stripped)
 
 
 class JawafEntity(models.Model):
@@ -568,6 +573,23 @@ class DocumentSource(models.Model):
     def __str__(self):
         return f"{self.source_id} - {self.title}"
 
+    def clean(self):
+        """
+        Normalize and validate DocumentSource data.
+        
+        - Strips whitespace from title
+        - Ensures title is not empty after stripping
+        - Normalizes URL list entries (strips whitespace)
+        """
+        # Normalize title
+        self.title = (self.title or "").strip()
+        if not self.title:
+            raise ValidationError({"title": "Title is required and cannot be empty"})
+        
+        # Normalize URL list entries (strip whitespace from each URL)
+        if isinstance(self.url, list):
+            self.url = [url.strip() if isinstance(url, str) else url for url in self.url]
+
     def save(self, *args, **kwargs):
         """Override save to generate source_id and validate all fields."""
         if not self.source_id:
@@ -577,26 +599,10 @@ class DocumentSource(models.Model):
             self.source_id = f"source:{timestamp}:{uuid.uuid4().hex[:8]}"
 
         # Run full model and field validation (includes validate_url_list)
+        # This calls clean() which normalizes data, then validates
         self.full_clean()
 
         super().save(*args, **kwargs)
-
-    def validate(self):
-        """
-        Validate source data.
-
-        Validates:
-        - Title is present and non-empty
-        - Entity IDs are valid (validated by EntityListField)
-        """
-        errors = {}
-
-        # Validate title
-        if not self.title or not self.title.strip():
-            errors['title'] = "Title is required and cannot be empty"
-
-        if errors:
-            raise ValidationError(errors)
 
 
 
