@@ -86,9 +86,29 @@ class CaseImporter:
         Returns:
             DocumentSource instance or None if title is empty
         """
+<<<<<<< Updated upstream
         # Guard against None values before calling .strip()
         url_raw = source_data.get('url', '')
         url = url_raw.strip() if isinstance(url_raw, str) else ''
+=======
+        # Guard against None values and handle both string and list URLs
+        url_raw = source_data.get('url', '')
+        
+        # Handle URL as string or list
+        if isinstance(url_raw, list):
+            # Filter and normalize list entries
+            url_list = []
+            for item in url_raw:
+                if isinstance(item, str):
+                    stripped = item.strip()
+                    if stripped:
+                        url_list.append(stripped)
+        elif isinstance(url_raw, str):
+            stripped = url_raw.strip()
+            url_list = [stripped] if stripped else []
+        else:
+            url_list = []
+>>>>>>> Stashed changes
         
         title_raw = source_data.get('title', '')
         title = title_raw.strip() if isinstance(title_raw, str) else ''
@@ -99,6 +119,7 @@ class CaseImporter:
         if not title:
             return None
         
+<<<<<<< Updated upstream
         # Normalize URL to list format for JSONField
         url_list = [url] if url else []
         
@@ -115,6 +136,23 @@ class CaseImporter:
                 self.stats['sources_reused'] += 1
                 self.log(f"  Reusing source: {title}")
                 return source
+=======
+        # Try to find existing source by URL using PostgreSQL JSON containment
+        # TODO: Consider adding GIN index on url field for better performance:
+        #   CREATE INDEX idx_documentsource_url_gin ON cases_documentsource USING gin (url);
+        if url_list:
+            # Check if any URL in our list matches existing sources
+            for url in url_list:
+                source = DocumentSource.objects.filter(
+                    is_deleted=False,
+                    url__contains=[url]  # PostgreSQL JSON containment operator
+                ).only('source_id', 'title').first()
+                
+                if source:
+                    self.stats['sources_reused'] += 1
+                    self.log(f"  Reusing source: {title}")
+                    return source
+>>>>>>> Stashed changes
         
         # Try to find by title (excluding soft-deleted sources)
         source = DocumentSource.objects.filter(title=title, is_deleted=False).first()

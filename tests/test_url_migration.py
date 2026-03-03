@@ -26,33 +26,64 @@ class TestURLMigrationProcess(TransactionTestCase):
     
     def setUp(self):
         """Set up test by migrating to the state before our migration."""
+        from django.utils import timezone
+        
         # Migrate to the state before our URL migration
         call_command('migrate', 'cases', '0009_merge_20260112_0309', verbosity=0)
         
-        # Get the model at the old schema state
+        # Get the historical model at the old schema state
         from django.apps import apps
-        from django.utils import timezone
         DocumentSource = apps.get_model('cases', 'DocumentSource')
         
-        # Create test data with old URLField format (single string)
-        # Use timezone.now() for timestamps (works with both SQLite and PostgreSQL)
+        # Create test data with old URLField format (single string) using ORM
         now = timezone.now()
-        with connection.cursor() as cursor:
-            # SQLite uses datetime() function, not NOW()
-            cursor.execute("""
-                INSERT INTO cases_documentsource 
-                (source_id, title, description, url, is_deleted, created_at, updated_at)
-                VALUES 
-                ('source:test:001', 'Test Source 1', 'Description 1', 'https://example.com/doc1.pdf', 0, ?, ?),
-                ('source:test:002', 'Test Source 2', 'Description 2', 'https://example.com/doc2.pdf', 0, ?, ?),
-                ('source:test:003', 'Empty URL Source', 'Description 3', '', 0, ?, ?),
-                ('source:test:004', 'Null URL Source', 'Description 4', NULL, 0, ?, ?)
-            """, [now, now, now, now, now, now, now, now])
+        DocumentSource.objects.bulk_create([
+            DocumentSource(
+                source_id='source:test:001',
+                title='Test Source 1',
+                description='Description 1',
+                url='https://example.com/doc1.pdf',
+                is_deleted=False,
+                created_at=now,
+                updated_at=now
+            ),
+            DocumentSource(
+                source_id='source:test:002',
+                title='Test Source 2',
+                description='Description 2',
+                url='https://example.com/doc2.pdf',
+                is_deleted=False,
+                created_at=now,
+                updated_at=now
+            ),
+            DocumentSource(
+                source_id='source:test:003',
+                title='Empty URL Source',
+                description='Description 3',
+                url='',
+                is_deleted=False,
+                created_at=now,
+                updated_at=now
+            ),
+            DocumentSource(
+                source_id='source:test:004',
+                title='Null URL Source',
+                description='Description 4',
+                url=None,
+                is_deleted=False,
+                created_at=now,
+                updated_at=now
+            ),
+        ])
     
     def test_migration_converts_string_urls_to_lists(self):
         """Test that migration converts single URL strings to JSON arrays."""
         # Run the migration
         call_command('migrate', 'cases', '0010_change_url_to_jsonfield', verbosity=0)
+        
+        # Get the model at migration 0010 state
+        from django.apps import apps
+        DocumentSource = apps.get_model('cases', 'DocumentSource')
         
         # Verify the data was converted correctly
         source1 = DocumentSource.objects.get(source_id='source:test:001')
@@ -66,12 +97,20 @@ class TestURLMigrationProcess(TransactionTestCase):
         """Test that migration converts empty strings to empty lists."""
         call_command('migrate', 'cases', '0010_change_url_to_jsonfield', verbosity=0)
         
+        # Get the model at migration 0010 state
+        from django.apps import apps
+        DocumentSource = apps.get_model('cases', 'DocumentSource')
+        
         source = DocumentSource.objects.get(source_id='source:test:003')
         assert source.url == [], "Empty string should become empty list"
     
     def test_migration_handles_null_urls(self):
         """Test that migration converts NULL values to empty lists."""
         call_command('migrate', 'cases', '0010_change_url_to_jsonfield', verbosity=0)
+        
+        # Get the model at migration 0010 state
+        from django.apps import apps
+        DocumentSource = apps.get_model('cases', 'DocumentSource')
         
         source = DocumentSource.objects.get(source_id='source:test:004')
         assert source.url == [], "NULL should become empty list"
@@ -80,6 +119,10 @@ class TestURLMigrationProcess(TransactionTestCase):
         """Test that reverse migration converts lists back to single URL strings."""
         # First migrate forward
         call_command('migrate', 'cases', '0010_change_url_to_jsonfield', verbosity=0)
+        
+        # Get the model at migration 0010 state
+        from django.apps import apps
+        DocumentSource = apps.get_model('cases', 'DocumentSource')
         
         # Verify forward migration worked
         source = DocumentSource.objects.get(source_id='source:test:001')
@@ -91,7 +134,8 @@ class TestURLMigrationProcess(TransactionTestCase):
         # Verify reverse migration worked (takes first URL from list)
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT url FROM cases_documentsource WHERE source_id = 'source:test:001'"
+                "SELECT url FROM cases_documentsource WHERE source_id = %s",
+                ['source:test:001']
             )
             url_value = cursor.fetchone()[0]
             assert url_value == 'https://example.com/doc1.pdf', "Should revert to first URL string"
