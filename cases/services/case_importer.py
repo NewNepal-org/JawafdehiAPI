@@ -86,9 +86,15 @@ class CaseImporter:
         Returns:
             DocumentSource instance or None if title is empty
         """
-        url = source_data.get('url', '').strip()
-        title = source_data.get('title', '').strip()
-        description = source_data.get('description', '').strip()
+        # Guard against None values before calling .strip()
+        url_raw = source_data.get('url', '')
+        url = url_raw.strip() if isinstance(url_raw, str) else ''
+        
+        title_raw = source_data.get('title', '')
+        title = title_raw.strip() if isinstance(title_raw, str) else ''
+        
+        description_raw = source_data.get('description', '')
+        description = description_raw.strip() if isinstance(description_raw, str) else ''
         
         if not title:
             return None

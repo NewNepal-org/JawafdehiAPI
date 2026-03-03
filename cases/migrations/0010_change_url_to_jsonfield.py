@@ -21,14 +21,16 @@ def migrate_urls_to_list(apps, schema_editor):
         
         try:
             if url_value is None or url_value == '':
-                source.url = []
+                # Store as valid JSON string
+                source.url = json.dumps([])
             elif isinstance(url_value, str):
                 if url_value.startswith('['):
-                    # Already JSON format, validate and parse it
-                    source.url = json.loads(url_value)
+                    # Already JSON format, validate and re-serialize
+                    parsed_list = json.loads(url_value)
+                    source.url = json.dumps(parsed_list)
                 else:
-                    # Convert single URL string to list
-                    source.url = [url_value]
+                    # Convert single URL string to JSON array
+                    source.url = json.dumps([url_value])
             else:
                 # Unexpected type - fail loud
                 raise ValueError(

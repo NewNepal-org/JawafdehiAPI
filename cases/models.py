@@ -532,6 +532,9 @@ class DocumentSource(models.Model):
         null=True,
         blank=True,
         help_text="Type of source"
+        # TODO: Consider making this non-nullable in a future migration:
+        # 1. Create data migration to backfill NULL values to SourceType.OTHER_VISUAL
+        # 2. Create schema migration to set null=False, blank=False
     )
     url = models.JSONField(
         default=list,

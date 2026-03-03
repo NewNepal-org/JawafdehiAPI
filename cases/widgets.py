@@ -229,8 +229,13 @@ class MultiURLField(Field):
                 if not isinstance(url, str):
                     raise ValidationError(f"Invalid URL type: expected string, got {type(url).__name__} ({url!r})")
                 
-                if url and url.strip():
-                    try:
-                        validator(url.strip())
-                    except ValidationError as err:
-                        raise ValidationError(f"Invalid URL: {url}") from err
+                # Normalize and check if empty
+                normalized = url.strip()
+                if not normalized:
+                    # Reject whitespace-only or empty URLs at form validation time
+                    raise ValidationError(f"URL cannot be blank or whitespace-only: {url!r}")
+                
+                try:
+                    validator(normalized)
+                except ValidationError as err:
+                    raise ValidationError(f"Invalid URL: {url}") from err
