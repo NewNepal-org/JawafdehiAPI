@@ -120,44 +120,49 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         """
-        Return only published cases with the highest version per case_id.
-        
-        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes IN_REVIEW cases.
-        
+        Return cases with the highest version per case_id.
+
+        List endpoint: Only PUBLISHED cases
+        Retrieve endpoint: PUBLISHED or IN_REVIEW cases
+
         Implementation:
-        1. Filter to PUBLISHED cases (and IN_REVIEW if flag is enabled)
-        2. For each case_id, return only the highest version
+        1. Filter to appropriate states based on action
+        2. For retrieve action, return cases directly without version filtering
+        3. For list action, return only the highest version per case_id
         """
-        # Get all published cases (and in-review if feature flag is enabled)
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            published_cases = Case.objects.filter(
+        # Determine which states to include based on action
+        if self.action == 'retrieve':
+            # Detail endpoint: show PUBLISHED or IN_REVIEW without version filtering
+            # This allows accessing any version directly by ID
+            queryset = Case.objects.filter(
                 state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
             )
         else:
-            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
-        
-        # Find the highest version for each case_id
-        # Group by case_id and get the max version
-        highest_versions = published_cases.values('case_id').annotate(
-            max_version=Max('version')
-        )
-        
-        # Build a list of (case_id, version) tuples for filtering
-        case_version_pairs = [
-            (item['case_id'], item['max_version']) 
-            for item in highest_versions
-        ]
-        
-        # Filter to only include cases matching (case_id, version) pairs
-        q_objects = Q()
-        for case_id, version in case_version_pairs:
-            q_objects |= Q(case_id=case_id, version=version)
-        
-        if q_objects:
-            queryset = published_cases.filter(q_objects)
-        else:
-            queryset = published_cases.none()
-        
+            # List endpoint: show only PUBLISHED cases with highest version per case_id
+            allowed_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+            
+            # Find the highest version for each case_id
+            # Group by case_id and get the max version
+            highest_versions = allowed_cases.values('case_id').annotate(
+                max_version=Max('version')
+            )
+
+            # Build a list of (case_id, version) tuples for filtering
+            case_version_pairs = [
+                (item['case_id'], item['max_version']) 
+                for item in highest_versions
+            ]
+
+            # Filter to only include cases matching (case_id, version) pairs
+            q_objects = Q()
+            for case_id, version in case_version_pairs:
+                q_objects |= Q(case_id=case_id, version=version)
+
+            if q_objects:
+                queryset = allowed_cases.filter(q_objects)
+            else:
+                queryset = allowed_cases.none()
+
         # Apply tag filtering if provided
         tags_param = self.request.query_params.get('tags', None)
         if tags_param:
@@ -174,8 +179,10 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                     if case.tags and tags_param in case.tags
                 ]
                 queryset = queryset.filter(id__in=case_ids_with_tag)
-        
+
         return queryset.order_by('-created_at')
+
+
 
 
 @extend_schema_view(
