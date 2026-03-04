@@ -3,9 +3,11 @@ from django.forms.widgets import Widget
 from django.forms.fields import Field
 from django.utils.safestring import mark_safe
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.template.loader import render_to_string
 from nes.core.identifiers.validators import validate_entity_id
 import json
+from json import JSONDecodeError
 
 
 class BaseMultiWidget(Widget):
@@ -153,3 +155,87 @@ class MultiEvidenceField(Field):
             return json.loads(value) if value else []
         except:
             return []
+
+
+class MultiURLWidget(BaseMultiWidget):
+    template_name = 'cases/widgets/multi_url_widget.html'
+    
+    def __init__(self, attrs=None, button_label=None):
+        super().__init__(attrs)
+        self.button_label = button_label or 'Add URL'
+    
+    def get_context(self, name, value, attrs):
+        """
+        Override to handle invalid JSON gracefully.
+        If JSON parsing fails, treat as empty list so form can render with validation error.
+        """
+        if value is None:
+            value = []
+        elif isinstance(value, str):
+            try:
+                value = json.loads(value) if value else []
+            except (JSONDecodeError, TypeError):
+                # Invalid JSON - use empty list so form can render and show validation error
+                value = []
+        
+        final_attrs = self.build_attrs(self.attrs, attrs)
+        widget_id = final_attrs.get('id', name)
+        
+        context = {
+            'widget_id': widget_id,
+            'name': name,
+            'values': value,
+            'values_json': json.dumps(value),
+            'button_label': self.button_label,
+        }
+        return context
+    
+    def value_from_datadict(self, data, files, name):
+        """
+        Extract value from form data without silently converting parse errors to [].
+        Let MultiURLField.to_python() handle JSON parsing and raise ValidationError.
+        """
+        value = data.get(name, '[]')
+        return value if value is not None else '[]'
+
+
+class MultiURLField(Field):
+    def __init__(self, *args, button_label='Add URL', **kwargs):
+        self.button_label = button_label
+        super().__init__(*args, **kwargs)
+        self.widget = MultiURLWidget(button_label=button_label)
+    
+    def to_python(self, value):
+        if value in self.empty_values:
+            return []
+        if isinstance(value, list):
+            return value
+        try:
+            parsed = json.loads(value) if value else []
+        except (JSONDecodeError, TypeError) as err:
+            raise ValidationError("Invalid URL payload format.") from err
+        
+        if not isinstance(parsed, list):
+            raise ValidationError("Expected a list of URLs.")
+        return parsed
+    
+    def validate(self, value):
+        super().validate(value)
+        # Validate each URL
+        if value:
+            validator = URLValidator()
+            for url in value:
+                # Check type before calling .strip()
+                if not isinstance(url, str):
+                    raise ValidationError(f"Invalid URL type: expected string, got {type(url).__name__} ({url!r})")
+                
+                # Normalize and check if empty
+                normalized = url.strip()
+                if not normalized:
+                    # Reject whitespace-only or empty URLs at form validation time
+                    raise ValidationError(f"URL cannot be blank or whitespace-only: {url!r}")
+                
+                try:
+                    validator(normalized)
+                except ValidationError as err:
+                    raise ValidationError(f"Invalid URL: {url}") from err

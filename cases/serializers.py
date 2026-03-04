@@ -218,6 +218,7 @@ class DocumentSourceSerializer(serializers.ModelSerializer):
             'source_id',
             'title',
             'description',
+            'source_type',
             'url',
             'related_entities',
             'created_at',

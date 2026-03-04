@@ -6,11 +6,12 @@ from django.db import models
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 from tinymce.widgets import TinyMCE
-from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType, Feedback
+from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType, SourceType, Feedback
 from .widgets import (
     MultiTextField,
     MultiTimelineField,
     MultiEvidenceField,
+    MultiURLField,
 )
 from .rules.predicates import (
     is_admin,
@@ -464,12 +465,12 @@ class DocumentSourceAdminForm(forms.ModelForm):
     Custom form for DocumentSource admin with custom widgets.
     """
 
-    # Override url field to set assume_scheme and silence Django 6.0 warning
-    url = forms.URLField(
+    # Override url field to use MultiURLField widget
+    url = MultiURLField(
         required=False,
-        max_length=2000,
-        assume_scheme='https',
-        help_text="Optional URL to the source"
+        button_label="Add URL",
+        label="URLs",
+        help_text="URLs to the source (you can add multiple)"
     )
 
     class Meta:
@@ -523,11 +524,13 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     list_display = [
         'source_id',
         'title',
+        'source_type',
         'deletion_status',
         'created_at',
     ]
 
     list_filter = [
+        'source_type',
         'is_deleted',
         'created_at',
     ]
@@ -550,6 +553,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
                 'source_id',
                 'title',
                 'description',
+                'source_type',
                 'url',
                 'related_entities',
                 'contributors',
@@ -624,15 +628,15 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """
         Customize list filters based on user role.
 
-        - Admins: See is_deleted and created_at filters
-        - Moderators: Only see created_at filter
-        - Contributors: Only see created_at filter
+        - Admins: See source_type, is_deleted and created_at filters
+        - Moderators: See source_type and created_at filters
+        - Contributors: See source_type and created_at filters
         """
         if is_admin(request.user):
-            return ['is_deleted', 'created_at']
+            return ['source_type', 'is_deleted', 'created_at']
 
-        # Moderators and Contributors only see created_at
-        return ['created_at']
+        # Moderators and Contributors see source_type and created_at
+        return ['source_type', 'created_at']
 
     def has_view_permission(self, request, obj=None):
         """
@@ -682,14 +686,10 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         """
         Save the model with validation.
+        
+        Note: Model's save() method calls full_clean() which handles all validation.
+        No need for explicit validation here.
         """
-        # Validate before saving
-        try:
-            obj.validate()
-        except ValidationError as e:
-            # Re-raise with form context
-            raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e))
-
         super().save_model(request, obj, form, change)
 
     def save_related(self, request, form, formsets, change):

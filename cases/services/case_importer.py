@@ -78,39 +78,69 @@ class CaseImporter:
         """
         Get or create DocumentSource with deduplication by URL.
         
+        Uses PostgreSQL JSON containment query for efficient URL lookup.
+        
         Args:
             source_data: Dict with 'title', 'url', 'description' keys
         
         Returns:
             DocumentSource instance or None if title is empty
         """
-        url = source_data.get('url', '').strip()
-        title = source_data.get('title', '').strip()
-        description = source_data.get('description', '').strip()
+        # Guard against None values and handle both string and list URLs
+        url_raw = source_data.get('url', '')
+        
+        # Handle URL as string or list
+        if isinstance(url_raw, list):
+            # Filter and normalize list entries
+            url_list = []
+            for item in url_raw:
+                if isinstance(item, str):
+                    stripped = item.strip()
+                    if stripped:
+                        url_list.append(stripped)
+        elif isinstance(url_raw, str):
+            stripped = url_raw.strip()
+            url_list = [stripped] if stripped else []
+        else:
+            url_list = []
+        
+        title_raw = source_data.get('title', '')
+        title = title_raw.strip() if isinstance(title_raw, str) else ''
+        
+        description_raw = source_data.get('description', '')
+        description = description_raw.strip() if isinstance(description_raw, str) else ''
         
         if not title:
             return None
         
-        # Try to find existing source by URL (if provided)
-        if url:
-            source = DocumentSource.objects.filter(url=url).first()
-            if source:
-                self.stats['sources_reused'] += 1
-                self.log(f"  Reusing source: {title}")
-                return source
+        # Try to find existing source by URL using PostgreSQL JSON containment
+        # TODO: Consider adding GIN index on url field for better performance:
+        #   CREATE INDEX idx_documentsource_url_gin ON cases_documentsource USING gin (url);
+        if url_list:
+            # Check if any URL in our list matches existing sources
+            for url in url_list:
+                source = DocumentSource.objects.filter(
+                    is_deleted=False,
+                    url__contains=[url]  # PostgreSQL JSON containment operator
+                ).only('source_id', 'title').first()
+                
+                if source:
+                    self.stats['sources_reused'] += 1
+                    self.log(f"  Reusing source: {title}")
+                    return source
         
-        # Try to find by title
-        source = DocumentSource.objects.filter(title=title).first()
+        # Try to find by title (excluding soft-deleted sources)
+        source = DocumentSource.objects.filter(title=title, is_deleted=False).first()
         if source:
             self.stats['sources_reused'] += 1
             self.log(f"  Reusing source: {title}")
             return source
         
-        # Create new source
+        # Create new source with URL as list
         source = DocumentSource.objects.create(
             title=title,
             description=description,
-            url=url if url else None
+            url=url_list
         )
         
         self.stats['sources_created'] += 1

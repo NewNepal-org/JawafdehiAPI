@@ -7,6 +7,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.utils import timezone
 import uuid
 
@@ -18,6 +19,35 @@ from .fields import (
 
 
 User = get_user_model()
+
+
+def validate_url_list(value):
+    """
+    Validate that the url field contains a list of valid URLs.
+    
+    Args:
+        value: The value to validate (should be a list of URL strings)
+        
+    Raises:
+        ValidationError: If value is not a list or contains invalid URLs
+    """
+    if value in (None, []):
+        return
+    
+    if not isinstance(value, list):
+        raise ValidationError("url must be a list of URLs.")
+    
+    validator = URLValidator()
+    for item in value:
+        if not isinstance(item, str):
+            raise ValidationError("Each URL must be a string.")
+        
+        # Strip whitespace and validate
+        stripped = item.strip()
+        if not stripped:
+            raise ValidationError("URLs cannot be blank or whitespace-only.")
+        
+        validator(stripped)
 
 
 class JawafEntity(models.Model):
@@ -151,6 +181,36 @@ class CaseState(models.TextChoices):
     IN_REVIEW = "IN_REVIEW", "In Review"
     PUBLISHED = "PUBLISHED", "Published"
     CLOSED = "CLOSED", "Closed"
+
+
+class SourceType(models.TextChoices):
+    """Enum for document source types."""
+    # Legal Documents (Court & Procedural)
+    LEGAL_COURT_ORDER = "LEGAL_COURT_ORDER", "Legal: Court Order/Verdict"
+    LEGAL_PROCEDURAL = "LEGAL_PROCEDURAL", "Legal: Procedural/Law Enforcement"
+    
+    # Official Government
+    OFFICIAL_GOVERNMENT = "OFFICIAL_GOVERNMENT", "Official (Government)"
+    
+    # Financial & Corporate
+    FINANCIAL_FORENSIC = "FINANCIAL_FORENSIC", "Financial/Forensic Record"
+    INTERNAL_CORPORATE = "INTERNAL_CORPORATE", "Internal Corporate Doc"
+    
+    # Media & Investigations
+    MEDIA_NEWS = "MEDIA_NEWS", "Media/News"
+    INVESTIGATIVE_REPORT = "INVESTIGATIVE_REPORT", "Investigative Report"
+    
+    # Public Input
+    PUBLIC_COMPLAINT = "PUBLIC_COMPLAINT", "Public Complaint/Whistleblower"
+    
+    # Legislative
+    LEGISLATIVE_DOC = "LEGISLATIVE_DOC", "Legislative/Policy Doc"
+    
+    # Social Media
+    SOCIAL_MEDIA = "SOCIAL_MEDIA", "Social Media"
+    
+    # Other
+    OTHER_VISUAL = "OTHER_VISUAL", "Other / Visual Assets"
 
 
 class Case(models.Model):
@@ -466,11 +526,21 @@ class DocumentSource(models.Model):
         blank=True,
         help_text="Source description"
     )
-    url = models.URLField(
-        max_length=2000,
+    source_type = models.CharField(
+        max_length=50,
+        choices=SourceType.choices,
         null=True,
         blank=True,
-        help_text="Optional URL to the source"
+        help_text="Type of source"
+        # TODO: Consider making this non-nullable in a future migration:
+        # 1. Create data migration to backfill NULL values to SourceType.OTHER_VISUAL
+        # 2. Create schema migration to set null=False, blank=False
+    )
+    url = models.JSONField(
+        default=list,
+        blank=True,
+        validators=[validate_url_list],
+        help_text="List of URLs for this source"
     )
 
     # Entity relationships
@@ -506,36 +576,44 @@ class DocumentSource(models.Model):
     def __str__(self):
         return f"{self.source_id} - {self.title}"
 
+    def clean(self):
+        """
+        Normalize and validate DocumentSource data.
+        
+        - Strips whitespace from title
+        - Ensures title is not empty after stripping
+        - Normalizes URL list entries (strips whitespace)
+        """
+        # Normalize title
+        self.title = (self.title or "").strip()
+        if not self.title:
+            raise ValidationError({"title": "Title is required and cannot be empty"})
+        
+        # Normalize URL list entries (strip whitespace from each URL)
+        if isinstance(self.url, list):
+            self.url = [url.strip() if isinstance(url, str) else url for url in self.url]
+
     def save(self, *args, **kwargs):
-        """Override save to generate source_id and validate required fields."""
+        """Override save to generate source_id and validate all fields."""
         if not self.source_id:
             # Generate unique source_id for new sources
             from datetime import datetime
             timestamp = datetime.now().strftime("%Y%m%d")
             self.source_id = f"source:{timestamp}:{uuid.uuid4().hex[:8]}"
 
-        # Validate required fields before saving
-        if not self.title or not self.title.strip():
-            raise ValidationError("Title is required and cannot be empty")
+        # Normalize url to a list before validation for backward compatibility
+        # Older call sites may still pass a single string or None
+        if isinstance(self.url, str):
+            url_str = self.url.strip()
+            self.url = [url_str] if url_str else []
+        elif self.url is None:
+            self.url = []
+
+        # Run full model and field validation (includes validate_url_list)
+        # This calls clean() which normalizes data, then validates
+        self.full_clean()
 
         super().save(*args, **kwargs)
-
-    def validate(self):
-        """
-        Validate source data.
-
-        Validates:
-        - Title is present and non-empty
-        - Entity IDs are valid (validated by EntityListField)
-        """
-        errors = {}
-
-        # Validate title
-        if not self.title or not self.title.strip():
-            errors['title'] = "Title is required and cannot be empty"
-
-        if errors:
-            raise ValidationError(errors)
 
 
 
