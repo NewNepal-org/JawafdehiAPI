@@ -34,6 +34,7 @@ jobs:
   process-queue:
     name: Process Approved Queue Items
     runs-on: ubuntu-latest
+    environment: "NES DB update"
 
     steps:
       # -----------------------------------------------------------
