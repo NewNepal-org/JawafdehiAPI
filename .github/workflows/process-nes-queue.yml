@@ -43,7 +43,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: NewNepal-org/NepalEntityService
-          token: ${{ secrets.NES_DB_PUSH_TOKEN }}
           path: nes-db
 
       # -----------------------------------------------------------
