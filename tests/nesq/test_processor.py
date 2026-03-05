@@ -253,7 +253,7 @@ class TestAuthorIdAndDescription:
     """Test that the processor generates correct author_id and augmented description."""
 
     async def test_author_id_format(self):
-        """author_id should be 'jawafdehi:{username}'."""
+        """author_id should be 'jawafdehi:{sanitized-username}'."""
         user = await _create_user("sita_a1", "sita_a1@example.com", "Contributor")
         item = await _make_approved_item(user)
 
@@ -263,7 +263,8 @@ class TestAuthorIdAndDescription:
         await processor.process_item(item)
 
         call_kwargs = processor.publication_service.update_entity.call_args
-        assert call_kwargs.kwargs["author_id"] == "jawafdehi:sita_a1"
+        # Underscores in username are replaced with hyphens for NES Author slug
+        assert call_kwargs.kwargs["author_id"] == "jawafdehi:sita-a1"
 
     async def test_augmented_description_passed_to_publication_service(self):
         """change_description passed to update_entity should include submitter username."""

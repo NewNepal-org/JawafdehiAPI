@@ -135,7 +135,9 @@ class QueueProcessor:
                 )
 
             augmented_description = _augment_change_description(item)
-            author_id = f"jawafdehi:{item.submitted_by.username}"
+            # NES Author.slug requires ^[a-z0-9-]+$ — sanitize Django username
+            slug = item.submitted_by.username.lower().replace("_", "-")
+            author_id = f"jawafdehi:{slug}"
 
             # Fetch existing entity
             entity = await self.publication_service.get_entity(
