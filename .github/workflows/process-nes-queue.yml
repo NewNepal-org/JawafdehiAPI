@@ -85,7 +85,19 @@ jobs:
         run: poetry run python manage.py process_queue --verbose
 
       # -----------------------------------------------------------
-      # 5. Commit and push nes-db changes
+      # 5. Show nes-db changes
+      # -----------------------------------------------------------
+      - name: Show nes-db changes
+        working-directory: nes-db
+        run: |
+          echo "=== Changed files ==="
+          git diff --stat
+          echo ""
+          echo "=== Full diff ==="
+          git diff
+
+      # -----------------------------------------------------------
+      # 6. Commit and push nes-db changes
       # -----------------------------------------------------------
       - name: Commit and push NES changes
         working-directory: nes-db
