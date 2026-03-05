@@ -18,6 +18,7 @@ See .kiro/specs/nes-queue-system/ for full specification.
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List
 
@@ -135,8 +136,12 @@ class QueueProcessor:
                 )
 
             augmented_description = _augment_change_description(item)
-            # NES Author.slug requires ^[a-z0-9-]+$ — sanitize Django username
-            slug = item.submitted_by.username.lower().replace("_", "-")
+            # NES Author.slug must match ^[a-z0-9]+(?:-[a-z0-9]+)*$
+            # Sanitize: lowercase → replace non-alnum with hyphen → collapse → strip
+            slug = item.submitted_by.username.lower()
+            slug = re.sub(r"[^a-z0-9]", "-", slug)
+            slug = re.sub(r"-{2,}", "-", slug)
+            slug = slug.strip("-")
             author_id = f"jawafdehi:{slug}"
 
             # Fetch existing entity
