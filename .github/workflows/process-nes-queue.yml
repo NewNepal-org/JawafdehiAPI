@@ -83,7 +83,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
-          NES_DB_PATH: ${{ github.workspace }}/nes-db
+          NES_DB_PATH: ${{ github.workspace }}/nes-db/v2
           DEBUG: 'False'
         run: poetry run python manage.py process_queue --verbose
 
