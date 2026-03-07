@@ -5,7 +5,6 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 from django.conf import settings
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -28,7 +27,9 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         model = JawafEntity
         fields = ["id", "nes_id", "display_name", "alleged_cases", "related_cases"]
 
-    @extend_schema_field(OpenApiTypes.ARRAY)
+    # OpenAPI schema: documents that this returns an array of integers (case IDs)
+    # Using dict format because OpenApiTypes.ARRAY doesn't exist in drf-spectacular
+    @extend_schema_field({"type": "array", "items": {"type": "integer"}})
     def get_alleged_cases(self, obj):
         """
         Get list of case IDs where this entity is alleged.
@@ -36,10 +37,8 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         Returns only the latest version per case_id.
         """
-        from django.conf import settings
         from django.db.models import OuterRef, Subquery
 
-        # Get latest version per case_id
         latest_versions = (
             Case.objects.filter(case_id=OuterRef("case_id")).order_by("-version").values("id")[:1]
         )
@@ -56,7 +55,7 @@ class JawafEntitySerializer(serializers.ModelSerializer):
 
         return list(cases.values_list("id", flat=True))
 
-    @extend_schema_field(OpenApiTypes.ARRAY)
+    @extend_schema_field({"type": "array", "items": {"type": "integer"}})
     def get_related_cases(self, obj):
         """
         Get list of case IDs where this entity is related or a location.
@@ -65,15 +64,12 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         Excludes cases where entity is already alleged (to avoid duplicates).
         Returns only the latest version per case_id.
         """
-        from django.conf import settings
         from django.db.models import OuterRef, Subquery
 
-        # Get latest version per case_id
         latest_versions = (
             Case.objects.filter(case_id=OuterRef("case_id")).order_by("-version").values("id")[:1]
         )
 
-        # Get alleged case IDs to exclude
         if settings.EXPOSE_CASES_IN_REVIEW:
             alleged_case_ids = obj.cases_as_alleged.filter(
                 id__in=Subquery(latest_versions),
@@ -84,7 +80,6 @@ class JawafEntitySerializer(serializers.ModelSerializer):
                 id__in=Subquery(latest_versions), state=CaseState.PUBLISHED
             ).values_list("id", flat=True)
 
-        # Get related and location cases
         if settings.EXPOSE_CASES_IN_REVIEW:
             related_cases = obj.cases_as_related.filter(
                 id__in=Subquery(latest_versions),
@@ -104,7 +99,6 @@ class JawafEntitySerializer(serializers.ModelSerializer):
                 id__in=Subquery(latest_versions), state=CaseState.PUBLISHED
             ).exclude(id__in=alleged_case_ids)
 
-        # Combine and deduplicate
         case_ids = set(related_cases.values_list("id", flat=True))
         case_ids.update(location_cases.values_list("id", flat=True))
 
@@ -191,7 +185,7 @@ class CaseDetailSerializer(CaseSerializer):
     class Meta(CaseSerializer.Meta):
         fields = CaseSerializer.Meta.fields + ["audit_history"]
 
-    @extend_schema_field(OpenApiTypes.ARRAY)
+    @extend_schema_field({"type": "array", "items": {"type": "object"}})
     def get_audit_history(self, obj):
         """
         Get versionInfo from all published versions with the same case_id.
@@ -200,8 +194,6 @@ class CaseDetailSerializer(CaseSerializer):
 
         Returns a list of versionInfo objects ordered by version (newest first).
         """
-        # Get all published versions with the same case_id
-        # (and in-review if feature flag is enabled)
         if settings.EXPOSE_CASES_IN_REVIEW:
             all_versions = Case.objects.filter(
                 case_id=obj.case_id, state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
@@ -211,7 +203,6 @@ class CaseDetailSerializer(CaseSerializer):
                 case_id=obj.case_id, state=CaseState.PUBLISHED
             ).order_by("-version")
 
-        # Extract versionInfo from each version
         audit_history = []
         for version in all_versions:
             if version.versionInfo:
@@ -315,7 +306,6 @@ class FeedbackSerializer(serializers.ModelSerializer):
         if not value:
             return {}
 
-        # Validate contact methods if present
         if "contactMethods" in value:
             valid_types = ["email", "phone", "whatsapp", "instagram", "facebook", "other"]
             for method in value["contactMethods"]:
@@ -330,7 +320,6 @@ class FeedbackSerializer(serializers.ModelSerializer):
         """Convert to camelCase response format."""
         data = super().to_representation(instance)
 
-        # Return simplified response for API
         return {
             "id": data["id"],
             "feedbackType": data["feedbackType"],
