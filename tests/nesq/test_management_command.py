@@ -15,18 +15,14 @@ Covers:
 See .kiro/specs/nes-queue-system/tasks.md §8 for requirements.
 """
 
-import asyncio
 from io import StringIO
-from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from nesq.processor import ProcessingResult
-
 
 # ============================================================================
 # NES_DB_PATH validation
@@ -115,9 +111,7 @@ class TestProcessQueueSuccess:
         settings.NES_DB_PATH = str(tmp_path)
 
         mock_instance = MockProcessor.return_value
-        mock_instance.process_approved_items = AsyncMock(
-            return_value=ProcessingResult()
-        )
+        mock_instance.process_approved_items = AsyncMock(return_value=ProcessingResult())
 
         call_command("process_queue")
 
@@ -140,7 +134,9 @@ class TestProcessQueueFailures:
         mock_instance = MockProcessor.return_value
         mock_instance.process_approved_items = AsyncMock(
             return_value=ProcessingResult(
-                processed=3, completed=2, failed=1,
+                processed=3,
+                completed=2,
+                failed=1,
                 errors=[{"item_id": 42, "error": "Entity not found"}],
             )
         )
@@ -160,7 +156,9 @@ class TestProcessQueueFailures:
         mock_instance = MockProcessor.return_value
         mock_instance.process_approved_items = AsyncMock(
             return_value=ProcessingResult(
-                processed=2, completed=0, failed=2,
+                processed=2,
+                completed=0,
+                failed=2,
                 errors=[
                     {"item_id": 1, "error": "Entity not found"},
                     {"item_id": 2, "error": "Disk full"},
@@ -172,9 +170,7 @@ class TestProcessQueueFailures:
             call_command("process_queue")
 
     @patch("nesq.management.commands.process_queue.QueueProcessor")
-    def test_critical_processor_error_raises_command_error(
-        self, MockProcessor, settings, tmp_path
-    ):
+    def test_critical_processor_error_raises_command_error(self, MockProcessor, settings, tmp_path):
         """If processor.process_approved_items() raises, should raise CommandError."""
         settings.NES_DB_PATH = str(tmp_path)
 
@@ -201,9 +197,7 @@ class TestVerboseFlag:
         settings.NES_DB_PATH = str(tmp_path)
 
         mock_instance = MockProcessor.return_value
-        mock_instance.process_approved_items = AsyncMock(
-            return_value=ProcessingResult()
-        )
+        mock_instance.process_approved_items = AsyncMock(return_value=ProcessingResult())
 
         out = StringIO()
         call_command("process_queue", "--verbose", stdout=out)
@@ -219,7 +213,9 @@ class TestVerboseFlag:
         mock_instance = MockProcessor.return_value
         mock_instance.process_approved_items = AsyncMock(
             return_value=ProcessingResult(
-                processed=1, completed=0, failed=1,
+                processed=1,
+                completed=0,
+                failed=1,
                 errors=[{"item_id": 99, "error": "Entity 'xyz' not found"}],
             )
         )
@@ -235,16 +231,16 @@ class TestVerboseFlag:
         assert "Entity 'xyz' not found" in error_output
 
     @patch("nesq.management.commands.process_queue.QueueProcessor")
-    def test_no_verbose_suppresses_error_details(
-        self, MockProcessor, settings, tmp_path
-    ):
+    def test_no_verbose_suppresses_error_details(self, MockProcessor, settings, tmp_path):
         """Without --verbose, error details should NOT be printed to stderr."""
         settings.NES_DB_PATH = str(tmp_path)
 
         mock_instance = MockProcessor.return_value
         mock_instance.process_approved_items = AsyncMock(
             return_value=ProcessingResult(
-                processed=1, completed=0, failed=1,
+                processed=1,
+                completed=0,
+                failed=1,
                 errors=[{"item_id": 99, "error": "Entity 'xyz' not found"}],
             )
         )

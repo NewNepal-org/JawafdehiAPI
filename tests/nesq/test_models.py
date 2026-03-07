@@ -21,14 +21,12 @@ See .kiro/specs/nes-queue-system/tasks.md §10.1 for requirements.
 import time
 
 import pytest
-
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.utils import timezone
 
 from nesq.models import NESQueueItem, QueueAction, QueueStatus
 from tests.conftest import create_user_with_role
-
 
 User = get_user_model()
 
@@ -481,9 +479,7 @@ class TestIndexes:
 
     def test_status_index_fields(self):
         """The status index should cover exactly the status field."""
-        idx = next(
-            idx for idx in NESQueueItem._meta.indexes if idx.name == "nesq_status_idx"
-        )
+        idx = next(idx for idx in NESQueueItem._meta.indexes if idx.name == "nesq_status_idx")
         assert idx.fields == ["status"]
 
 

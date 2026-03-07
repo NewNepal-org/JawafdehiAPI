@@ -12,10 +12,9 @@ See .kiro/specs/nes-queue-system/ for full specification.
 
 from typing import Any, Dict
 
-from pydantic import BaseModel, Field, field_validator
-
 from nes.core.identifiers.validators import validate_entity_id
 from nes.core.models.base import Name
+from pydantic import BaseModel, Field, field_validator
 
 
 class AddNamePayload(BaseModel):
@@ -91,6 +90,5 @@ def validate_action_payload(action: str, payload: Dict[str, Any]) -> BaseModel:
         return AddNamePayload(**payload)
 
     raise ValueError(
-        f"Action '{action}' is not supported in this version. "
-        "Only ADD_NAME is available."
+        f"Action '{action}' is not supported in this version. " "Only ADD_NAME is available."
     )

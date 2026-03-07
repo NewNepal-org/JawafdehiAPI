@@ -15,17 +15,13 @@ Covers:
 See .kiro/specs/nes-queue-system/tasks.md §10.6 for requirements.
 """
 
-import json
-
 import pytest
-
 from django.contrib.admin.sites import AdminSite
 from django.utils import timezone
 
 from nesq.admin import NESQueueItemAdmin
 from nesq.models import NESQueueItem, QueueAction, QueueStatus
 from tests.conftest import create_user_with_role
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -82,7 +78,7 @@ def _make_admin_request(user):
     request.user = user
     request.session = SessionStore()
     messages = FallbackStorage(request)
-    setattr(request, "_messages", messages)
+    request._messages = messages
     return request
 
 
@@ -345,9 +341,7 @@ class TestBulkReject:
         completed_item = _make_queue_item(contributor_user, status=QueueStatus.COMPLETED)
 
         request = _make_admin_request(admin_user)
-        queryset = NESQueueItem.objects.filter(
-            pk__in=[approved_item.pk, completed_item.pk]
-        )
+        queryset = NESQueueItem.objects.filter(pk__in=[approved_item.pk, completed_item.pk])
         nesq_admin.bulk_reject(request, queryset)
 
         approved_item.refresh_from_db()
@@ -371,6 +365,7 @@ class TestReadOnlyFields:
         item = _make_queue_item(contributor_user, status=QueueStatus.PENDING)
 
         from django.test import RequestFactory
+
         request = RequestFactory().get("/admin/nesq/nesqueueitem/")
         request.user = contributor_user
 
@@ -383,6 +378,7 @@ class TestReadOnlyFields:
         item = _make_queue_item(contributor_user, status=QueueStatus.COMPLETED)
 
         from django.test import RequestFactory
+
         request = RequestFactory().get("/admin/nesq/nesqueueitem/")
         request.user = contributor_user
 
@@ -395,6 +391,7 @@ class TestReadOnlyFields:
         item = _make_queue_item(contributor_user, status=QueueStatus.FAILED)
 
         from django.test import RequestFactory
+
         request = RequestFactory().get("/admin/nesq/nesqueueitem/")
         request.user = contributor_user
 
@@ -405,6 +402,7 @@ class TestReadOnlyFields:
     def test_new_item_has_base_readonly_fields(self, nesq_admin):
         """A new (unsaved) item should only have the base read-only fields."""
         from django.test import RequestFactory
+
         request = RequestFactory().get("/admin/nesq/nesqueueitem/add/")
 
         readonly = nesq_admin.get_readonly_fields(request, obj=None)

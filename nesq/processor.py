@@ -23,12 +23,10 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from asgiref.sync import sync_to_async
-
+from django.utils import timezone
 from nes.core.models.base import Name
 from nes.database.file_database import FileDatabase
 from nes.services.publication import PublicationService
-
-from django.utils import timezone
 
 from .models import NESQueueItem, QueueAction, QueueStatus
 
@@ -99,9 +97,7 @@ class QueueProcessor:
                 result.completed += 1
             else:
                 result.failed += 1
-                result.errors.append(
-                    {"item_id": item.id, "error": item.error_message}
-                )
+                result.errors.append({"item_id": item.id, "error": item.error_message})
 
         logger.info(
             "Queue processing complete: %d processed, %d completed, %d failed",
@@ -145,9 +141,7 @@ class QueueProcessor:
             author_id = f"jawafdehi:{slug}"
 
             # Fetch existing entity
-            entity = await self.publication_service.get_entity(
-                item.payload["entity_id"]
-            )
+            entity = await self.publication_service.get_entity(item.payload["entity_id"])
             if entity is None:
                 raise EntityNotFoundError(
                     f"Entity '{item.payload['entity_id']}' not found in NES database."

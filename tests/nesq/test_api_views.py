@@ -16,13 +16,11 @@ Tests cover:
 """
 
 import pytest
-from django.test import TestCase
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from nesq.models import NESQueueItem, QueueAction, QueueStatus
 from tests.conftest import create_user_with_role
-
 
 # ============================================================================
 # Shared fixtures
@@ -105,9 +103,7 @@ class TestSubmitAuthentication:
 
     def test_unauthenticated_returns_401(self, unauthenticated_client):
         """Submit endpoint rejects unauthenticated requests with 401."""
-        response = unauthenticated_client.post(
-            SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json"
-        )
+        response = unauthenticated_client.post(SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json")
         assert response.status_code == 401
 
     def test_invalid_token_returns_401(self):
@@ -129,16 +125,12 @@ class TestSubmitSuccess:
 
     def test_valid_add_name_returns_201(self, contributor_client):
         """Valid ADD_NAME submission returns 201 Created."""
-        response = contributor_client.post(
-            SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json"
-        )
+        response = contributor_client.post(SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json")
         assert response.status_code == 201
 
     def test_valid_add_name_creates_pending_item(self, contributor_client, contributor):
         """Contributor submission creates a PENDING queue item."""
-        response = contributor_client.post(
-            SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json"
-        )
+        response = contributor_client.post(SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json")
         assert response.status_code == 201
 
         data = response.json()
@@ -157,9 +149,7 @@ class TestSubmitSuccess:
 
     def test_response_fields(self, contributor_client):
         """Response contains exactly the expected set of fields."""
-        response = contributor_client.post(
-            SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json"
-        )
+        response = contributor_client.post(SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json")
         expected_fields = {
             "id",
             "action",
@@ -197,9 +187,7 @@ class TestSubmitSuccess:
     def test_no_author_id_required_in_payload(self, contributor_client):
         """Payload does not require an author_id field — it's derived from the user."""
         # The VALID_ADD_NAME_PAYLOAD has no author_id and should succeed
-        response = contributor_client.post(
-            SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json"
-        )
+        response = contributor_client.post(SUBMIT_URL, data=VALID_SUBMIT_DATA, format="json")
         assert response.status_code == 201
 
 
@@ -212,9 +200,7 @@ class TestSubmitSuccess:
 class TestAutoApprove:
     """Tests for the auto_approve flag behaviour."""
 
-    def test_admin_auto_approve_creates_approved_item(
-        self, admin_client, admin_user
-    ):
+    def test_admin_auto_approve_creates_approved_item(self, admin_client, admin_user):
         """Admin with auto_approve=True creates an APPROVED item."""
         data = {**VALID_SUBMIT_DATA, "auto_approve": True}
         response = admin_client.post(SUBMIT_URL, data=data, format="json")
@@ -231,9 +217,7 @@ class TestAutoApprove:
         assert item.reviewed_by == admin_user
         assert item.reviewed_at is not None
 
-    def test_moderator_auto_approve_creates_approved_item(
-        self, moderator_client, moderator_user
-    ):
+    def test_moderator_auto_approve_creates_approved_item(self, moderator_client, moderator_user):
         """Moderator with auto_approve=True creates an APPROVED item."""
         data = {**VALID_SUBMIT_DATA, "auto_approve": True}
         response = moderator_client.post(SUBMIT_URL, data=data, format="json")
