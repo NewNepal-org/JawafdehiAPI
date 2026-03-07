@@ -40,7 +40,7 @@ DJANGO_SETTINGS_MODULE = "config.settings"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--reuse-db --tb=short -q"
+addopts = "--tb=short -q"
 asyncio_mode = "auto"
 
 [build-system]
