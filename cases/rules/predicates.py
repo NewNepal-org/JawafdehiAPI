@@ -5,9 +5,13 @@ Predicates are reusable functions that return True/False for permission checks.
 They can be combined using logical operators (&, |, ~) to create complex rules.
 """
 
-from typing import Optional
-from django.contrib.auth.models import User
+from typing import TYPE_CHECKING, Optional
+
 import rules
+from django.contrib.auth.models import User
+
+if TYPE_CHECKING:
+    from cases.models import Case, CaseState, DocumentSource
 
 
 # ============================================================================

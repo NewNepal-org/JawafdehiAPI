@@ -604,7 +604,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     )
 
     # Create a draft case that references draft_source in evidence
-    draft_case = create_case_with_entities(
+    create_case_with_entities(
         title="Draft Case",
         alleged_entities=["entity:person/test"],
         case_type=CaseType.CORRUPTION,
@@ -618,7 +618,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     )
 
     # Create an in-review case that references in_review_source in evidence
-    in_review_case = create_case_with_entities(
+    create_case_with_entities(
         title="In Review Case",
         alleged_entities=["entity:person/test"],
         key_allegations=["Test allegation"],
@@ -634,7 +634,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     )
 
     # Create a published case that references published_source in evidence
-    published_case = create_case_with_entities(
+    create_case_with_entities(
         title="Published Case",
         alleged_entities=["entity:person/test"],
         key_allegations=["Test allegation"],

@@ -1,5 +1,3 @@
-from tests.conftest import create_case_with_entities
-
 """
 Integration tests for API documentation with real data.
 
@@ -7,12 +5,12 @@ Validates that the OpenAPI documentation works correctly with actual cases and s
 """
 
 import pytest
-
 from django.test import Client
 from django.urls import reverse
 
-from cases.models import CaseType, CaseState
+from cases.models import CaseState, CaseType
 from tests.conftest import (
+    create_case_with_entities,
     create_document_source_with_entities,
 )
 

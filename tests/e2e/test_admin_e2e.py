@@ -514,7 +514,6 @@ class TestDjangoAdminWorkflows:
         )
 
         case_id = case.id
-        case_case_id = case.case_id
 
         # Step 2: Soft delete the case
         result = case.delete()

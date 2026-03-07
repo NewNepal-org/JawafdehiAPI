@@ -105,7 +105,7 @@ class Command(BaseCommand):
             ]
         )
 
-        media_reports = DocumentSource.objects.create(
+        DocumentSource.objects.create(
             source_id="source:20200101:media001",
             title="News Reports - Melamchi Project Delays",
             description="Compilation of news articles documenting repeated delays and failures in the Melamchi project over two decades.",
@@ -123,7 +123,7 @@ class Command(BaseCommand):
             ]
         )
 
-        economic_data = DocumentSource.objects.create(
+        DocumentSource.objects.create(
             source_id="source:20210715:economic001",
             title="Economic Data 2017-2021 - Nepal",
             description="Economic indicators and development data showing lack of promised progress during KP Oli's tenure.",
@@ -140,7 +140,7 @@ class Command(BaseCommand):
             ]
         )
 
-        ethics_analysis = DocumentSource.objects.create(
+        DocumentSource.objects.create(
             source_id="source:20220910:ethics001",
             title="Media Ethics Analysis - Trial by Media",
             description="Analysis by media ethics organizations examining the impact of media coverage on fair trial rights.",

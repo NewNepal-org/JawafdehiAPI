@@ -333,7 +333,6 @@ def test_soft_delete_preserves_all_data(case_data):
     case.state = CaseState.PUBLISHED
     case.save()
 
-    original_id = case.id
     original_title = case.title
     original_version = case.version
     original_alleged_entities = list(case.alleged_entities.all())

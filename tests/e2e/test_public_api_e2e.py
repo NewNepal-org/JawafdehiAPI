@@ -287,8 +287,6 @@ class TestPublicAPIWorkflows:
             },
         )
 
-        case_id = case_v1.case_id
-
         # Step 2: Create a draft and publish it (version 2)
         case_v2 = case_v1.create_draft()
         case_v2.title = "Case with Version History - Updated"

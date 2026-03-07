@@ -152,7 +152,7 @@ def test_document_source_requires_title():
 
 
 @pytest.mark.django_db
-def test_document_source_accepts_missing_description():
+def test_document_source_accepts_missing_description_edge_case():
     """
     Edge case: DocumentSource can be created without description (description is optional).
     Validates: Requirements 4.2

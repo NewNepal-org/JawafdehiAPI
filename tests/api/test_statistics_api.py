@@ -151,7 +151,7 @@ class TestStatisticsCounting:
         """Test statistics with cases in all different states."""
         # Create entities
         entity1 = JawafEntity.objects.create(nes_id="entity:person/test1")
-        entity2 = JawafEntity.objects.create(nes_id="entity:person/test2")
+        JawafEntity.objects.create(nes_id="entity:person/test2")
 
         # Create cases in different states
         published_case = Case.objects.create(
@@ -283,10 +283,8 @@ class TestStatisticsPerformance:
     def test_statistics_with_large_dataset(self, api_client):
         """Test statistics calculation with a larger dataset."""
         # Create multiple entities
-        entities = [
+        for i in range(10):
             JawafEntity.objects.create(nes_id=f"entity:person/test{i}")
-            for i in range(10)
-        ]
 
         # Create multiple cases in different states
         for i in range(5):

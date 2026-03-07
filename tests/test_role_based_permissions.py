@@ -363,9 +363,6 @@ def test_moderators_cannot_manage_other_moderators(moderator1_data, moderator2_d
         moderator2_data["username"], moderator2_data["email"], moderator2_data["role"]
     )
 
-    # Create mock request for moderator1
-    request = create_mock_request(moderator1)
-
     # For this property, we need to check User admin permissions
     # Since we're testing the concept, we'll verify that moderators
     # should not have permission to manage other moderators

@@ -42,7 +42,7 @@ class BaseMultiWidget(Widget):
             return value
         try:
             return json.loads(value) if value else []
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             return []
 
 
@@ -60,7 +60,7 @@ class MultiEntityIDField(Field):
             return value
         try:
             return json.loads(value) if value else []
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             return []
 
     def validate(self, value):
@@ -98,7 +98,7 @@ class MultiTextField(Field):
             return value
         try:
             return json.loads(value) if value else []
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             return []
 
     def validate(self, value):
@@ -122,7 +122,7 @@ class MultiTimelineField(Field):
             return value
         try:
             return json.loads(value) if value else []
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             return []
 
 
@@ -152,7 +152,7 @@ class MultiEvidenceField(Field):
             return value
         try:
             return json.loads(value) if value else []
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             return []
 
 

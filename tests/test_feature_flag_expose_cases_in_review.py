@@ -1,5 +1,3 @@
-from tests.conftest import create_case_with_entities
-
 """
 Tests for EXPOSE_CASES_IN_REVIEW feature flag.
 
@@ -11,6 +9,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 
 from cases.models import CaseState, CaseType, DocumentSource
+from tests.conftest import create_case_with_entities
 
 
 User = get_user_model()
@@ -219,8 +218,6 @@ class TestExposeCasesInReviewFeatureFlag:
                 "datetime": "2024-01-15T10:00:00Z",
             },
         )
-
-        case_id = case_v1.case_id
 
         # Create version 2 (in review)
         case_v2 = case_v1.create_draft()

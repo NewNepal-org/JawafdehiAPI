@@ -4,27 +4,30 @@ API ViewSets for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
-from rest_framework import viewsets, filters
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Q, Max
-from django.db import connection
 from django.conf import settings
 from django.core.cache import cache
+from django.db import connection
+from django.db.models import Max, Q
 from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
     extend_schema,
     extend_schema_view,
-    OpenApiParameter,
-    OpenApiExample,
 )
-from drf_spectacular.types import OpenApiTypes
+from rest_framework import filters, status, viewsets
+from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
+from rest_framework.views import APIView
+
 from .models import Case, CaseState, DocumentSource, JawafEntity
 from .serializers import (
-    CaseSerializer,
     CaseDetailSerializer,
+    CaseSerializer,
     DocumentSourceSerializer,
+    FeedbackSerializer,
     JawafEntitySerializer,
 )
 
@@ -482,11 +485,6 @@ class StatisticsView(APIView):
         cache.set(cache_key, stats, timeout=300)
 
         return Response(stats)
-
-
-from rest_framework import status
-from rest_framework.throttling import AnonRateThrottle
-from .serializers import FeedbackSerializer
 
 
 class FeedbackRateThrottle(AnonRateThrottle):

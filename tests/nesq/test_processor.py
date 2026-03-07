@@ -431,7 +431,7 @@ class TestProcessApprovedItems:
         user = await _create_user("sita_b2", "sita_b2@example.com", "Contributor")
         now = timezone.now()
 
-        item2 = await _make_approved_item(
+        await _make_approved_item(
             user,
             change_description="Second item",
         )
