@@ -18,7 +18,6 @@ from cases.rules.predicates import can_transition_case_state
 from tests.conftest import create_case_with_entities, create_user_with_role
 from tests.strategies import complete_case_data, user_with_role
 
-
 # ============================================================================
 # Property 6: Moderators can publish and close cases
 # ============================================================================

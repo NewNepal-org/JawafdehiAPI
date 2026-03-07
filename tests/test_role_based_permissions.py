@@ -25,7 +25,6 @@ from tests.strategies import (
     user_with_role,
 )
 
-
 User = get_user_model()
 
 

@@ -10,7 +10,6 @@ from hypothesis import strategies as st
 
 from cases.models import CaseType
 
-
 # ============================================================================
 # Entity ID Strategies
 # ============================================================================

@@ -14,7 +14,6 @@ from hypothesis import given, settings
 from cases.fields import TextListField, TimelineListField, EvidenceListField
 from tests.strategies import text_list, timeline_list, evidence_list
 
-
 # ============================================================================
 # TextListField Tests
 # ============================================================================

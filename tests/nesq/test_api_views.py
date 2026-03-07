@@ -22,7 +22,6 @@ from rest_framework.test import APIClient
 from nesq.models import NESQueueItem, QueueAction, QueueStatus
 from tests.conftest import create_user_with_role
 
-
 # ============================================================================
 # Shared fixtures
 # ============================================================================

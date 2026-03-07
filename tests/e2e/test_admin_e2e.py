@@ -20,7 +20,6 @@ from tests.conftest import (
     create_user_with_role,
 )
 
-
 User = get_user_model()
 
 

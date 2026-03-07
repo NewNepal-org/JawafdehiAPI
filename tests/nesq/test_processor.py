@@ -35,7 +35,6 @@ from nesq.processor import (
 )
 from tests.conftest import create_user_with_role
 
-
 # ---------------------------------------------------------------------------
 # Helpers — sync helpers wrapped via sync_to_async for use in async tests
 # ---------------------------------------------------------------------------

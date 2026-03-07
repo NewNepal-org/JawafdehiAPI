@@ -15,7 +15,6 @@ from cases.models import Case, CaseState, CaseType
 from tests.conftest import create_case_with_entities
 from tests.strategies import minimal_case_data, complete_case_data
 
-
 # ============================================================================
 # Property 1: New cases start in Draft state
 # ============================================================================

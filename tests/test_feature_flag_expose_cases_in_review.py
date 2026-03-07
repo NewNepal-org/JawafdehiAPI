@@ -11,7 +11,6 @@ from rest_framework.test import APIClient
 from cases.models import CaseState, CaseType, DocumentSource
 from tests.conftest import create_case_with_entities
 
-
 User = get_user_model()
 
 

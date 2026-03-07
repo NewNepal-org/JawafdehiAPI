@@ -12,7 +12,6 @@ See .kiro/specs/nes-queue-system/ for full specification.
 from django.contrib.auth import get_user_model
 from django.db import models
 
-
 User = get_user_model()
 
 

@@ -14,7 +14,6 @@ from hypothesis import settings as hypothesis_settings
 
 from cases.models import Case, JawafEntity, DocumentSource
 
-
 User = get_user_model()
 
 # Configure Hypothesis settings globally

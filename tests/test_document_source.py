@@ -21,7 +21,6 @@ from tests.strategies import (
     source_data_with_empty_description,
 )
 
-
 # ============================================================================
 # Property 11: Source validation enforces required fields
 # ============================================================================

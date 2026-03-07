@@ -24,7 +24,6 @@ from nesq.admin import NESQueueItemAdmin
 from nesq.models import NESQueueItem, QueueAction, QueueStatus
 from tests.conftest import create_user_with_role
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

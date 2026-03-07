@@ -29,7 +29,6 @@ from django.utils import timezone
 from nesq.models import NESQueueItem, QueueAction, QueueStatus
 from tests.conftest import create_user_with_role
 
-
 User = get_user_model()
 
 VALID_PAYLOAD = {

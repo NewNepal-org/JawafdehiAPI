@@ -23,7 +23,6 @@ from tests.strategies import (
     valid_source_data,
 )
 
-
 # ============================================================================
 # Property 8: Public API only shows published cases
 # ============================================================================

@@ -36,7 +36,6 @@ from nesq.models import NESQueueItem, QueueStatus
 from nesq.processor import QueueProcessor
 from tests.conftest import create_user_with_role
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------

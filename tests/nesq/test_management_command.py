@@ -25,7 +25,6 @@ from django.core.management.base import CommandError
 
 from nesq.processor import ProcessingResult
 
-
 # ============================================================================
 # NES_DB_PATH validation
 # ============================================================================
