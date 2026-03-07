@@ -15,7 +15,6 @@ Covers:
 See .kiro/specs/nes-queue-system/tasks.md §10.6 for requirements.
 """
 
-import json
 
 import pytest
 
@@ -97,7 +96,14 @@ class TestAdminListView:
 
     def test_list_display_contains_expected_columns(self, nesq_admin):
         """list_display should include id, action, status_badge, submitted_by, reviewed_by, created_at."""
-        expected = {"id", "action", "status_badge", "submitted_by", "reviewed_by", "created_at"}
+        expected = {
+            "id",
+            "action",
+            "status_badge",
+            "submitted_by",
+            "reviewed_by",
+            "created_at",
+        }
         assert expected == set(nesq_admin.list_display)
 
     def test_list_filter_contains_expected_filters(self, nesq_admin):
@@ -106,7 +112,10 @@ class TestAdminListView:
 
     def test_search_fields_contain_expected_fields(self, nesq_admin):
         """search_fields should include change_description and submitted_by__username."""
-        assert ("change_description", "submitted_by__username") == nesq_admin.search_fields
+        assert (
+            "change_description",
+            "submitted_by__username",
+        ) == nesq_admin.search_fields
 
 
 # ============================================================================
@@ -128,7 +137,9 @@ class TestStatusBadge:
             (QueueStatus.FAILED, "#dc3545"),
         ],
     )
-    def test_status_badge_color(self, nesq_admin, contributor_user, status, expected_color):
+    def test_status_badge_color(
+        self, nesq_admin, contributor_user, status, expected_color
+    ):
         """Each status should render with its designated background color."""
         item = _make_queue_item(contributor_user, status=status)
         badge_html = nesq_admin.status_badge(item)
@@ -165,7 +176,10 @@ class TestFormattedDisplay:
 
     def test_formatted_payload_renders_json(self, nesq_admin, contributor_user):
         """Payload should be rendered as indented JSON inside a <pre> tag."""
-        payload = {"entity_id": "entity:person/lakpa-sherpa", "name": {"en": "Lakpa Sherpa"}}
+        payload = {
+            "entity_id": "entity:person/lakpa-sherpa",
+            "name": {"en": "Lakpa Sherpa"},
+        }
         item = _make_queue_item(contributor_user, payload=payload)
         html = nesq_admin.formatted_payload(item)
         assert "<pre>" in html
@@ -228,7 +242,9 @@ class TestBulkApprove:
         assert item1.status == QueueStatus.APPROVED
         assert item2.status == QueueStatus.APPROVED
 
-    def test_bulk_approve_sets_reviewed_by(self, nesq_admin, admin_user, contributor_user):
+    def test_bulk_approve_sets_reviewed_by(
+        self, nesq_admin, admin_user, contributor_user
+    ):
         """bulk_approve should record the admin as reviewer."""
         item = _make_queue_item(contributor_user)
 
@@ -239,7 +255,9 @@ class TestBulkApprove:
         item.refresh_from_db()
         assert item.reviewed_by == admin_user
 
-    def test_bulk_approve_sets_reviewed_at(self, nesq_admin, admin_user, contributor_user):
+    def test_bulk_approve_sets_reviewed_at(
+        self, nesq_admin, admin_user, contributor_user
+    ):
         """bulk_approve should timestamp the review."""
         before = timezone.now()
         item = _make_queue_item(contributor_user)
@@ -252,16 +270,25 @@ class TestBulkApprove:
         assert item.reviewed_at is not None
         assert item.reviewed_at >= before
 
-    def test_bulk_approve_skips_non_pending(self, nesq_admin, admin_user, contributor_user):
+    def test_bulk_approve_skips_non_pending(
+        self, nesq_admin, admin_user, contributor_user
+    ):
         """bulk_approve should not modify items that are not PENDING."""
         approved_item = _make_queue_item(contributor_user, status=QueueStatus.APPROVED)
-        completed_item = _make_queue_item(contributor_user, status=QueueStatus.COMPLETED)
+        completed_item = _make_queue_item(
+            contributor_user, status=QueueStatus.COMPLETED
+        )
         failed_item = _make_queue_item(contributor_user, status=QueueStatus.FAILED)
         rejected_item = _make_queue_item(contributor_user, status=QueueStatus.REJECTED)
 
         request = _make_admin_request(admin_user)
         queryset = NESQueueItem.objects.filter(
-            pk__in=[approved_item.pk, completed_item.pk, failed_item.pk, rejected_item.pk]
+            pk__in=[
+                approved_item.pk,
+                completed_item.pk,
+                failed_item.pk,
+                rejected_item.pk,
+            ]
         )
         nesq_admin.bulk_approve(request, queryset)
 
@@ -276,13 +303,19 @@ class TestBulkApprove:
         assert failed_item.status == QueueStatus.FAILED
         assert rejected_item.status == QueueStatus.REJECTED
 
-    def test_bulk_approve_mixed_selection(self, nesq_admin, admin_user, contributor_user):
+    def test_bulk_approve_mixed_selection(
+        self, nesq_admin, admin_user, contributor_user
+    ):
         """When selection contains both PENDING and non-PENDING, only PENDING items are approved."""
         pending_item = _make_queue_item(contributor_user, status=QueueStatus.PENDING)
-        completed_item = _make_queue_item(contributor_user, status=QueueStatus.COMPLETED)
+        completed_item = _make_queue_item(
+            contributor_user, status=QueueStatus.COMPLETED
+        )
 
         request = _make_admin_request(admin_user)
-        queryset = NESQueueItem.objects.filter(pk__in=[pending_item.pk, completed_item.pk])
+        queryset = NESQueueItem.objects.filter(
+            pk__in=[pending_item.pk, completed_item.pk]
+        )
         nesq_admin.bulk_approve(request, queryset)
 
         pending_item.refresh_from_db()
@@ -315,7 +348,9 @@ class TestBulkReject:
         assert item1.status == QueueStatus.REJECTED
         assert item2.status == QueueStatus.REJECTED
 
-    def test_bulk_reject_sets_reviewed_by(self, nesq_admin, admin_user, contributor_user):
+    def test_bulk_reject_sets_reviewed_by(
+        self, nesq_admin, admin_user, contributor_user
+    ):
         """bulk_reject should record the admin as reviewer."""
         item = _make_queue_item(contributor_user)
 
@@ -326,7 +361,9 @@ class TestBulkReject:
         item.refresh_from_db()
         assert item.reviewed_by == admin_user
 
-    def test_bulk_reject_sets_reviewed_at(self, nesq_admin, admin_user, contributor_user):
+    def test_bulk_reject_sets_reviewed_at(
+        self, nesq_admin, admin_user, contributor_user
+    ):
         """bulk_reject should timestamp the review."""
         before = timezone.now()
         item = _make_queue_item(contributor_user)
@@ -339,10 +376,14 @@ class TestBulkReject:
         assert item.reviewed_at is not None
         assert item.reviewed_at >= before
 
-    def test_bulk_reject_skips_non_pending(self, nesq_admin, admin_user, contributor_user):
+    def test_bulk_reject_skips_non_pending(
+        self, nesq_admin, admin_user, contributor_user
+    ):
         """bulk_reject should not modify items that are not PENDING."""
         approved_item = _make_queue_item(contributor_user, status=QueueStatus.APPROVED)
-        completed_item = _make_queue_item(contributor_user, status=QueueStatus.COMPLETED)
+        completed_item = _make_queue_item(
+            contributor_user, status=QueueStatus.COMPLETED
+        )
 
         request = _make_admin_request(admin_user)
         queryset = NESQueueItem.objects.filter(
@@ -371,6 +412,7 @@ class TestReadOnlyFields:
         item = _make_queue_item(contributor_user, status=QueueStatus.PENDING)
 
         from django.test import RequestFactory
+
         request = RequestFactory().get("/admin/nesq/nesqueueitem/")
         request.user = contributor_user
 
@@ -383,11 +425,18 @@ class TestReadOnlyFields:
         item = _make_queue_item(contributor_user, status=QueueStatus.COMPLETED)
 
         from django.test import RequestFactory
+
         request = RequestFactory().get("/admin/nesq/nesqueueitem/")
         request.user = contributor_user
 
         readonly = nesq_admin.get_readonly_fields(request, item)
-        for field in ["action", "status", "submitted_by", "reviewed_by", "change_description"]:
+        for field in [
+            "action",
+            "status",
+            "submitted_by",
+            "reviewed_by",
+            "change_description",
+        ]:
             assert field in readonly, f"{field} should be read-only for COMPLETED items"
 
     def test_failed_item_has_all_fields_readonly(self, nesq_admin, contributor_user):
@@ -395,16 +444,24 @@ class TestReadOnlyFields:
         item = _make_queue_item(contributor_user, status=QueueStatus.FAILED)
 
         from django.test import RequestFactory
+
         request = RequestFactory().get("/admin/nesq/nesqueueitem/")
         request.user = contributor_user
 
         readonly = nesq_admin.get_readonly_fields(request, item)
-        for field in ["action", "status", "submitted_by", "reviewed_by", "error_message"]:
+        for field in [
+            "action",
+            "status",
+            "submitted_by",
+            "reviewed_by",
+            "error_message",
+        ]:
             assert field in readonly, f"{field} should be read-only for FAILED items"
 
     def test_new_item_has_base_readonly_fields(self, nesq_admin):
         """A new (unsaved) item should only have the base read-only fields."""
         from django.test import RequestFactory
+
         request = RequestFactory().get("/admin/nesq/nesqueueitem/add/")
 
         readonly = nesq_admin.get_readonly_fields(request, obj=None)

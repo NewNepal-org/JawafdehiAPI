@@ -55,11 +55,11 @@ class NESQueueItemAdmin(admin.ModelAdmin):
     def status_badge(self, obj):
         """Display status as a colored badge."""
         colors = {
-            QueueStatus.PENDING: "#ffc107",    # amber
-            QueueStatus.APPROVED: "#17a2b8",   # teal
-            QueueStatus.REJECTED: "#6c757d",   # grey
+            QueueStatus.PENDING: "#ffc107",  # amber
+            QueueStatus.APPROVED: "#17a2b8",  # teal
+            QueueStatus.REJECTED: "#6c757d",  # grey
             QueueStatus.COMPLETED: "#28a745",  # green
-            QueueStatus.FAILED: "#dc3545",     # red
+            QueueStatus.FAILED: "#dc3545",  # red
         }
         text_color = "#212529" if obj.status == QueueStatus.PENDING else "white"
         color = colors.get(obj.status, "#6c757d")

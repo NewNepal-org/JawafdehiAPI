@@ -16,7 +16,6 @@ Covers (Task 11.1):
 See .kiro/specs/nes-queue-system/tasks.md §11 for requirements.
 """
 
-from datetime import timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -33,7 +32,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
 from nesq.admin import NESQueueItemAdmin
-from nesq.models import NESQueueItem, QueueAction, QueueStatus
+from nesq.models import NESQueueItem, QueueStatus
 from nesq.processor import QueueProcessor
 from tests.conftest import create_user_with_role
 
@@ -172,7 +171,11 @@ class TestCompleteWorkflow:
     """Test the full submit → approve → process → verify pipeline."""
 
     async def test_submit_approve_process_adds_name_to_entity(
-        self, nes_test_env, contributor_client, contributor, admin_user,
+        self,
+        nes_test_env,
+        contributor_client,
+        contributor,
+        admin_user,
     ):
         """ADD_NAME workflow: submit → approve → process → name on disk."""
         tmp_path, db, pub_service, seed_entity = nes_test_env
@@ -218,14 +221,19 @@ class TestMisspellingWorkflow:
     """Test ADD_NAME with is_misspelling=true lands in misspelled_names."""
 
     async def test_misspelling_added_to_misspelled_names(
-        self, nes_test_env, contributor_client, contributor, admin_user,
+        self,
+        nes_test_env,
+        contributor_client,
+        contributor,
+        admin_user,
     ):
         """Misspelling workflow: name goes to entity.misspelled_names on disk."""
         tmp_path, db, pub_service, seed_entity = nes_test_env
 
         # 1. Submit misspelling via API
         response = await sync_to_async(_submit_add_name)(
-            contributor_client, payload=MISSPELLING_PAYLOAD,
+            contributor_client,
+            payload=MISSPELLING_PAYLOAD,
         )
         assert response.status_code == 201
         item_id = response.json()["id"]
@@ -255,14 +263,18 @@ class TestAutoApproveWorkflow:
     """Test admin auto_approve=true skips manual approval step."""
 
     async def test_admin_auto_approve_and_process(
-        self, nes_test_env, admin_client, admin_user,
+        self,
+        nes_test_env,
+        admin_client,
+        admin_user,
     ):
         """Auto-approve: admin submits → APPROVED immediately → process → COMPLETED."""
         tmp_path, db, pub_service, seed_entity = nes_test_env
 
         # 1. Submit with auto_approve=true
         response = await sync_to_async(_submit_add_name)(
-            admin_client, auto_approve=True,
+            admin_client,
+            auto_approve=True,
         )
         assert response.status_code == 201
         resp_data = response.json()
@@ -288,7 +300,11 @@ class TestManualAdminApproval:
     """Test approval through Django admin bulk_approve action."""
 
     async def test_bulk_approve_and_process(
-        self, nes_test_env, contributor_client, contributor, admin_user,
+        self,
+        nes_test_env,
+        contributor_client,
+        contributor,
+        admin_user,
     ):
         """Admin bulk_approve action → process → COMPLETED."""
         tmp_path, db, pub_service, seed_entity = nes_test_env
@@ -306,7 +322,8 @@ class TestManualAdminApproval:
 
         admin_instance = NESQueueItemAdmin(NESQueueItem, None)
         await sync_to_async(admin_instance.bulk_approve)(
-            mock_request, queryset,
+            mock_request,
+            queryset,
         )
 
         # Verify approval (access FK via sync_to_async to avoid SynchronousOnlyOperation)
@@ -334,7 +351,11 @@ class TestErrorHandling:
     """Test error handling when processing fails."""
 
     async def test_entity_not_found_marks_item_failed(
-        self, nes_test_env, contributor_client, contributor, admin_user,
+        self,
+        nes_test_env,
+        contributor_client,
+        contributor,
+        admin_user,
     ):
         """Non-existent entity_id → item FAILED with descriptive error."""
         tmp_path, db, pub_service, seed_entity = nes_test_env
@@ -347,7 +368,8 @@ class TestErrorHandling:
 
         # 1. Submit with non-existent entity
         response = await sync_to_async(_submit_add_name)(
-            contributor_client, payload=bad_payload,
+            contributor_client,
+            payload=bad_payload,
         )
         assert response.status_code == 201
         item_id = response.json()["id"]

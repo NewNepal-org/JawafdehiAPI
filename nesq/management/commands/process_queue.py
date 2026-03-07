@@ -78,9 +78,7 @@ class Command(BaseCommand):
 
         # 4. Log processing summary
         if result.processed == 0:
-            self.stdout.write(
-                self.style.NOTICE("No approved items to process.")
-            )
+            self.stdout.write(self.style.NOTICE("No approved items to process."))
             return
 
         summary = (
@@ -96,9 +94,7 @@ class Command(BaseCommand):
             if verbose:
                 for error in result.errors:
                     self.stderr.write(
-                        self.style.ERROR(
-                            f"  NESQ-{error['item_id']}: {error['error']}"
-                        )
+                        self.style.ERROR(f"  NESQ-{error['item_id']}: {error['error']}")
                     )
 
         # 5. Exit with non-zero if ALL items failed

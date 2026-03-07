@@ -234,7 +234,10 @@ class TestNESQueueItemAllFields:
     def test_create_with_all_fields(self, contributor, admin_user):
         """Item created with all fields should persist correctly."""
         now = timezone.now()
-        result_data = {"entity_id": "entity:person/sher-bahadur-deuba", "names_count": 3}
+        result_data = {
+            "entity_id": "entity:person/sher-bahadur-deuba",
+            "names_count": 3,
+        }
 
         item = NESQueueItem.objects.create(
             action=QueueAction.ADD_NAME,

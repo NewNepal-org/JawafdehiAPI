@@ -99,9 +99,7 @@ class QueueProcessor:
                 result.completed += 1
             else:
                 result.failed += 1
-                result.errors.append(
-                    {"item_id": item.id, "error": item.error_message}
-                )
+                result.errors.append({"item_id": item.id, "error": item.error_message})
 
         logger.info(
             "Queue processing complete: %d processed, %d completed, %d failed",

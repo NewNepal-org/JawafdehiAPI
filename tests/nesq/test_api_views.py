@@ -16,7 +16,6 @@ Tests cover:
 """
 
 import pytest
-from django.test import TestCase
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
@@ -212,9 +211,7 @@ class TestSubmitSuccess:
 class TestAutoApprove:
     """Tests for the auto_approve flag behaviour."""
 
-    def test_admin_auto_approve_creates_approved_item(
-        self, admin_client, admin_user
-    ):
+    def test_admin_auto_approve_creates_approved_item(self, admin_client, admin_user):
         """Admin with auto_approve=True creates an APPROVED item."""
         data = {**VALID_SUBMIT_DATA, "auto_approve": True}
         response = admin_client.post(SUBMIT_URL, data=data, format="json")

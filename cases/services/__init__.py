@@ -8,4 +8,4 @@ across management commands, views, and other parts of the application.
 from .case_importer import CaseImporter
 from .case_scraper import CaseScraper
 
-__all__ = ['CaseScraper', 'CaseImporter']
+__all__ = ["CaseScraper", "CaseImporter"]
