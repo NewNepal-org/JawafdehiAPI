@@ -97,7 +97,13 @@ class TestDocumentSourceAdmin:
     def test_list_display_configured(self, db):
         """Test that list display is properly configured."""
         admin_instance = admin.site._registry[DocumentSource]
-        expected_fields = ["source_id", "title", "deletion_status", "created_at"]
+        expected_fields = [
+            "source_id",
+            "title",
+            "source_type",
+            "deletion_status",
+            "created_at",
+        ]
         assert admin_instance.list_display == expected_fields
 
     def test_soft_delete_action_exists(self, db):

@@ -42,7 +42,7 @@ def test_document_source_accepts_valid_data(source_data):
 
     # Should not raise ValidationError
     try:
-        source.validate()
+        source.full_clean()
     except ValidationError as e:
         pytest.fail(f"DocumentSource validation rejected valid data: {e}")
 
@@ -62,7 +62,7 @@ def test_document_source_rejects_missing_title(source_data):
     with pytest.raises(ValidationError) as exc_info:
         source = create_document_source_with_entities(**source_data)
         source.save()
-        source.validate()
+        source.full_clean()
 
     # Verify error mentions title
     error_message = str(exc_info.value).lower()
@@ -87,7 +87,7 @@ def test_document_source_accepts_missing_description(source_data):
     source.save()
 
     try:
-        source.validate()
+        source.full_clean()
     except ValidationError as e:
         pytest.fail(
             f"DocumentSource should accept missing description, but raised: {e}"
@@ -127,7 +127,7 @@ def test_document_source_accepts_empty_description(source_data):
     source.save()
 
     try:
-        source.validate()
+        source.full_clean()
     except ValidationError as e:
         pytest.fail(f"DocumentSource should accept empty description, but raised: {e}")
 
@@ -163,7 +163,7 @@ def test_document_source_accepts_missing_description_edge_case():
 
     # Should not raise ValidationError without description
     try:
-        source.validate()
+        source.full_clean()
     except ValidationError as e:
         pytest.fail(f"DocumentSource should allow missing description, but raised: {e}")
 
@@ -181,7 +181,7 @@ def test_document_source_url_is_optional():
 
     # Should not raise ValidationError without URL
     try:
-        source.validate()
+        source.full_clean()
     except ValidationError as e:
         pytest.fail(f"DocumentSource should allow missing URL, but raised: {e}")
 

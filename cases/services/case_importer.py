@@ -77,7 +77,8 @@ class CaseImporter:
         """
         Get or create DocumentSource with deduplication by URL.
 
-        Uses PostgreSQL JSON containment query for efficient URL lookup.
+        Uses PostgreSQL JSON containment query for efficient URL lookup when available.
+        Falls back to Python-based filtering for SQLite.
 
         Args:
             source_data: Dict with 'title', 'url', 'description' keys
@@ -114,25 +115,39 @@ class CaseImporter:
         if not title:
             return None
 
-        # Try to find existing source by URL using PostgreSQL JSON containment
+        # Try to find existing source by URL
         # TODO: Consider adding GIN index on url field for better performance:
         #   CREATE INDEX idx_documentsource_url_gin ON cases_documentsource USING gin (url);
         if url_list:
             # Check if any URL in our list matches existing sources
-            for url in url_list:
-                source = (
-                    DocumentSource.objects.filter(
-                        is_deleted=False,
-                        url__contains=[url],  # PostgreSQL JSON containment operator
-                    )
-                    .only("source_id", "title")
-                    .first()
-                )
+            from django.db import connection
 
-                if source:
-                    self.stats["sources_reused"] += 1
-                    self.log(f"  Reusing source: {title}")
-                    return source
+            # Use PostgreSQL JSON containment if available, otherwise fall back to Python filtering
+            if connection.vendor == "postgresql":
+                for url in url_list:
+                    source = (
+                        DocumentSource.objects.filter(
+                            is_deleted=False,
+                            url__contains=[url],  # PostgreSQL JSON containment operator
+                        )
+                        .only("source_id", "title")
+                        .first()
+                    )
+
+                    if source:
+                        self.stats["sources_reused"] += 1
+                        self.log(f"  Reusing source: {title}")
+                        return source
+            else:
+                # SQLite fallback: fetch all non-deleted sources and check URLs in Python
+                for url in url_list:
+                    for source in DocumentSource.objects.filter(is_deleted=False).only(
+                        "source_id", "title", "url"
+                    ):
+                        if isinstance(source.url, list) and url in source.url:
+                            self.stats["sources_reused"] += 1
+                            self.log(f"  Reusing source: {title}")
+                            return source
 
         # Try to find by title (excluding soft-deleted sources)
         source = DocumentSource.objects.filter(title=title, is_deleted=False).first()

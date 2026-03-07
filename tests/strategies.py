@@ -229,20 +229,43 @@ def valid_source_data(draw):
     - title
     - description (optional but commonly included)
     """
+    # Generate valid URL or None
+    url_choice = draw(st.integers(min_value=0, max_value=2))
+    if url_choice == 0:
+        url = None
+    elif url_choice == 1:
+        # Generate a simple valid URL
+        domain = draw(
+            st.text(
+                alphabet="abcdefghijklmnopqrstuvwxyz0123456789", min_size=3, max_size=15
+            )
+        )
+        tld = draw(st.sampled_from(["com", "org", "net", "edu", "gov"]))
+        url = f"https://{domain}.{tld}"
+    else:
+        # Generate URL with path
+        domain = draw(
+            st.text(
+                alphabet="abcdefghijklmnopqrstuvwxyz0123456789", min_size=3, max_size=15
+            )
+        )
+        tld = draw(st.sampled_from(["com", "org", "net", "edu", "gov"]))
+        path = draw(
+            st.text(
+                alphabet="abcdefghijklmnopqrstuvwxyz0123456789-_/",
+                min_size=1,
+                max_size=20,
+            )
+        )
+        url = f"https://{domain}.{tld}/{path}"
+
     return {
         "title": draw(st.text(min_size=1, max_size=300).filter(lambda x: x.strip())),
         "description": draw(
             st.text(min_size=1, max_size=1000).filter(lambda x: x.strip())
         ),
         "related_entity_ids": draw(entity_id_list(min_size=0, max_size=3)),
-        "url": draw(
-            st.one_of(
-                st.none(),
-                st.from_regex(
-                    r"https?://[a-z0-9\-\.]+\.[a-z]{2,}(/[^\s]*)?", fullmatch=True
-                ),
-            )
-        ),
+        "url": url,
     }
 
 

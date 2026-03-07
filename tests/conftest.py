@@ -35,6 +35,17 @@ def reset_feature_flags(settings):
     # Reset EXPOSE_CASES_IN_REVIEW to default (False)
     settings.EXPOSE_CASES_IN_REVIEW = False
 
+    # Disable static file manifest checking for tests
+    # This prevents errors when static files haven't been collected
+    settings.STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+
 
 @pytest.fixture
 def request_factory():
