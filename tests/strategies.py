@@ -400,11 +400,17 @@ def simple_complete_case_data(draw):
     """Generate complete case data with simpler values for faster tests."""
 
     return {
-        "title": draw(st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=5, max_size=50)),
+        "title": draw(
+            st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=5, max_size=50).filter(
+                lambda x: x.strip()
+            )
+        ),
         "alleged_entities": draw(simple_entity_id_list(min_size=1, max_size=2)),
         "key_allegations": draw(simple_text_list(min_size=1, max_size=2)),
         "case_type": draw(st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES])),
         "description": draw(
-            st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=20, max_size=100)
+            st.text(alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=20, max_size=100).filter(
+                lambda x: x.strip()
+            )
         ),
     }

@@ -496,6 +496,17 @@ class FeedbackRateThrottle(SimpleRateThrottle):
     scope = "feedback"
     rate = "5/hour"
 
+    def get_ident(self, request):
+        """
+        Get client identifier respecting TRUST_PROXY_HEADERS setting.
+        
+        Uses the same proxy-trusting logic as get_client_ip().
+        """
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+        if getattr(settings, "TRUST_PROXY_HEADERS", False) and x_forwarded_for:
+            return x_forwarded_for.split(",")[0].strip()
+        return request.META.get("REMOTE_ADDR")
+
     def get_cache_key(self, request, view):
         """Generate cache key based on client IP address."""
         ident = self.get_ident(request)
@@ -568,10 +579,14 @@ class FeedbackView(APIView):
         )
 
     def get_client_ip(self, request):
-        """Extract client IP address from request."""
+        """
+        Extract client IP address from request.
+        
+        Returns None if no valid IP address can be determined.
+        """
         x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
         if getattr(settings, "TRUST_PROXY_HEADERS", False) and x_forwarded_for:
             ip = x_forwarded_for.split(",")[0].strip()
         else:
-            ip = request.META.get("REMOTE_ADDR") or "unknown"
-        return ip
+            ip = request.META.get("REMOTE_ADDR")
+        return ip or None
