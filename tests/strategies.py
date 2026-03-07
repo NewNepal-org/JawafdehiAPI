@@ -65,7 +65,7 @@ def invalid_entity_id(draw):
 def filter_problematic_chars(text):
     """
     Filter out characters that cause issues in PostgreSQL JSON fields.
-    
+
     Removes:
     - Null bytes (\u0000)
     - Other control characters that PostgreSQL can't handle in JSON
@@ -73,24 +73,20 @@ def filter_problematic_chars(text):
     """
     if not text:
         return text
-    
+
     # Remove null bytes and other problematic control characters
     # Keep only printable characters and common whitespace
-    filtered = ''.join(
-        char for char in text
-        if char >= ' ' or char in '\t\n\r'
-    )
-    
+    filtered = "".join(char for char in text if char >= " " or char in "\t\n\r")
+
     # Remove unpaired surrogates (Unicode characters in the surrogate range)
     try:
         # Try to encode/decode to catch surrogate issues
-        filtered.encode('utf-8')
+        filtered.encode("utf-8")
         return filtered
     except UnicodeEncodeError:
         # If encoding fails, remove surrogates
-        filtered = ''.join(
-            char for char in filtered
-            if not (0xD800 <= ord(char) <= 0xDFFF)
+        filtered = "".join(
+            char for char in filtered if not (0xD800 <= ord(char) <= 0xDFFF)
         )
         return filtered
 
