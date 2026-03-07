@@ -6,23 +6,33 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('cases', '0007_feedback'),
+        ("cases", "0007_feedback"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='case',
-            name='banner_url',
-            field=models.URLField(blank=True, help_text='URL to a large banner image for the case', max_length=500),
+            model_name="case",
+            name="banner_url",
+            field=models.URLField(
+                blank=True,
+                help_text="URL to a large banner image for the case",
+                max_length=500,
+            ),
         ),
         migrations.AddField(
-            model_name='case',
-            name='short_description',
-            field=models.TextField(blank=True, help_text='Short description/summary of the case'),
+            model_name="case",
+            name="short_description",
+            field=models.TextField(
+                blank=True, help_text="Short description/summary of the case"
+            ),
         ),
         migrations.AddField(
-            model_name='case',
-            name='thumbnail_url',
-            field=models.URLField(blank=True, help_text='URL to a small thumbnail picture for the case', max_length=500),
+            model_name="case",
+            name="thumbnail_url",
+            field=models.URLField(
+                blank=True,
+                help_text="URL to a small thumbnail picture for the case",
+                max_length=500,
+            ),
         ),
     ]

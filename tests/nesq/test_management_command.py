@@ -15,10 +15,8 @@ Covers:
 See .kiro/specs/nes-queue-system/tasks.md §8 for requirements.
 """
 
-import asyncio
 from io import StringIO
-from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -26,7 +24,6 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from nesq.processor import ProcessingResult
-
 
 # ============================================================================
 # NES_DB_PATH validation
@@ -140,7 +137,9 @@ class TestProcessQueueFailures:
         mock_instance = MockProcessor.return_value
         mock_instance.process_approved_items = AsyncMock(
             return_value=ProcessingResult(
-                processed=3, completed=2, failed=1,
+                processed=3,
+                completed=2,
+                failed=1,
                 errors=[{"item_id": 42, "error": "Entity not found"}],
             )
         )
@@ -160,7 +159,9 @@ class TestProcessQueueFailures:
         mock_instance = MockProcessor.return_value
         mock_instance.process_approved_items = AsyncMock(
             return_value=ProcessingResult(
-                processed=2, completed=0, failed=2,
+                processed=2,
+                completed=0,
+                failed=2,
                 errors=[
                     {"item_id": 1, "error": "Entity not found"},
                     {"item_id": 2, "error": "Disk full"},
@@ -219,7 +220,9 @@ class TestVerboseFlag:
         mock_instance = MockProcessor.return_value
         mock_instance.process_approved_items = AsyncMock(
             return_value=ProcessingResult(
-                processed=1, completed=0, failed=1,
+                processed=1,
+                completed=0,
+                failed=1,
                 errors=[{"item_id": 99, "error": "Entity 'xyz' not found"}],
             )
         )
@@ -244,7 +247,9 @@ class TestVerboseFlag:
         mock_instance = MockProcessor.return_value
         mock_instance.process_approved_items = AsyncMock(
             return_value=ProcessingResult(
-                processed=1, completed=0, failed=1,
+                processed=1,
+                completed=0,
+                failed=1,
                 errors=[{"item_id": 99, "error": "Entity 'xyz' not found"}],
             )
         )

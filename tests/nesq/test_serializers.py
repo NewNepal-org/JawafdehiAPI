@@ -18,7 +18,6 @@ from nesq.models import NESQueueItem, QueueAction, QueueStatus
 from nesq.serializers import NESQueueItemSerializer, NESQueueSubmitSerializer
 from tests.conftest import create_user_with_role
 
-
 # ============================================================================
 # Shared fixtures
 # ============================================================================

@@ -54,9 +54,7 @@ class NESQueueSubmitSerializer(serializers.Serializer):
         """Ensure change_description is non-empty after stripping whitespace."""
         stripped = value.strip()
         if not stripped:
-            raise serializers.ValidationError(
-                "change_description must not be empty."
-            )
+            raise serializers.ValidationError("change_description must not be empty.")
         return stripped
 
 

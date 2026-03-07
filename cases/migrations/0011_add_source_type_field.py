@@ -6,18 +6,15 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('cases', '0010_change_url_to_jsonfield'),
+        ("cases", "0010_change_url_to_jsonfield"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='documentsource',
-            name='source_type',
+            model_name="documentsource",
+            name="source_type",
             field=models.CharField(
-                max_length=50,
-                null=True,
-                blank=True,
-                help_text='Type of source'
+                max_length=50, null=True, blank=True, help_text="Type of source"
             ),
         ),
     ]

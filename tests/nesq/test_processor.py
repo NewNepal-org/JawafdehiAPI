@@ -29,13 +29,11 @@ from django.utils import timezone
 
 from nesq.models import NESQueueItem, QueueAction, QueueStatus
 from nesq.processor import (
-    EntityNotFoundError,
     ProcessingResult,
     QueueProcessor,
     _augment_change_description,
 )
 from tests.conftest import create_user_with_role
-
 
 # ---------------------------------------------------------------------------
 # Helpers — sync helpers wrapped via sync_to_async for use in async tests
@@ -95,8 +93,9 @@ def _make_mock_entity(entity_id="entity:person/sher-bahadur-deuba"):
 
 def _make_processor():
     """Create a QueueProcessor with mocked NES dependencies."""
-    with patch("nesq.processor.FileDatabase"), \
-         patch("nesq.processor.PublicationService"):
+    with patch("nesq.processor.FileDatabase"), patch(
+        "nesq.processor.PublicationService"
+    ):
         processor = QueueProcessor(nes_db_path="/tmp/fake-nes-db")
         processor.publication_service = AsyncMock()
     return processor
@@ -133,7 +132,9 @@ class TestProcessingResult:
     def test_custom_values(self):
         """ProcessingResult should accept custom values."""
         result = ProcessingResult(
-            processed=5, completed=3, failed=2,
+            processed=5,
+            completed=3,
+            failed=2,
             errors=[{"item_id": 1, "error": "oops"}],
         )
         assert result.processed == 5
@@ -429,16 +430,18 @@ class TestProcessApprovedItems:
         user = await _create_user("sita_b2", "sita_b2@example.com", "Contributor")
         now = timezone.now()
 
-        item2 = await _make_approved_item(
-            user, change_description="Second item",
+        await _make_approved_item(
+            user,
+            change_description="Second item",
         )
         item1 = await _make_approved_item(
-            user, change_description="First item",
+            user,
+            change_description="First item",
         )
         # Force item1 to be older
-        await sync_to_async(
-            NESQueueItem.objects.filter(pk=item1.pk).update
-        )(created_at=now - timedelta(hours=1))
+        await sync_to_async(NESQueueItem.objects.filter(pk=item1.pk).update)(
+            created_at=now - timedelta(hours=1)
+        )
 
         processed_descriptions = []
 
@@ -468,11 +471,13 @@ class TestProcessApprovedItems:
             "is_misspelling": False,
         }
         item1 = await _make_approved_item(
-            user, payload=bad_payload,
+            user,
+            payload=bad_payload,
             change_description="Will fail",
         )
         item2 = await _make_approved_item(
-            user, payload=VALID_ADD_NAME_PAYLOAD,
+            user,
+            payload=VALID_ADD_NAME_PAYLOAD,
             change_description="Will succeed",
         )
 
