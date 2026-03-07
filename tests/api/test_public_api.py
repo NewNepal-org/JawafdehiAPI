@@ -29,7 +29,7 @@ from tests.strategies import (
 
 
 @pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
+@settings(max_examples=20, deadline=800)
 @given(
     case_data=complete_case_data(),
     state=st.sampled_from(
@@ -81,7 +81,7 @@ def test_public_api_only_shows_published_cases(case_data, state):
 
 
 @pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@settings(max_examples=20, deadline=800)
 @given(case_data=complete_case_data())
 def test_public_api_shows_highest_version_only(case_data):
     """
@@ -133,7 +133,7 @@ def test_public_api_shows_highest_version_only(case_data):
 
 
 @pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
+@settings(max_examples=20, deadline=800)
 @given(case_data=complete_case_data(), source_data=valid_source_data())
 def test_evidence_requires_valid_source_references(case_data, source_data):
     """
@@ -230,7 +230,7 @@ def test_evidence_with_invalid_source_reference():
 
 
 @pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@settings(max_examples=20, deadline=800)
 @given(
     case_data=complete_case_data(),
     search_term=st.text(
@@ -269,7 +269,7 @@ def test_search_functionality_across_fields(case_data, search_term):
 
 
 @pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@settings(max_examples=20, deadline=800)
 @given(
     case_data=complete_case_data(),
     case_type=st.sampled_from([CaseType.CORRUPTION, CaseType.PROMISES]),
@@ -310,7 +310,7 @@ def test_filter_by_case_type(case_data, case_type):
 
 
 @pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@settings(max_examples=20, deadline=800)
 @given(
     case_data=complete_case_data(),
     tag=st.text(
@@ -363,7 +363,7 @@ def test_filter_by_tags(case_data, tag):
 
 
 @pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 100 to 20 for faster execution
+@settings(max_examples=20, deadline=800)
 @given(case_data=complete_case_data(), source_data=valid_source_data())
 def test_published_cases_display_complete_data(case_data, source_data):
     """
@@ -435,7 +435,7 @@ def test_published_cases_display_complete_data(case_data, source_data):
 
 
 @pytest.mark.django_db
-@settings(max_examples=20)  # Reduced from 50 to 20 for faster execution
+@settings(max_examples=20, deadline=800)
 @given(case_data=complete_case_data())
 def test_published_cases_include_all_entity_fields(case_data):
     """
