@@ -308,6 +308,9 @@ class Case(models.Model):
             models.Index(fields=["case_id", "state", "version"]),
             models.Index(fields=["state", "version"]),
         ]
+        constraints = [
+            models.UniqueConstraint(fields=["case_id", "version"], name="unique_case_version")
+        ]
         ordering = ["-created_at"]
 
     def __str__(self):

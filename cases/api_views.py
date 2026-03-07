@@ -469,15 +469,23 @@ class StatisticsView(APIView):
         else:
             entity_states = [CaseState.PUBLISHED]
 
+        # Get latest version per case_id (same approach as CaseViewSet.get_queryset)
+        from django.db.models import OuterRef, Subquery
+
+        latest_versions = (
+            Case.objects.filter(case_id=OuterRef("case_id")).order_by("-version").values("id")[:1]
+        )
+        latest_cases = Case.objects.filter(id__in=Subquery(latest_versions))
+
         stats = {
-            "published_cases": Case.objects.filter(state=CaseState.PUBLISHED).count(),
-            "cases_under_investigation": Case.objects.filter(
+            "published_cases": latest_cases.filter(state=CaseState.PUBLISHED).count(),
+            "cases_under_investigation": latest_cases.filter(
                 state__in=[CaseState.DRAFT, CaseState.IN_REVIEW]
             ).count(),
-            "cases_closed": Case.objects.filter(state=CaseState.CLOSED).count(),
+            "cases_closed": latest_cases.filter(state=CaseState.CLOSED).count(),
             "entities_tracked": JawafEntity.objects.filter(
-                Q(cases_as_alleged__state__in=entity_states)
-                | Q(cases_as_related__state__in=entity_states)
+                Q(cases_as_alleged__in=latest_cases.filter(state__in=entity_states))
+                | Q(cases_as_related__in=latest_cases.filter(state__in=entity_states))
             )
             .distinct()
             .count(),
@@ -499,7 +507,7 @@ class FeedbackRateThrottle(SimpleRateThrottle):
     def get_ident(self, request):
         """
         Get client identifier respecting TRUST_PROXY_HEADERS setting.
-        
+
         Uses the same proxy-trusting logic as get_client_ip().
         """
         x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
@@ -581,7 +589,7 @@ class FeedbackView(APIView):
     def get_client_ip(self, request):
         """
         Extract client IP address from request.
-        
+
         Returns None if no valid IP address can be determined.
         """
         x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")

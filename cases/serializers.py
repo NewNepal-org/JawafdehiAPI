@@ -28,7 +28,7 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         model = JawafEntity
         fields = ["id", "nes_id", "display_name", "alleged_cases", "related_cases"]
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
+    @extend_schema_field(OpenApiTypes.ARRAY)
     def get_alleged_cases(self, obj):
         """
         Get list of case IDs where this entity is alleged.
@@ -46,7 +46,7 @@ class JawafEntitySerializer(serializers.ModelSerializer):
 
         return list(cases.values_list("id", flat=True))
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
+    @extend_schema_field(OpenApiTypes.ARRAY)
     def get_related_cases(self, obj):
         """
         Get list of case IDs where this entity is related or a location.
@@ -88,7 +88,7 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         case_ids = set(related_cases.values_list("id", flat=True))
         case_ids.update(location_cases.values_list("id", flat=True))
 
-        return list(case_ids)
+        return sorted(case_ids)
 
 
 class CaseSerializer(serializers.ModelSerializer):
@@ -171,7 +171,7 @@ class CaseDetailSerializer(CaseSerializer):
     class Meta(CaseSerializer.Meta):
         fields = CaseSerializer.Meta.fields + ["audit_history"]
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
+    @extend_schema_field(OpenApiTypes.ARRAY)
     def get_audit_history(self, obj):
         """
         Get versionInfo from all published versions with the same case_id.

@@ -10,15 +10,19 @@ from django.utils.safestring import mark_safe
 from nes.core.identifiers.validators import validate_entity_id
 
 
-def _parse_json_list(value):
+def _parse_json_list(value, strict=False):
     """
     Parse a value into a list, handling JSON strings and ensuring list output.
 
     Args:
         value: Raw value (list, string, or None)
+        strict: If True, raise ValidationError on malformed JSON (for form submission)
 
     Returns:
-        list: Parsed list, or empty list on error
+        list: Parsed list, or empty list on error (when strict=False)
+
+    Raises:
+        ValidationError: When strict=True and JSON is malformed or not a list
     """
     if value is None or value == "":
         return []
@@ -27,8 +31,14 @@ def _parse_json_list(value):
     if isinstance(value, str):
         try:
             parsed = json.loads(value)
-            return parsed if isinstance(parsed, list) else []
-        except (json.JSONDecodeError, TypeError):
+            if not isinstance(parsed, list):
+                if strict:
+                    raise ValidationError("Expected a list.")
+                return []
+            return parsed
+        except (json.JSONDecodeError, TypeError) as err:
+            if strict:
+                raise ValidationError("Invalid JSON format.") from err
             return []
     return []
 
@@ -72,7 +82,7 @@ class MultiEntityIDField(Field):
     def to_python(self, value):
         if value in self.empty_values:
             return []
-        return _parse_json_list(value)
+        return _parse_json_list(value, strict=True)
 
     def validate(self, value):
         super().validate(value)
@@ -105,7 +115,7 @@ class MultiTextField(Field):
     def to_python(self, value):
         if value in self.empty_values:
             return []
-        return _parse_json_list(value)
+        return _parse_json_list(value, strict=True)
 
     def validate(self, value):
         super().validate(value)
@@ -124,7 +134,7 @@ class MultiTimelineField(Field):
     def to_python(self, value):
         if value in self.empty_values:
             return []
-        return _parse_json_list(value)
+        return _parse_json_list(value, strict=True)
 
 
 class MultiEvidenceWidget(BaseMultiWidget):
@@ -149,7 +159,7 @@ class MultiEvidenceField(Field):
     def to_python(self, value):
         if value in self.empty_values:
             return []
-        return _parse_json_list(value)
+        return _parse_json_list(value, strict=True)
 
 
 class MultiURLWidget(BaseMultiWidget):

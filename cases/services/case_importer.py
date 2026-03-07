@@ -198,10 +198,17 @@ class CaseImporter:
 
         # Create case with transaction
         with transaction.atomic():
+            # Validate enum values
+            try:
+                case_type_value = CaseType[case_type]
+                case_state_value = CaseState[case_state]
+            except KeyError as exc:
+                raise ValueError(f"Invalid case type/state: {exc.args[0]}") from exc
+
             # Create case
             case = Case(
-                case_type=getattr(CaseType, case_type),
-                state=getattr(CaseState, case_state),
+                case_type=case_type_value,
+                state=case_state_value,
                 title=title,
                 description=data.get("description", ""),
                 case_start_date=self.parse_date(data.get("case_start_date")),

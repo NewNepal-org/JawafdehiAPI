@@ -228,6 +228,12 @@ class TestAutoApprove:
         assert resp_data["reviewed_by"] == "hari_mod"
         assert resp_data["reviewed_at"] is not None
 
+        # Verify database
+        item = NESQueueItem.objects.get(pk=resp_data["id"])
+        assert item.status == QueueStatus.APPROVED
+        assert item.reviewed_by == moderator_user
+        assert item.reviewed_at is not None
+
     def test_contributor_auto_approve_returns_403(self, contributor_client):
         """Contributor with auto_approve=True receives 403 Forbidden."""
         data = {**VALID_SUBMIT_DATA, "auto_approve": True}
