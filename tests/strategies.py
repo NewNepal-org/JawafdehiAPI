@@ -6,7 +6,22 @@ This module contains reusable Hypothesis strategies used across multiple test fi
 
 from datetime import date, timedelta
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import URLValidator
 from hypothesis import strategies as st
+
+# URL validator instance for filtering generated URLs
+_url_validator = URLValidator()
+
+
+def _is_valid_url(url: str) -> bool:
+    """Check if a URL passes Django's URLValidator."""
+    try:
+        _url_validator(url)
+        return True
+    except DjangoValidationError:
+        return False
+
 
 from cases.models import CaseType
 
@@ -224,17 +239,46 @@ def valid_source_data(draw):
     """
     Generate valid DocumentSource data with all required fields.
 
-    According to Property 11 and Requirement 4.2, required fields are:
-    - title
-    - description (optional but commonly included)
-    - url is now a JSONField containing a list of URLs
+    url is a JSONField containing a list of 0-2 validated URLs.
+    Each URL is filtered through Django's URLValidator to ensure the model
+    accepts it without raising ValidationError.
     """
-    # Generate 0-2 valid URLs
+    # Generate 0-2 valid URLs using Django's URLValidator
     url_count = draw(st.integers(min_value=0, max_value=2))
     urls = []
     for _ in range(url_count):
-        url = draw(st.from_regex(r"https?://[a-z0-9\-\.]+\.[a-z]{2,}(/[^\s]*)?", fullmatch=True))
-        urls.append(url)
+        domain = draw(
+            st.sampled_from(
+                [
+                    "example.com",
+                    "test.org",
+                    "sample.net",
+                    "demo.io",
+                    "github.com",
+                    "google.com",
+                    "wikipedia.org",
+                ]
+            )
+        )
+        protocol = draw(st.sampled_from(["http", "https"]))
+        has_path = draw(st.booleans())
+        if has_path:
+            path = draw(
+                st.text(
+                    alphabet=st.characters(
+                        whitelist_categories=("Ll", "Lu", "Nd"), whitelist_characters="-_/"
+                    ),
+                    min_size=1,
+                    max_size=20,
+                ).filter(lambda x: x and not x.startswith("//") and not x.startswith("/"))
+            )
+            url = f"{protocol}://{domain}/{path}"
+        else:
+            url = f"{protocol}://{domain}"
+
+        # Hard gate: only include URLs Django itself accepts
+        if _is_valid_url(url):
+            urls.append(url)
 
     return {
         "title": draw(
