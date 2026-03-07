@@ -68,8 +68,8 @@ class BaseMultiWidget(Widget):
         return mark_safe(render_to_string(self.template_name, context))  # noqa: S308
 
     def value_from_datadict(self, data, files, name):  # noqa: ARG002
-        value = data.get(name, "[]")
-        return _parse_json_list(value)
+        value = data.get(name)
+        return value if value is not None else "[]"
 
 
 class MultiEntityIDWidget(BaseMultiWidget):

@@ -5,6 +5,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 import uuid
+from copy import deepcopy
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -408,11 +409,11 @@ class Case(models.Model):
             banner_url=self.banner_url,
             case_start_date=self.case_start_date,
             case_end_date=self.case_end_date,
-            tags=self.tags.copy() if self.tags else [],
+            tags=deepcopy(self.tags) if self.tags else [],
             description=self.description,
-            key_allegations=self.key_allegations.copy() if self.key_allegations else [],
-            timeline=self.timeline.copy() if self.timeline else [],
-            evidence=self.evidence.copy() if self.evidence else [],
+            key_allegations=deepcopy(self.key_allegations) if self.key_allegations else [],
+            timeline=deepcopy(self.timeline) if self.timeline else [],
+            evidence=deepcopy(self.evidence) if self.evidence else [],
             versionInfo={
                 "version_number": self.version + 1,
                 "action": "draft_created",

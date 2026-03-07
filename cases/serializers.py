@@ -34,15 +34,25 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         Get list of case IDs where this entity is alleged.
 
         Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
+        Returns only the latest version per case_id.
         """
         from django.conf import settings
+        from django.db.models import OuterRef, Subquery
+
+        # Get latest version per case_id
+        latest_versions = (
+            Case.objects.filter(case_id=OuterRef("case_id")).order_by("-version").values("id")[:1]
+        )
 
         if settings.EXPOSE_CASES_IN_REVIEW:
             cases = obj.cases_as_alleged.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                id__in=Subquery(latest_versions),
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
             )
         else:
-            cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
+            cases = obj.cases_as_alleged.filter(
+                id__in=Subquery(latest_versions), state=CaseState.PUBLISHED
+            )
 
         return list(cases.values_list("id", flat=True))
 
@@ -53,36 +63,46 @@ class JawafEntitySerializer(serializers.ModelSerializer):
 
         Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         Excludes cases where entity is already alleged (to avoid duplicates).
+        Returns only the latest version per case_id.
         """
         from django.conf import settings
+        from django.db.models import OuterRef, Subquery
+
+        # Get latest version per case_id
+        latest_versions = (
+            Case.objects.filter(case_id=OuterRef("case_id")).order_by("-version").values("id")[:1]
+        )
 
         # Get alleged case IDs to exclude
         if settings.EXPOSE_CASES_IN_REVIEW:
             alleged_case_ids = obj.cases_as_alleged.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                id__in=Subquery(latest_versions),
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
             ).values_list("id", flat=True)
         else:
-            alleged_case_ids = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED).values_list(
-                "id", flat=True
-            )
+            alleged_case_ids = obj.cases_as_alleged.filter(
+                id__in=Subquery(latest_versions), state=CaseState.PUBLISHED
+            ).values_list("id", flat=True)
 
         # Get related and location cases
         if settings.EXPOSE_CASES_IN_REVIEW:
             related_cases = obj.cases_as_related.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                id__in=Subquery(latest_versions),
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
             ).exclude(id__in=alleged_case_ids)
 
             location_cases = obj.cases_as_location.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                id__in=Subquery(latest_versions),
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
             ).exclude(id__in=alleged_case_ids)
         else:
-            related_cases = obj.cases_as_related.filter(state=CaseState.PUBLISHED).exclude(
-                id__in=alleged_case_ids
-            )
+            related_cases = obj.cases_as_related.filter(
+                id__in=Subquery(latest_versions), state=CaseState.PUBLISHED
+            ).exclude(id__in=alleged_case_ids)
 
-            location_cases = obj.cases_as_location.filter(state=CaseState.PUBLISHED).exclude(
-                id__in=alleged_case_ids
-            )
+            location_cases = obj.cases_as_location.filter(
+                id__in=Subquery(latest_versions), state=CaseState.PUBLISHED
+            ).exclude(id__in=alleged_case_ids)
 
         # Combine and deduplicate
         case_ids = set(related_cases.values_list("id", flat=True))
@@ -319,3 +339,14 @@ class FeedbackSerializer(serializers.ModelSerializer):
             "submittedAt": data["submittedAt"],
             "message": "Thank you for your feedback! We will review it and get back to you if needed.",
         }
+
+
+class FeedbackResponseSerializer(serializers.Serializer):
+    """Serializer for feedback API response (trimmed version)."""
+
+    id = serializers.IntegerField(help_text="Feedback ID")
+    feedbackType = serializers.CharField(help_text="Type of feedback")
+    subject = serializers.CharField(help_text="Feedback subject")
+    status = serializers.CharField(help_text="Feedback status")
+    submittedAt = serializers.DateTimeField(help_text="Submission timestamp")
+    message = serializers.CharField(help_text="Response message")

@@ -29,6 +29,7 @@ from .serializers import (
     CaseDetailSerializer,
     CaseSerializer,
     DocumentSourceSerializer,
+    FeedbackResponseSerializer,
     FeedbackSerializer,
     JawafEntitySerializer,
 )
@@ -250,12 +251,22 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         of at least one published case (or in-review case if flag is enabled).
         """
         # Get all published cases (and in-review if feature flag is enabled)
+        # Collapse to latest version per case_id
+        from django.db.models import OuterRef, Subquery
+
+        latest_versions = (
+            Case.objects.filter(case_id=OuterRef("case_id")).order_by("-version").values("id")[:1]
+        )
+
         if settings.EXPOSE_CASES_IN_REVIEW:
             published_cases = Case.objects.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                id__in=Subquery(latest_versions),
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
             )
         else:
-            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+            published_cases = Case.objects.filter(
+                id__in=Subquery(latest_versions), state=CaseState.PUBLISHED
+            )
 
         # Extract all source_ids from evidence fields
         source_ids = set()
@@ -533,7 +544,7 @@ class FeedbackRateThrottle(SimpleRateThrottle):
     """,
     request=FeedbackSerializer,
     responses={
-        201: FeedbackSerializer,
+        201: FeedbackResponseSerializer,
         400: OpenApiTypes.OBJECT,
         429: OpenApiTypes.OBJECT,
     },

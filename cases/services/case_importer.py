@@ -183,7 +183,16 @@ class CaseImporter:
         with open(json_file, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        title = data.get("title", "").strip()
+        # Validate payload is a dict
+        if not isinstance(data, dict):
+            raise ValueError("Invalid payload: expected JSON object")
+
+        # Validate title is a string
+        raw_title = data.get("title")
+        if not isinstance(raw_title, str):
+            raise ValueError("Case title must be a string")
+
+        title = raw_title.strip()
         if not title:
             raise ValueError("Case title is required")
 
@@ -269,6 +278,9 @@ class CaseImporter:
 
             case.evidence = evidence
             case.save()
+
+            # Validate the case before committing
+            case.validate()
 
             self.log("\nImport statistics:")
             self.log(f"  Entities created: {self.stats['entities_created']}")
