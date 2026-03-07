@@ -36,14 +36,13 @@ def test_document_source_accepts_valid_data(source_data):
     validation should pass without raising ValidationError.
     Validates: Requirements 4.2
     """
+    # create_document_source_with_entities calls save() which runs full_clean()
+    # If validation fails, it will raise ValidationError
     source = create_document_source_with_entities(**source_data)
-    source.save()
 
-    # Should not raise ValidationError
-    try:
-        source.validate()
-    except ValidationError as e:
-        pytest.fail(f"DocumentSource validation rejected valid data: {e}")
+    # Verify the source was created successfully
+    assert source.pk is not None
+    assert source.title == source_data["title"].strip()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -83,13 +82,12 @@ def test_document_source_accepts_missing_description(source_data):
     Validates: Requirements 4.2
     """
     # Should not raise ValidationError when missing description
+    # create_document_source_with_entities calls save() which runs full_clean()
     source = create_document_source_with_entities(**source_data)
-    source.save()
 
-    try:
-        source.validate()
-    except ValidationError as e:
-        pytest.fail(f"DocumentSource should accept missing description, but raised: {e}")
+    # Verify the source was created successfully
+    assert source.pk is not None
+    assert source.description == ""  # Missing description defaults to empty string
 
 
 @pytest.mark.django_db(transaction=True)
@@ -121,13 +119,12 @@ def test_document_source_accepts_empty_description(source_data):
     Validates: Requirements 4.2
     """
     # Should not raise ValidationError when description is empty
+    # create_document_source_with_entities calls save() which runs full_clean()
     source = create_document_source_with_entities(**source_data)
-    source.save()
 
-    try:
-        source.validate()
-    except ValidationError as e:
-        pytest.fail(f"DocumentSource should accept empty description, but raised: {e}")
+    # Verify the source was created successfully
+    assert source.pk is not None
+    assert source.description == ""  # Empty description is allowed
 
 
 # ============================================================================
@@ -155,15 +152,12 @@ def test_document_source_url_is_optional():
     Validates: Requirements 4.1, 4.2
     """
     source = create_document_source_with_entities(
-        title="Valid Title", description="Valid description", related_entity_ids=[]
+        title="Valid Title", description="Valid description", related_entity_ids=[], url=[]
     )
-    source.save()
 
-    # Should not raise ValidationError without URL
-    try:
-        source.validate()
-    except ValidationError as e:
-        pytest.fail(f"DocumentSource should allow missing URL, but raised: {e}")
+    # Verify the source was created successfully without URL
+    assert source.pk is not None
+    assert source.url == []
 
 
 @pytest.mark.django_db

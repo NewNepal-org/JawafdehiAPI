@@ -227,7 +227,15 @@ def valid_source_data(draw):
     According to Property 11 and Requirement 4.2, required fields are:
     - title
     - description (optional but commonly included)
+    - url is now a JSONField containing a list of URLs
     """
+    # Generate 0-2 valid URLs
+    url_count = draw(st.integers(min_value=0, max_value=2))
+    urls = []
+    for _ in range(url_count):
+        url = draw(st.from_regex(r"https?://[a-z0-9\-\.]+\.[a-z]{2,}(/[^\s]*)?", fullmatch=True))
+        urls.append(url)
+
     return {
         "title": draw(
             st.text(min_size=1, max_size=300).filter(lambda x: x.strip() and "\x00" not in x)
@@ -236,12 +244,7 @@ def valid_source_data(draw):
             st.text(min_size=1, max_size=1000).filter(lambda x: x.strip() and "\x00" not in x)
         ),
         "related_entity_ids": draw(entity_id_list(min_size=0, max_size=3)),
-        "url": draw(
-            st.one_of(
-                st.none(),
-                st.from_regex(r"https?://[a-z0-9\-\.]+\.[a-z]{2,}(/[^\s]*)?", fullmatch=True),
-            )
-        ),
+        "url": urls,
     }
 
 
