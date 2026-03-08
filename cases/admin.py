@@ -1,31 +1,30 @@
-from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.contrib.auth import get_user_model
 from django import forms
+from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.html import format_html
-from django.core.exceptions import ValidationError
+from nepali_datetime import date as nepali_date
 from tinymce.widgets import TinyMCE
-from .models import Case, DocumentSource, JawafEntity, CaseState, CaseType, Feedback
+
+from .models import Case, CaseState, DocumentSource, Feedback, JawafEntity
+from .rules.predicates import (
+    can_change_case,
+    can_change_source,
+    can_manage_user,
+    can_transition_case_state,
+    can_view_case,
+    can_view_source,
+    is_admin,
+    is_admin_or_moderator,
+    is_contributor,
+    is_moderator,
+)
 from .widgets import (
+    MultiEvidenceField,
     MultiTextField,
     MultiTimelineField,
-    MultiEvidenceField,
-)
-from .rules.predicates import (
-    is_admin,
-    is_moderator,
-    is_contributor,
-    is_admin_or_moderator,
-    is_case_contributor,
-    is_source_contributor,
-    can_transition_case_state,
-    can_manage_user,
-    can_view_case,
-    can_change_case,
-    can_view_source,
-    can_change_source,
-    can_delete_source,
 )
 
 User = get_user_model()
@@ -66,6 +65,29 @@ class CaseAdminForm(forms.ModelForm):
         help_text="Evidence entries with source references"
     )
 
+    start_date_bs = forms.CharField(
+        label="Case start date (BS)",
+        required=False,
+        widget=forms.TextInput(attrs={
+            'placeholder': 'YYYY-MM-DD',
+            'class': 'vTextField nepali-date-picker',
+            'autocomplete': 'off',
+            'readonly': 'readonly',
+            'style': 'cursor: pointer;'
+        })
+    )
+    end_date_bs = forms.CharField(
+        label="Case end date (BS)",
+        required=False,
+        widget=forms.TextInput(attrs={
+            'placeholder': 'YYYY-MM-DD',
+            'class': 'vTextField nepali-date-picker',
+            'autocomplete': 'off',
+            'readonly': 'readonly',
+            'style': 'cursor: pointer;'
+        })
+    )
+
     class Meta:
         model = Case
         fields = '__all__'
@@ -78,6 +100,22 @@ class CaseAdminForm(forms.ModelForm):
         help_texts = {
             'state': 'Current workflow state: DRAFT (editable), IN_REVIEW (pending approval), PUBLISHED (public), CLOSED (archived)',
         }
+
+    def ad_to_bs(self, ad_date):
+        """Convert AD date object to BS string YYYY-MM-DD."""
+        if not ad_date:
+            return ''
+        return nepali_date.from_datetime_date(ad_date).strftime('%Y-%m-%d')
+
+    def bs_to_ad(self, bs_str):
+        """Convert BS string YYYY-MM-DD to AD date object (for completeness)."""
+        if not bs_str:
+            return None
+        try:
+            y, m, d = map(int, bs_str.split('-'))
+            return nepali_date(y, m, d).to_datetime_date()
+        except (ValueError, TypeError):
+            return None
 
     def __init__(self, *args, **kwargs):
         self.request = kwargs.pop('request', None)
@@ -129,7 +167,19 @@ class CaseAdminForm(forms.ModelForm):
                 if state_field:
                     # Create custom choices with disabled options
                     state_field.widget.attrs['class'] = 'contributor-state-field'
-
+        if self.instance.pk:
+            if self.instance.case_start_date:
+                self.initial['start_date_bs'] = self.ad_to_bs(self.instance.case_start_date)
+            if self.instance.case_end_date:
+                self.initial['end_date_bs'] = self.ad_to_bs(self.instance.case_end_date)
+    class Media:
+        css = {
+            'all': ('cases/css/nepali.datepicker.v5.0.6.min.css',)
+        }
+        js = (
+            'cases/js/nepali.datepicker.v5.0.6.min.js',
+            'cases/js/date_converter.js',
+        )
     def clean(self):
         """
         Validate state transitions, new case state requirements, and required fields.
@@ -255,7 +305,9 @@ class CaseAdmin(admin.ModelAdmin):
         ('Dates', {
             'fields': (
                 'case_start_date',
+                'start_date_bs',
                 'case_end_date',
+                'end_date_bs',
             )
         }),
         ('Entities', {
@@ -688,7 +740,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
             obj.validate()
         except ValidationError as e:
             # Re-raise with form context
-            raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e))
+            raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e)) from e
 
         super().save_model(request, obj, form, change)
 

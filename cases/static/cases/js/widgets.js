@@ -186,12 +186,22 @@ window.MultiWidgetConfigs = {
         },
         getValues: (container) => {
             return Array.from(container.querySelectorAll('.input-row')).map(row => {
-                const inputs = row.querySelectorAll('.timeline-input');
-                if (!inputs[0].value && !inputs[1].value && !inputs[2].value) return null;
+                const dateAd = row.querySelector('.timeline-date-ad');
+                const dateBs = row.querySelector('.timeline-date-bs');
+                const inputs = row.querySelectorAll('.timeline-input:not(.timeline-date-ad):not(.timeline-date-bs)');
+                
+                const adValue = dateAd ? dateAd.value.trim() : '';
+                const bsValue = dateBs ? dateBs.value.trim() : '';
+                const titleValue = inputs[0] ? inputs[0].value.trim() : '';
+                const descValue = inputs[1] ? inputs[1].value.trim() : '';
+                
+                if (!adValue && !titleValue && !descValue) return null;
+                
                 return {
-                    date: inputs[0].value.trim(),
-                    title: inputs[1].value.trim(),
-                    description: inputs[2].value.trim()
+                    date: adValue,
+                    date_bs: bsValue,
+                    title: titleValue,
+                    description: descValue
                 };
             }).filter(v => v);
         }
