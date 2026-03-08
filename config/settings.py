@@ -25,14 +25,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-b&i!8@kw8v+w3%zk)gbsz8^v8w8xjb%l-$!-3x&*pc5hqio02g")
+SECRET_KEY = os.getenv(
+    "SECRET_KEY", "django-insecure-b&i!8@kw8v+w3%zk)gbsz8^v8w8xjb%l-$!-3x&*pc5hqio02g"
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
-CSRF_TRUSTED_ORIGINS = os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if os.getenv("CSRF_TRUSTED_ORIGINS") else []
+CSRF_TRUSTED_ORIGINS = (
+    os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if os.getenv("CSRF_TRUSTED_ORIGINS")
+    else []
+)
 
 
 # Application definition
@@ -46,6 +52,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "rest_framework.authtoken",
     "drf_spectacular",
     "django_filters",
     "corsheaders",
@@ -53,6 +60,7 @@ INSTALLED_APPS = [
     "auditlog",
     "rules.apps.AutodiscoverRulesConfig",
     "cases",
+    "nesq",
 ]
 
 MIDDLEWARE = [
@@ -205,13 +213,10 @@ The cases endpoint supports:
     "SCHEMA_PATH_PREFIX": "/api/",
     "SERVERS": None,  # Use None to auto-detect from request
     "TAGS": [
-        {
-            "name": "cases",
-            "description": "Operations related to accountability cases"
-        },
+        {"name": "cases", "description": "Operations related to accountability cases"},
         {
             "name": "sources",
-            "description": "Operations related to document sources and evidence"
+            "description": "Operations related to document sources and evidence",
         },
     ],
     "ENUM_NAME_OVERRIDES": {
@@ -226,15 +231,19 @@ CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS"]
 # NES API Configuration
 NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
 
+# NES Database Path - required for GitHub Actions queue processing only.
+# Points to the local clone of the nes-db repository.
+NES_DB_PATH = os.getenv("NES_DB_PATH")
+
 # Feature Flags
 EXPOSE_CASES_IN_REVIEW = os.getenv("EXPOSE_CASES_IN_REVIEW", "False") == "True"
 
 # Cache Configuration
 CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'jawafdehi-cache',
-        'TIMEOUT': 300,  # 5 minutes default
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "jawafdehi-cache",
+        "TIMEOUT": 300,  # 5 minutes default
     }
 }
 
@@ -251,20 +260,17 @@ JAZZMIN_SETTINGS = {
     "copyright": "Jawafdehi",
     "search_model": ["cases.Case", "cases.DocumentSource"],
     "user_avatar": None,
-    
     # Top Menu
     "topmenu_links": [
         {"name": "Home", "url": "admin:index", "permissions": ["auth.view_user"]},
         {"name": "Public API", "url": "/api/swagger", "new_window": True},
     ],
-    
     # Side Menu
     "show_sidebar": True,
     "navigation_expanded": True,
     "hide_apps": [],
     "hide_models": [],
     "order_with_respect_to": ["cases", "auth"],
-    
     # Icons
     "icons": {
         "auth": "fas fa-users-cog",
@@ -273,13 +279,11 @@ JAZZMIN_SETTINGS = {
         "cases.Case": "fas fa-gavel",
         "cases.DocumentSource": "fas fa-file-alt",
     },
-    
     # UI Tweaks
     "custom_css": None,
     "custom_js": None,
     "use_google_fonts_cdn": True,
     "show_ui_builder": False,
-    
     "changeform_format": "horizontal_tabs",
     "changeform_format_overrides": {
         "auth.user": "collapsible",

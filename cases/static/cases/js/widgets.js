@@ -174,6 +174,15 @@ window.MultiWidgetConfigs = {
         }
     },
     
+    url: {
+        inputClass: 'url-input',
+        rowClass: 'input-row',
+        getValues: (container) => {
+            const inputs = container.querySelectorAll('.url-input');
+            return Array.from(inputs).map(i => i.value.trim()).filter(v => v);
+        }
+    },
+    
     timeline: {
         inputClass: 'timeline-input',
         rowClass: 'input-row timeline-row',

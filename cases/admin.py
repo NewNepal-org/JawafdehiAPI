@@ -1,30 +1,36 @@
-from django import forms
 from django.contrib import admin
-from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+from django import forms
 from django.db import models
 from django.utils.html import format_html
-from nepali_datetime import date as nepali_date
+from django.core.exceptions import ValidationError
 from tinymce.widgets import TinyMCE
-
-from .models import Case, CaseState, DocumentSource, Feedback, JawafEntity
-from .rules.predicates import (
-    can_change_case,
-    can_change_source,
-    can_manage_user,
-    can_transition_case_state,
-    can_view_case,
-    can_view_source,
-    is_admin,
-    is_admin_or_moderator,
-    is_contributor,
-    is_moderator,
+from nepali_datetime import date as nepali_date
+from .models import (
+    Case,
+    DocumentSource,
+    JawafEntity,
+    CaseState,
+    Feedback,
 )
 from .widgets import (
-    MultiEvidenceField,
     MultiTextField,
     MultiTimelineField,
+    MultiEvidenceField,
+    MultiURLField,
+)
+from .rules.predicates import (
+    is_admin,
+    is_moderator,
+    is_contributor,
+    is_admin_or_moderator,
+    can_transition_case_state,
+    can_manage_user,
+    can_view_case,
+    can_change_case,
+    can_view_source,
+    can_change_source,
 )
 
 User = get_user_model()
@@ -33,6 +39,7 @@ User = get_user_model()
 # ============================================================================
 # Custom Admin Forms
 # ============================================================================
+
 
 class CaseAdminForm(forms.ModelForm):
     """
@@ -43,26 +50,26 @@ class CaseAdminForm(forms.ModelForm):
         required=False,
         button_label="Add Key Allegation",
         label="Key Allegations",
-        help_text="List of key allegation statements"
+        help_text="List of key allegation statements",
     )
 
     tags = MultiTextField(
         required=False,
         button_label="Add Tag",
         label="Tags",
-        help_text="Tags for categorization"
+        help_text="Tags for categorization",
     )
 
     timeline = MultiTimelineField(
         required=False,
         label="Timeline",
-        help_text="Timeline of events (add in reverse-chronological order: most recent first)"
+        help_text="Timeline of events (add in reverse-chronological order: most recent first)",
     )
 
     evidence = MultiEvidenceField(
         required=False,
         label="Evidence",
-        help_text="Evidence entries with source references"
+        help_text="Evidence entries with source references",
     )
 
     start_date_bs = forms.CharField(
@@ -90,16 +97,88 @@ class CaseAdminForm(forms.ModelForm):
 
     class Meta:
         model = Case
-        fields = '__all__'
+        fields = "__all__"
         widgets = {
-            'description': TinyMCE(attrs={'cols': 80, 'rows': 30}),
-            'state': forms.RadioSelect(),
-            'case_start_date': forms.DateInput(attrs={'type': 'date'}),
-            'case_end_date': forms.DateInput(attrs={'type': 'date'}),
+            "description": TinyMCE(attrs={"cols": 80, "rows": 30}),
+            "state": forms.RadioSelect(),
+            "case_start_date": forms.DateInput(attrs={"type": "date"}),
+            "case_end_date": forms.DateInput(attrs={"type": "date"}),
         }
         help_texts = {
-            'state': 'Current workflow state: DRAFT (editable), IN_REVIEW (pending approval), PUBLISHED (public), CLOSED (archived)',
+            "state": "Current workflow state: DRAFT (editable), IN_REVIEW (pending approval), PUBLISHED (public), CLOSED (archived)",
         }
+
+    def __init__(self, *args, **kwargs):
+        self.request = kwargs.pop("request", None)
+        super().__init__(*args, **kwargs)
+
+        # Populate evidence field with available sources based on user permissions
+        if self.request:
+            user = self.request.user
+            sources_queryset = DocumentSource.objects.filter(is_deleted=False)
+
+            # Filter sources based on user role
+            if not is_admin_or_moderator(user):
+                # Contributors see sources they're assigned to
+                if is_contributor(user):
+                    sources_queryset = sources_queryset.filter(contributors=user)
+
+                    # Also include sources already referenced in this case's evidence
+                    if self.instance and self.instance.pk and self.instance.evidence:
+                        existing_source_ids = [
+                            entry.get("source_id")
+                            for entry in self.instance.evidence
+                            if entry.get("source_id")
+                        ]
+                        if existing_source_ids:
+                            # Combine: sources assigned to user OR sources already in evidence
+                            sources_queryset = (
+                                DocumentSource.objects.filter(is_deleted=False)
+                                .filter(
+                                    models.Q(contributors=user)
+                                    | models.Q(source_id__in=existing_source_ids)
+                                )
+                                .distinct()
+                            )
+                else:
+                    # No role - see nothing
+                    sources_queryset = DocumentSource.objects.none()
+
+            sources = sources_queryset.values_list("source_id", "title", "url")
+        else:
+            # Fallback if no request (shouldn't happen in normal admin usage)
+            sources = DocumentSource.objects.filter(is_deleted=False).values_list(
+                "source_id", "title", "url"
+            )
+
+        self.fields["evidence"].sources = list(sources)
+        self.fields["evidence"].widget.sources = list(sources)
+
+        # Disable PUBLISHED and CLOSED states for Contributors
+        if self.request:
+            user = self.request.user
+            if is_contributor(user) and not is_admin_or_moderator(user):
+                # Disable PUBLISHED and CLOSED options for contributors
+                state_field = self.fields.get("state")
+                if state_field:
+                    # Create custom choices with disabled options
+                    state_field.widget.attrs["class"] = "contributor-state-field"
+
+        # Initialize BS date fields if editing existing case
+        if self.instance.pk:
+            if self.instance.case_start_date:
+                self.initial['start_date_bs'] = self.ad_to_bs(self.instance.case_start_date)
+            if self.instance.case_end_date:
+                self.initial['end_date_bs'] = self.ad_to_bs(self.instance.case_end_date)
+
+    class Media:
+        css = {
+            'all': ('cases/css/nepali.datepicker.v5.0.6.min.css',)
+        }
+        js = (
+            'cases/js/nepali.datepicker.v5.0.6.min.js',
+            'cases/js/date_converter.js',
+        )
 
     def ad_to_bs(self, ad_date):
         """Convert AD date object to BS string YYYY-MM-DD."""
@@ -117,69 +196,6 @@ class CaseAdminForm(forms.ModelForm):
         except (ValueError, TypeError):
             return None
 
-    def __init__(self, *args, **kwargs):
-        self.request = kwargs.pop('request', None)
-        super().__init__(*args, **kwargs)
-
-        # Populate evidence field with available sources based on user permissions
-        if self.request:
-            user = self.request.user
-            sources_queryset = DocumentSource.objects.filter(is_deleted=False)
-
-            # Filter sources based on user role
-            if not is_admin_or_moderator(user):
-                # Contributors see sources they're assigned to
-                if is_contributor(user):
-                    sources_queryset = sources_queryset.filter(contributors=user)
-
-                    # Also include sources already referenced in this case's evidence
-                    if self.instance and self.instance.pk and self.instance.evidence:
-                        existing_source_ids = [
-                            entry.get('source_id')
-                            for entry in self.instance.evidence
-                            if entry.get('source_id')
-                        ]
-                        if existing_source_ids:
-                            # Combine: sources assigned to user OR sources already in evidence
-                            sources_queryset = DocumentSource.objects.filter(
-                                is_deleted=False
-                            ).filter(
-                                models.Q(contributors=user) | models.Q(source_id__in=existing_source_ids)
-                            ).distinct()
-                else:
-                    # No role - see nothing
-                    sources_queryset = DocumentSource.objects.none()
-
-            sources = sources_queryset.values_list('source_id', 'title', 'url')
-        else:
-            # Fallback if no request (shouldn't happen in normal admin usage)
-            sources = DocumentSource.objects.filter(is_deleted=False).values_list('source_id', 'title', 'url')
-
-        self.fields['evidence'].sources = list(sources)
-        self.fields['evidence'].widget.sources = list(sources)
-
-        # Disable PUBLISHED and CLOSED states for Contributors
-        if self.request:
-            user = self.request.user
-            if is_contributor(user) and not is_admin_or_moderator(user):
-                # Disable PUBLISHED and CLOSED options for contributors
-                state_field = self.fields.get('state')
-                if state_field:
-                    # Create custom choices with disabled options
-                    state_field.widget.attrs['class'] = 'contributor-state-field'
-        if self.instance.pk:
-            if self.instance.case_start_date:
-                self.initial['start_date_bs'] = self.ad_to_bs(self.instance.case_start_date)
-            if self.instance.case_end_date:
-                self.initial['end_date_bs'] = self.ad_to_bs(self.instance.case_end_date)
-    class Media:
-        css = {
-            'all': ('cases/css/nepali.datepicker.v5.0.6.min.css',)
-        }
-        js = (
-            'cases/js/nepali.datepicker.v5.0.6.min.js',
-            'cases/js/date_converter.js',
-        )
     def clean(self):
         """
         Validate state transitions, new case state requirements, and required fields.
@@ -189,42 +205,54 @@ class CaseAdminForm(forms.ModelForm):
 
         # For new cases, enforce DRAFT state
         if not self.instance.pk:
-            new_state = cleaned_data.get('state')
+            new_state = cleaned_data.get("state")
             if new_state != CaseState.DRAFT:
-                errors['state'] = f"New cases must be created in DRAFT state. Cannot create a new case with state {new_state}."
+                errors["state"] = (
+                    f"New cases must be created in DRAFT state. Cannot create a new case with state {new_state}."
+                )
 
         # Check state transitions for existing cases
         if self.instance.pk:
             old_state = Case.objects.get(pk=self.instance.pk).state
-            new_state = cleaned_data.get('state')
+            new_state = cleaned_data.get("state")
 
             if old_state != new_state and self.request:
-                if not can_transition_case_state(self.request.user, self.instance, new_state):
-                    errors['state'] = f"You do not have permission to transition from {old_state} to {new_state}. Contributors can only transition between DRAFT and IN_REVIEW states."
+                if not can_transition_case_state(
+                    self.request.user, self.instance, new_state
+                ):
+                    errors["state"] = (
+                        f"You do not have permission to transition from {old_state} to {new_state}. Contributors can only transition between DRAFT and IN_REVIEW states."
+                    )
 
         # Validate required fields based on state
-        new_state = cleaned_data.get('state')
+        new_state = cleaned_data.get("state")
 
         # Always require title
-        if not cleaned_data.get('title', '').strip():
-            errors['title'] = "Title is required"
+        if not cleaned_data.get("title", "").strip():
+            errors["title"] = "Title is required"
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
             # Check alleged_entities (m2m field - check form data)
-            alleged_entities = cleaned_data.get('alleged_entities')
+            alleged_entities = cleaned_data.get("alleged_entities")
             if not alleged_entities or alleged_entities.count() == 0:
-                errors['alleged_entities'] = "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+                errors["alleged_entities"] = (
+                    "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+                )
 
             # Check key_allegations
-            key_allegations = cleaned_data.get('key_allegations')
+            key_allegations = cleaned_data.get("key_allegations")
             if not key_allegations or len(key_allegations) == 0:
-                errors['key_allegations'] = "At least one key allegation is required for IN_REVIEW or PUBLISHED state"
+                errors["key_allegations"] = (
+                    "At least one key allegation is required for IN_REVIEW or PUBLISHED state"
+                )
 
             # Check description
-            description = cleaned_data.get('description', '').strip()
+            description = cleaned_data.get("description", "").strip()
             if not description:
-                errors['description'] = "Description is required for IN_REVIEW or PUBLISHED state"
+                errors["description"] = (
+                    "Description is required for IN_REVIEW or PUBLISHED state"
+                )
 
         if errors:
             raise ValidationError(errors)
@@ -232,11 +260,10 @@ class CaseAdminForm(forms.ModelForm):
         return cleaned_data
 
 
-
-
 # ============================================================================
 # Case Admin
 # ============================================================================
+
 
 @admin.register(Case)
 class CaseAdmin(admin.ModelAdmin):
@@ -254,114 +281,125 @@ class CaseAdmin(admin.ModelAdmin):
     form = CaseAdminForm
 
     class Media:
-        js = ('admin/js/case_admin.js',)
-        css = {
-            'all': ('admin/css/case_admin.css',)
-        }
+        js = ("admin/js/case_admin.js",)
+        css = {"all": ("admin/css/case_admin.css",)}
 
     list_display = [
-        'case_id',
-        'version',
-        'title',
-        'case_type',
-        'state_badge',
-        'created_at',
-        'updated_at',
+        "case_id",
+        "version",
+        "title",
+        "case_type",
+        "state_badge",
+        "created_at",
+        "updated_at",
     ]
 
     list_filter = [
-        'state',
-        'case_type',
-        'created_at',
+        "state",
+        "case_type",
+        "created_at",
     ]
 
     search_fields = [
-        'case_id',
-        'title',
-        'description',
+        "case_id",
+        "title",
+        "description",
     ]
 
     readonly_fields = [
-        'case_id',
-        'version',
-        'created_at',
-        'updated_at',
-        'version_info_display',
+        "case_id",
+        "version",
+        "created_at",
+        "updated_at",
+        "version_info_display",
     ]
 
     fieldsets = (
-        ('Basic Information', {
-            'fields': (
-                'case_id',
-                'title',
-                'short_description',
-                'thumbnail_url',
-                'banner_url',
-                'case_type',
-                'state',
-                'alleged_entities',
-            )
-        }),
-        ('Dates', {
-            'fields': (
-                'case_start_date',
-                'start_date_bs',
-                'case_end_date',
-                'end_date_bs',
-            )
-        }),
-        ('Entities', {
-            'fields': (
-                'related_entities',
-                'locations',
-            )
-        }),
-        ('Content', {
-            'fields': (
-                'key_allegations',
-                'timeline',
-                'description',
-                'tags',
-            )
-        }),
-        ('Evidence', {
-            'fields': (
-                'evidence',
-            )
-        }),
-        ('Assignment', {
-            'fields': (
-                'contributors',
-            )
-        }),
-        ('Metadata', {
-            'fields': (
-                'version',
-                'created_at',
-                'updated_at',
-                'version_info_display',
-            ),
-            'classes': ('collapse',)
-        }),
+        (
+            "Basic Information",
+            {
+                "fields": (
+                    "case_id",
+                    "title",
+                    "short_description",
+                    "thumbnail_url",
+                    "banner_url",
+                    "case_type",
+                    "state",
+                    "alleged_entities",
+                )
+            },
+        ),
+        (
+            "Dates",
+            {
+                "fields": (
+                    "case_start_date",
+                    "start_date_bs",
+                    "case_end_date",
+                    "end_date_bs",
+                )
+            },
+        ),
+        (
+            "Entities",
+            {
+                "fields": (
+                    "related_entities",
+                    "locations",
+                )
+            },
+        ),
+        (
+            "Content",
+            {
+                "fields": (
+                    "key_allegations",
+                    "timeline",
+                    "description",
+                    "tags",
+                )
+            },
+        ),
+        ("Evidence", {"fields": ("evidence",)}),
+        ("Assignment", {"fields": ("contributors",)}),
+        (
+            "Metadata",
+            {
+                "fields": (
+                    "version",
+                    "created_at",
+                    "updated_at",
+                    "version_info_display",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
     )
 
-    filter_horizontal = ['contributors', 'alleged_entities', 'related_entities', 'locations']
+    filter_horizontal = [
+        "contributors",
+        "alleged_entities",
+        "related_entities",
+        "locations",
+    ]
 
     def state_badge(self, obj):
         """Display state as a colored badge."""
         colors = {
-            CaseState.DRAFT: '#6c757d',
-            CaseState.IN_REVIEW: '#ffc107',
-            CaseState.PUBLISHED: '#28a745',
-            CaseState.CLOSED: '#dc3545',
+            CaseState.DRAFT: "#6c757d",
+            CaseState.IN_REVIEW: "#ffc107",
+            CaseState.PUBLISHED: "#28a745",
+            CaseState.CLOSED: "#dc3545",
         }
-        color = colors.get(obj.state, '#6c757d')
+        color = colors.get(obj.state, "#6c757d")
         return format_html(
             '<span style="background-color: {}; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">{}</span>',
             color,
-            obj.get_state_display()
+            obj.get_state_display(),
         )
-    state_badge.short_description = 'State'
+
+    state_badge.short_description = "State"
 
     def version_info_display(self, obj):
         """Display version info in a readable format."""
@@ -371,27 +409,28 @@ class CaseAdmin(admin.ModelAdmin):
         info = obj.versionInfo
         html = "<div style='font-family: monospace;'>"
 
-        if 'version_number' in info:
+        if "version_number" in info:
             html += f"<strong>Version:</strong> {info['version_number']}<br>"
 
-        if 'action' in info:
+        if "action" in info:
             html += f"<strong>Action:</strong> {info['action']}<br>"
 
-        if 'datetime' in info:
+        if "datetime" in info:
             html += f"<strong>DateTime:</strong> {info['datetime']}<br>"
 
-        if 'source_version' in info:
+        if "source_version" in info:
             html += f"<strong>Source Version:</strong> {info['source_version']}<br>"
 
-        if 'user_id' in info:
+        if "user_id" in info:
             html += f"<strong>User ID:</strong> {info['user_id']}<br>"
 
-        if 'change_summary' in info:
+        if "change_summary" in info:
             html += f"<strong>Summary:</strong> {info['change_summary']}<br>"
 
         html += "</div>"
         return format_html(html)
-    version_info_display.short_description = 'Version Info'
+
+    version_info_display.short_description = "Version Info"
 
     def get_queryset(self, request):
         """
@@ -443,7 +482,7 @@ class CaseAdmin(admin.ModelAdmin):
 
         class FormWithRequest(form_class):
             def __new__(cls, *args, **kwargs):
-                kwargs['request'] = request
+                kwargs["request"] = request
                 return form_class(*args, **kwargs)
 
         return FormWithRequest
@@ -469,15 +508,15 @@ class CaseAdmin(admin.ModelAdmin):
         # Add custom actions for state transitions
         if is_admin_or_moderator(request.user):
             # Moderators and Admins can publish and close
-            actions['publish_cases'] = (
+            actions["publish_cases"] = (
                 self.__class__.publish_cases,
-                'publish_cases',
-                'Publish selected cases'
+                "publish_cases",
+                "Publish selected cases",
             )
-            actions['close_cases'] = (
+            actions["close_cases"] = (
                 self.__class__.close_cases,
-                'close_cases',
-                'Close selected cases'
+                "close_cases",
+                "Close selected cases",
             )
 
         return actions
@@ -496,6 +535,7 @@ class CaseAdmin(admin.ModelAdmin):
                 pass
 
         self.message_user(request, f"{count} case(s) published successfully.")
+
     publish_cases.short_description = "Publish selected cases"
 
     def close_cases(self, request, queryset):
@@ -504,6 +544,7 @@ class CaseAdmin(admin.ModelAdmin):
         """
         count = queryset.update(state=CaseState.CLOSED)
         self.message_user(request, f"{count} case(s) closed successfully.")
+
     close_cases.short_description = "Close selected cases"
 
 
@@ -511,25 +552,26 @@ class CaseAdmin(admin.ModelAdmin):
 # DocumentSource Admin
 # ============================================================================
 
+
 class DocumentSourceAdminForm(forms.ModelForm):
     """
     Custom form for DocumentSource admin with custom widgets.
     """
 
-    # Override url field to set assume_scheme and silence Django 6.0 warning
-    url = forms.URLField(
+    # Override url field to use MultiURLField widget
+    url = MultiURLField(
         required=False,
-        max_length=2000,
-        assume_scheme='https',
-        help_text="Optional URL to the source"
+        button_label="Add URL",
+        label="URLs",
+        help_text="URLs to the source (you can add multiple)",
     )
 
     class Meta:
         model = DocumentSource
-        fields = '__all__'
+        fields = "__all__"
 
     def __init__(self, *args, **kwargs):
-        self.request = kwargs.pop('request', None)
+        self.request = kwargs.pop("request", None)
         super().__init__(*args, **kwargs)
 
         # Restrict contributors field visibility based on user role
@@ -539,9 +581,11 @@ class DocumentSourceAdminForm(forms.ModelForm):
             # Only Moderators and Admins can edit contributors
             if not is_admin_or_moderator(user):
                 # Contributors cannot edit the contributors field
-                if 'contributors' in self.fields:
-                    self.fields['contributors'].disabled = True
-                    self.fields['contributors'].help_text = 'Only Moderators and Admins can assign contributors'
+                if "contributors" in self.fields:
+                    self.fields["contributors"].disabled = True
+                    self.fields["contributors"].help_text = (
+                        "Only Moderators and Admins can assign contributors"
+                    )
 
     def clean(self):
         """
@@ -550,11 +594,9 @@ class DocumentSourceAdminForm(forms.ModelForm):
         cleaned_data = super().clean()
 
         # Validate title is not empty
-        title = cleaned_data.get('title')
+        title = cleaned_data.get("title")
         if not title or not title.strip():
-            raise ValidationError({
-                'title': 'Title is required and cannot be empty'
-            })
+            raise ValidationError({"title": "Title is required and cannot be empty"})
 
         return cleaned_data
 
@@ -573,63 +615,73 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     form = DocumentSourceAdminForm
 
     list_display = [
-        'source_id',
-        'title',
-        'deletion_status',
-        'created_at',
+        "source_id",
+        "title",
+        "source_type",
+        "deletion_status",
+        "created_at",
     ]
 
     list_filter = [
-        'is_deleted',
-        'created_at',
+        "source_type",
+        "is_deleted",
+        "created_at",
     ]
 
     search_fields = [
-        'source_id',
-        'title',
-        'description',
+        "source_id",
+        "title",
+        "description",
     ]
 
     readonly_fields = [
-        'source_id',
-        'created_at',
-        'updated_at',
+        "source_id",
+        "created_at",
+        "updated_at",
     ]
 
     fieldsets = (
-        ('Basic Information', {
-            'fields': (
-                'source_id',
-                'title',
-                'description',
-                'url',
-                'related_entities',
-                'contributors',
-            )
-        }),
-        ('Metadata', {
-            'fields': (
-                'created_at',
-                'updated_at',
-            ),
-            'classes': ('collapse',)
-        }),
+        (
+            "Basic Information",
+            {
+                "fields": (
+                    "source_id",
+                    "title",
+                    "description",
+                    "source_type",
+                    "url",
+                    "related_entities",
+                    "contributors",
+                )
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": (
+                    "created_at",
+                    "updated_at",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
     )
 
-    filter_horizontal = ['related_entities', 'contributors']
+    filter_horizontal = ["related_entities", "contributors"]
 
     def deletion_status(self, obj):
         """Display deletion status as a colored badge."""
         if obj.is_deleted:
             return format_html(
                 '<span style="background-color: #dc3545; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">{}</span>',
-                'Deleted'
+                "Deleted",
             )
         return format_html(
             '<span style="background-color: #28a745; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">{}</span>',
-            'Active'
+            "Active",
         )
-    deletion_status.short_description = 'Status'
+
+    deletion_status.short_description = "Status"
 
     def get_queryset(self, request):
         """
@@ -659,15 +711,21 @@ class DocumentSourceAdmin(admin.ModelAdmin):
             for case in user_cases:
                 if case.evidence:
                     for evidence_item in case.evidence:
-                        if isinstance(evidence_item, dict) and 'source_id' in evidence_item:
-                            source_ids_from_cases.add(evidence_item['source_id'])
+                        if (
+                            isinstance(evidence_item, dict)
+                            and "source_id" in evidence_item
+                        ):
+                            source_ids_from_cases.add(evidence_item["source_id"])
 
             # Return sources where user is contributor OR source is in their cases
-            return qs.filter(
-                is_deleted=False
-            ).filter(
-                models.Q(contributors=request.user) | models.Q(source_id__in=source_ids_from_cases)
-            ).distinct()
+            return (
+                qs.filter(is_deleted=False)
+                .filter(
+                    models.Q(contributors=request.user)
+                    | models.Q(source_id__in=source_ids_from_cases)
+                )
+                .distinct()
+            )
 
         # No role - see nothing
         return qs.none()
@@ -676,15 +734,15 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """
         Customize list filters based on user role.
 
-        - Admins: See is_deleted and created_at filters
-        - Moderators: Only see created_at filter
-        - Contributors: Only see created_at filter
+        - Admins: See source_type, is_deleted and created_at filters
+        - Moderators: See source_type and created_at filters
+        - Contributors: See source_type and created_at filters
         """
         if is_admin(request.user):
-            return ['is_deleted', 'created_at']
+            return ["source_type", "is_deleted", "created_at"]
 
-        # Moderators and Contributors only see created_at
-        return ['created_at']
+        # Moderators and Contributors see source_type and created_at
+        return ["source_type", "created_at"]
 
     def has_view_permission(self, request, obj=None):
         """
@@ -726,7 +784,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
 
         class FormWithRequest(form_class):
             def __new__(cls, *args, **kwargs):
-                kwargs['request'] = request
+                kwargs["request"] = request
                 return form_class(*args, **kwargs)
 
         return FormWithRequest
@@ -734,14 +792,10 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         """
         Save the model with validation.
-        """
-        # Validate before saving
-        try:
-            obj.validate()
-        except ValidationError as e:
-            # Re-raise with form context
-            raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else str(e)) from e
 
+        Note: Model's save() method calls full_clean() which handles all validation.
+        No need for explicit validation here.
+        """
         super().save_model(request, obj, form, change)
 
     def save_related(self, request, form, formsets, change):
@@ -763,20 +817,20 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         actions = super().get_actions(request)
 
         # Remove default delete action (we use soft delete)
-        if 'delete_selected' in actions:
-            del actions['delete_selected']
+        if "delete_selected" in actions:
+            del actions["delete_selected"]
 
         # Add soft delete action
         if is_admin_or_moderator(request.user):
-            actions['soft_delete_sources'] = (
+            actions["soft_delete_sources"] = (
                 self.__class__.soft_delete_sources,
-                'soft_delete_sources',
-                'Mark selected sources as deleted'
+                "soft_delete_sources",
+                "Mark selected sources as deleted",
             )
-            actions['restore_sources'] = (
+            actions["restore_sources"] = (
                 self.__class__.restore_sources,
-                'restore_sources',
-                'Restore selected sources'
+                "restore_sources",
+                "Restore selected sources",
             )
 
         return actions
@@ -787,6 +841,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """
         count = queryset.update(is_deleted=True)
         self.message_user(request, f"{count} source(s) marked as deleted.")
+
     soft_delete_sources.short_description = "Mark selected sources as deleted"
 
     def restore_sources(self, request, queryset):
@@ -795,12 +850,14 @@ class DocumentSourceAdmin(admin.ModelAdmin):
         """
         count = queryset.update(is_deleted=False)
         self.message_user(request, f"{count} source(s) restored.")
+
     restore_sources.short_description = "Restore selected sources"
 
 
 # ============================================================================
 # User Admin (for moderator restrictions)
 # ============================================================================
+
 
 class CustomUserAdmin(BaseUserAdmin):
     """
@@ -826,7 +883,9 @@ class CustomUserAdmin(BaseUserAdmin):
         # Moderators see all users except other Moderators
         if is_moderator(request.user):
             # Exclude users who are in the Moderator group
-            moderator_group_users = User.objects.filter(groups__name='Moderator').values_list('id', flat=True)
+            moderator_group_users = User.objects.filter(
+                groups__name="Moderator"
+            ).values_list("id", flat=True)
             return qs.exclude(id__in=moderator_group_users)
 
         # Others see nothing
@@ -866,6 +925,7 @@ admin.site.register(User, CustomUserAdmin)
 # JawafEntity Admin
 # ============================================================================
 
+
 class JawafEntityAdminForm(forms.ModelForm):
     """
     Custom form for JawafEntity admin with validation.
@@ -873,15 +933,15 @@ class JawafEntityAdminForm(forms.ModelForm):
 
     class Meta:
         model = JawafEntity
-        fields = '__all__'
+        fields = "__all__"
 
     def clean(self):
         """
         Validate entity data.
         """
         cleaned_data = super().clean()
-        nes_id = cleaned_data.get('nes_id')
-        display_name = cleaned_data.get('display_name')
+        nes_id = cleaned_data.get("nes_id")
+        display_name = cleaned_data.get("display_name")
 
         # Check that at least one is provided
         if not nes_id and not display_name:
@@ -899,41 +959,47 @@ class JawafEntityAdmin(admin.ModelAdmin):
     form = JawafEntityAdminForm
 
     list_display = [
-        'id',
-        'nes_id',
-        'display_name',
-        'created_at',
+        "id",
+        "nes_id",
+        "display_name",
+        "created_at",
     ]
 
     list_filter = [
-        'created_at',
+        "created_at",
     ]
 
     search_fields = [
-        'nes_id',
-        'display_name',
+        "nes_id",
+        "display_name",
     ]
 
     readonly_fields = [
-        'created_at',
-        'updated_at',
+        "created_at",
+        "updated_at",
     ]
 
     fieldsets = (
-        ('Entity Information', {
-            'fields': (
-                'nes_id',
-                'display_name',
-            ),
-            'description': 'Provide either NES ID (from Nepal Entity Service) or a custom Display Name. Both can be provided if needed.'
-        }),
-        ('Metadata', {
-            'fields': (
-                'created_at',
-                'updated_at',
-            ),
-            'classes': ('collapse',)
-        }),
+        (
+            "Entity Information",
+            {
+                "fields": (
+                    "nes_id",
+                    "display_name",
+                ),
+                "description": "Provide either NES ID (from Nepal Entity Service) or a custom Display Name. Both can be provided if needed.",
+            },
+        ),
+        (
+            "Metadata",
+            {
+                "fields": (
+                    "created_at",
+                    "updated_at",
+                ),
+                "classes": ("collapse",),
+            },
+        ),
     )
 
 
@@ -946,42 +1012,44 @@ admin.site.site_title = "Jawafdehi Contributor Portal"
 admin.site.index_title = "Welcome to Jawafdehi Contributor Portal"
 
 
-
 @admin.register(Feedback)
 class FeedbackAdmin(admin.ModelAdmin):
     """Admin interface for Feedback model."""
 
     list_display = [
-        'id',
-        'feedback_type',
-        'subject',
-        'status',
-        'has_contact_info',
-        'submitted_at'
+        "id",
+        "feedback_type",
+        "subject",
+        "status",
+        "has_contact_info",
+        "submitted_at",
     ]
-    list_filter = ['feedback_type', 'status', 'submitted_at']
-    search_fields = ['subject', 'description', 'related_page']
-    readonly_fields = ['submitted_at', 'updated_at', 'ip_address', 'user_agent']
+    list_filter = ["feedback_type", "status", "submitted_at"]
+    search_fields = ["subject", "description", "related_page"]
+    readonly_fields = ["submitted_at", "updated_at", "ip_address", "user_agent"]
 
     fieldsets = (
-        ('Feedback Details', {
-            'fields': ('feedback_type', 'subject', 'description', 'related_page')
-        }),
-        ('Contact Information', {
-            'fields': ('contact_info',),
-            'classes': ('collapse',)
-        }),
-        ('Status', {
-            'fields': ('status', 'admin_notes')
-        }),
-        ('Metadata', {
-            'fields': ('ip_address', 'user_agent', 'submitted_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
+        (
+            "Feedback Details",
+            {"fields": ("feedback_type", "subject", "description", "related_page")},
+        ),
+        (
+            "Contact Information",
+            {"fields": ("contact_info",), "classes": ("collapse",)},
+        ),
+        ("Status", {"fields": ("status", "admin_notes")}),
+        (
+            "Metadata",
+            {
+                "fields": ("ip_address", "user_agent", "submitted_at", "updated_at"),
+                "classes": ("collapse",),
+            },
+        ),
     )
 
     def has_contact_info(self, obj):
         """Check if feedback has contact information."""
-        return bool(obj.contact_info and obj.contact_info.get('contactMethods'))
+        return bool(obj.contact_info and obj.contact_info.get("contactMethods"))
+
     has_contact_info.boolean = True
-    has_contact_info.short_description = 'Has Contact'
+    has_contact_info.short_description = "Has Contact"

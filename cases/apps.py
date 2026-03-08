@@ -9,18 +9,18 @@ class CasesConfig(AppConfig):
     name = "cases"
 
     def ready(self):
-        import cases.rules  # Load permission rules on startup
-        
+
         # Register models with auditlog
         from auditlog.registry import auditlog
         from cases.models import Case, DocumentSource, JawafEntity
-        
+
         auditlog.register(Case)
         auditlog.register(DocumentSource)
         auditlog.register(JawafEntity)
-        
+
         # Warn if EXPOSE_CASES_IN_REVIEW feature flag is enabled
         from django.conf import settings
+
         if settings.EXPOSE_CASES_IN_REVIEW:
             logger.warning(
                 "⚠️  EXPOSE_CASES_IN_REVIEW feature flag is ENABLED. "
