@@ -11,17 +11,17 @@ from .api_views import (
     DocumentSourceViewSet,
     JawafEntityViewSet,
     StatisticsView,
-    FeedbackView
+    FeedbackView,
 )
 
 # Create a router and register our viewsets
 router = DefaultRouter()
-router.register(r'cases', CaseViewSet, basename='case')
-router.register(r'sources', DocumentSourceViewSet, basename='documentsource')
-router.register(r'entities', JawafEntityViewSet, basename='jawafentity')
+router.register(r"cases", CaseViewSet, basename="case")
+router.register(r"sources", DocumentSourceViewSet, basename="documentsource")
+router.register(r"entities", JawafEntityViewSet, basename="jawafentity")
 
 urlpatterns = [
-    path('statistics/', StatisticsView.as_view(), name='statistics'),
-    path('feedback/', FeedbackView.as_view(), name='feedback'),
-    path('', include(router.urls)),
+    path("statistics/", StatisticsView.as_view(), name="statistics"),
+    path("feedback/", FeedbackView.as_view(), name="feedback"),
+    path("", include(router.urls)),
 ]

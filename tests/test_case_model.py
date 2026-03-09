@@ -15,10 +15,10 @@ from cases.models import Case, CaseState, CaseType
 from tests.conftest import create_case_with_entities
 from tests.strategies import minimal_case_data, complete_case_data
 
-
 # ============================================================================
 # Property 1: New cases start in Draft state
 # ============================================================================
+
 
 @pytest.mark.django_db
 @settings(max_examples=100)
@@ -26,21 +26,24 @@ from tests.strategies import minimal_case_data, complete_case_data
 def test_new_cases_start_in_draft_state(case_data):
     """
     Feature: accountability-platform-core, Property 1: New cases start in Draft state
-    
+
     For any case created, the initial state should be Draft.
     Validates: Requirements 1.1
     """
     case = create_case_with_entities(**case_data)
-    
-    assert case.state == CaseState.DRAFT, \
-        f"New case should start in DRAFT state, but got {case.state}"
-    assert case.version == 1, \
-        f"New case should start at version 1, but got {case.version}"
+
+    assert (
+        case.state == CaseState.DRAFT
+    ), f"New case should start in DRAFT state, but got {case.state}"
+    assert (
+        case.version == 1
+    ), f"New case should start at version 1, but got {case.version}"
 
 
 # ============================================================================
 # Property 2: Draft validation is lenient, In Review validation is strict
 # ============================================================================
+
 
 @pytest.mark.django_db
 @settings(max_examples=100)
@@ -48,14 +51,14 @@ def test_new_cases_start_in_draft_state(case_data):
 def test_draft_validation_is_lenient(case_data):
     """
     Feature: accountability-platform-core, Property 2: Draft validation is lenient, In Review validation is strict
-    
+
     For any case in DRAFT state, only title and alleged_entities are required.
     Other fields (key_allegations, description) can be incomplete.
     Validates: Requirements 1.2
     """
     case = create_case_with_entities(**case_data)
     case.state = CaseState.DRAFT
-    
+
     # Should not raise ValidationError even without key_allegations
     try:
         case.validate()
@@ -69,26 +72,28 @@ def test_draft_validation_is_lenient(case_data):
 def test_in_review_validation_is_strict(case_data):
     """
     Feature: accountability-platform-core, Property 2: Draft validation is lenient, In Review validation is strict
-    
+
     For any case transitioning to IN_REVIEW state, all required fields
     (alleged_entities, key_allegations) must be valid and complete.
     Validates: Requirements 1.2
     """
     case = create_case_with_entities(**case_data)
     case.state = CaseState.IN_REVIEW
-    
+
     # Should not raise ValidationError with complete data
     try:
         case.validate()
     except ValidationError as e:
-        pytest.fail(f"IN_REVIEW validation should pass with complete data, but raised: {e}")
+        pytest.fail(
+            f"IN_REVIEW validation should pass with complete data, but raised: {e}"
+        )
 
 
 @pytest.mark.django_db
 def test_in_review_validation_rejects_incomplete_data():
     """
     Feature: accountability-platform-core, Property 2: Draft validation is lenient, In Review validation is strict
-    
+
     For any case in IN_REVIEW state missing required fields, validation should fail.
     Validates: Requirements 1.2
     """
@@ -98,22 +103,24 @@ def test_in_review_validation_rejects_incomplete_data():
         alleged_entities=["entity:person/test-person"],
         case_type=CaseType.CORRUPTION,
     )
-    
+
     # Try to transition to IN_REVIEW without key_allegations
     case.state = CaseState.IN_REVIEW
-    
+
     # Should raise ValidationError
     with pytest.raises(ValidationError) as exc_info:
         case.validate()
-    
-    assert "key_allegations" in str(exc_info.value).lower() or \
-           "allegation" in str(exc_info.value).lower(), \
-           "Validation error should mention missing key_allegations"
+
+    assert (
+        "key_allegations" in str(exc_info.value).lower()
+        or "allegation" in str(exc_info.value).lower()
+    ), "Validation error should mention missing key_allegations"
 
 
 # ============================================================================
 # Property 3: Draft submission transitions to In Review
 # ============================================================================
+
 
 @pytest.mark.django_db
 @settings(max_examples=100)
@@ -121,23 +128,25 @@ def test_in_review_validation_rejects_incomplete_data():
 def test_draft_submission_transitions_to_in_review(case_data):
     """
     Feature: accountability-platform-core, Property 3: Draft submission transitions to In Review
-    
+
     For any case in Draft state, when submitted, the state should change to In Review.
     Validates: Requirements 1.3
     """
     case = create_case_with_entities(**case_data)
     assert case.state == CaseState.DRAFT
-    
+
     # Submit the draft (this will be a method on the Case model)
     case.submit()
-    
-    assert case.state == CaseState.IN_REVIEW, \
-        f"Submitted case should be in IN_REVIEW state, but got {case.state}"
+
+    assert (
+        case.state == CaseState.IN_REVIEW
+    ), f"Submitted case should be in IN_REVIEW state, but got {case.state}"
 
 
 # ============================================================================
 # Property 3a: Draft creation increments version
 # ============================================================================
+
 
 @pytest.mark.django_db
 @settings(max_examples=50)
@@ -145,7 +154,7 @@ def test_draft_submission_transitions_to_in_review(case_data):
 def test_draft_creation_increments_version(case_data):
     """
     Feature: accountability-platform-core, Property 3a: Draft creation increments version
-    
+
     For any published case, when create_draft() is called, the new draft
     should have version incremented by 1.
     Validates: Requirements 1.4
@@ -154,31 +163,33 @@ def test_draft_creation_increments_version(case_data):
     case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
-    
+
     original_version = case.version
     original_case_id = case.case_id
-    
+
     # Create a draft from the published case
     draft = case.create_draft()
-    
-    assert draft.case_id == original_case_id, \
-        f"Draft should have same case_id as original, but got {draft.case_id} vs {original_case_id}"
-    assert draft.version == original_version + 1, \
-        f"Draft version should be {original_version + 1}, but got {draft.version}"
-    assert draft.state == CaseState.DRAFT, \
-        f"New draft should be in DRAFT state, but got {draft.state}"
-    
+
+    assert (
+        draft.case_id == original_case_id
+    ), f"Draft should have same case_id as original, but got {draft.case_id} vs {original_case_id}"
+    assert (
+        draft.version == original_version + 1
+    ), f"Draft version should be {original_version + 1}, but got {draft.version}"
+    assert (
+        draft.state == CaseState.DRAFT
+    ), f"New draft should be in DRAFT state, but got {draft.state}"
+
     # Original should remain unchanged
     case.refresh_from_db()
-    assert case.state == CaseState.PUBLISHED, \
-        "Original case should remain PUBLISHED"
-    assert case.version == original_version, \
-        "Original case version should not change"
+    assert case.state == CaseState.PUBLISHED, "Original case should remain PUBLISHED"
+    assert case.version == original_version, "Original case version should not change"
 
 
 # ============================================================================
 # Property 4: Editing published cases preserves original
 # ============================================================================
+
 
 @pytest.mark.django_db
 @settings(max_examples=50)
@@ -186,7 +197,7 @@ def test_draft_creation_increments_version(case_data):
 def test_editing_published_cases_preserves_original(case_data):
     """
     Feature: accountability-platform-core, Property 4: Editing published cases preserves original
-    
+
     For any published case, when a Contributor edits it, a new draft revision
     should be created and the published version should remain unchanged.
     Validates: Requirements 1.4
@@ -195,45 +206,38 @@ def test_editing_published_cases_preserves_original(case_data):
     case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
-    
+
     original_title = case.title
     original_case_id = case.case_id
     original_version = case.version
     original_id = case.id
-    
+
     # Create a draft for editing
     draft = case.create_draft()
-    
+
     # Modify the draft
     new_title = f"{original_title} - Modified"
     draft.title = new_title
     draft.save()
-    
+
     # Verify draft has changes
-    assert draft.title == new_title, \
-        "Draft should have the modified title"
-    assert draft.state == CaseState.DRAFT, \
-        "Draft should be in DRAFT state"
-    assert draft.case_id == original_case_id, \
-        "Draft should have same case_id"
-    assert draft.id != original_id, \
-        "Draft should be a new database record"
-    
+    assert draft.title == new_title, "Draft should have the modified title"
+    assert draft.state == CaseState.DRAFT, "Draft should be in DRAFT state"
+    assert draft.case_id == original_case_id, "Draft should have same case_id"
+    assert draft.id != original_id, "Draft should be a new database record"
+
     # Verify original is preserved
     case.refresh_from_db()
-    assert case.title == original_title, \
-        "Original case title should be unchanged"
-    assert case.state == CaseState.PUBLISHED, \
-        "Original case should remain PUBLISHED"
-    assert case.version == original_version, \
-        "Original case version should be unchanged"
-    assert case.id == original_id, \
-        "Original case should be the same database record"
+    assert case.title == original_title, "Original case title should be unchanged"
+    assert case.state == CaseState.PUBLISHED, "Original case should remain PUBLISHED"
+    assert case.version == original_version, "Original case version should be unchanged"
+    assert case.id == original_id, "Original case should be the same database record"
 
 
 # ============================================================================
 # Edge Cases and Additional Tests
 # ============================================================================
+
 
 @pytest.mark.django_db
 def test_case_requires_at_least_one_alleged_entity():
@@ -249,7 +253,7 @@ def test_case_requires_at_least_one_alleged_entity():
     )
     # Should not raise for DRAFT state
     case.validate()
-    
+
     # But should raise when transitioning to IN_REVIEW
     case.state = CaseState.IN_REVIEW
     with pytest.raises(ValidationError):
@@ -274,13 +278,14 @@ def test_case_requires_title():
 # Property 18: Soft delete sets state to CLOSED
 # ============================================================================
 
+
 @pytest.mark.django_db
 @settings(max_examples=100)
 @given(case_data=complete_case_data())
 def test_soft_delete_sets_state_to_closed(case_data):
     """
     Feature: accountability-platform-core, Property 18: Soft delete sets state to CLOSED
-    
+
     For any case deleted in Django Admin, its state should be set to CLOSED
     and the record should remain in the database.
     Validates: Requirements 7.3
@@ -289,23 +294,26 @@ def test_soft_delete_sets_state_to_closed(case_data):
     case = create_case_with_entities(**case_data)
     original_id = case.id
     original_case_id = case.case_id
-    
+
     # Soft delete the case (this will be implemented in task 17)
     # For now, we test the expected behavior: setting state to CLOSED
     case.delete()
-    
+
     # Verify the case still exists in the database
-    assert Case.objects.filter(id=original_id).exists(), \
-        "Soft-deleted case should still exist in database"
-    
+    assert Case.objects.filter(
+        id=original_id
+    ).exists(), "Soft-deleted case should still exist in database"
+
     # Verify the state is set to CLOSED
     case.refresh_from_db()
-    assert case.state == CaseState.CLOSED, \
-        f"Soft-deleted case should have state CLOSED, but got {case.state}"
-    
+    assert (
+        case.state == CaseState.CLOSED
+    ), f"Soft-deleted case should have state CLOSED, but got {case.state}"
+
     # Verify the case_id is unchanged
-    assert case.case_id == original_case_id, \
-        "Soft-deleted case should retain its case_id"
+    assert (
+        case.case_id == original_case_id
+    ), "Soft-deleted case should retain its case_id"
 
 
 @pytest.mark.django_db
@@ -314,7 +322,7 @@ def test_soft_delete_sets_state_to_closed(case_data):
 def test_soft_delete_preserves_all_data(case_data):
     """
     Feature: accountability-platform-core, Property 18: Soft delete sets state to CLOSED
-    
+
     For any case deleted in Django Admin, all data should be preserved
     (only state changes to CLOSED).
     Validates: Requirements 7.3
@@ -323,25 +331,23 @@ def test_soft_delete_preserves_all_data(case_data):
     case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
-    
-    original_id = case.id
+
     original_title = case.title
     original_version = case.version
     original_alleged_entities = list(case.alleged_entities.all())
     original_key_allegations = case.key_allegations.copy()
-    
+
     # Soft delete the case
     case.delete()
-    
+
     # Verify all data is preserved except state
     case.refresh_from_db()
-    assert case.state == CaseState.CLOSED, \
-        "Soft-deleted case should have state CLOSED"
-    assert case.title == original_title, \
-        "Soft-deleted case should preserve title"
-    assert case.version == original_version, \
-        "Soft-deleted case should preserve version"
-    assert list(case.alleged_entities.all()) == original_alleged_entities, \
-        "Soft-deleted case should preserve alleged_entities"
-    assert case.key_allegations == original_key_allegations, \
-        "Soft-deleted case should preserve key_allegations"
+    assert case.state == CaseState.CLOSED, "Soft-deleted case should have state CLOSED"
+    assert case.title == original_title, "Soft-deleted case should preserve title"
+    assert case.version == original_version, "Soft-deleted case should preserve version"
+    assert (
+        list(case.alleged_entities.all()) == original_alleged_entities
+    ), "Soft-deleted case should preserve alleged_entities"
+    assert (
+        case.key_allegations == original_key_allegations
+    ), "Soft-deleted case should preserve key_allegations"

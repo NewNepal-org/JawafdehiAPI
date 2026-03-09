@@ -6,33 +6,33 @@ from django.db import migrations, models
 def migrate_entity_ids_to_jawafentity(apps, schema_editor):
     """
     Migrate existing entity_id strings to JawafEntity records.
-    
+
     Creates JawafEntity records from entity IDs in:
     - Case.alleged_entities_old
     - Case.related_entities_old
     - Case.locations_old
     - DocumentSource.related_entity_ids_old
-    
+
     Deduplicates entities by nes_id.
     """
-    Case = apps.get_model('cases', 'Case')
-    DocumentSource = apps.get_model('cases', 'DocumentSource')
-    JawafEntity = apps.get_model('cases', 'JawafEntity')
-    
+    Case = apps.get_model("cases", "Case")
+    DocumentSource = apps.get_model("cases", "DocumentSource")
+    JawafEntity = apps.get_model("cases", "JawafEntity")
+
     # Dictionary to track created entities by nes_id to avoid duplicates
     entity_cache = {}
-    
+
     def get_or_create_entity(nes_id):
         """Get or create a JawafEntity for the given nes_id."""
         if not nes_id or not nes_id.strip():
             return None
-        
+
         nes_id = nes_id.strip()
-        
+
         # Check cache first
         if nes_id in entity_cache:
             return entity_cache[nes_id]
-        
+
         # Check if entity already exists in database
         try:
             entity = JawafEntity.objects.get(nes_id=nes_id)
@@ -40,12 +40,12 @@ def migrate_entity_ids_to_jawafentity(apps, schema_editor):
             return entity
         except JawafEntity.DoesNotExist:
             pass
-        
+
         # Create new entity
         entity = JawafEntity.objects.create(nes_id=nes_id)
         entity_cache[nes_id] = entity
         return entity
-    
+
     # Migrate Case entities
     for case in Case.objects.all():
         # Migrate alleged_entities
@@ -54,21 +54,21 @@ def migrate_entity_ids_to_jawafentity(apps, schema_editor):
                 entity = get_or_create_entity(entity_id)
                 if entity:
                     case.alleged_entities.add(entity)
-        
+
         # Migrate related_entities
         if case.related_entities_old:
             for entity_id in case.related_entities_old:
                 entity = get_or_create_entity(entity_id)
                 if entity:
                     case.related_entities.add(entity)
-        
+
         # Migrate locations
         if case.locations_old:
             for entity_id in case.locations_old:
                 entity = get_or_create_entity(entity_id)
                 if entity:
                     case.locations.add(entity)
-    
+
     # Migrate DocumentSource entities
     for source in DocumentSource.objects.all():
         if source.related_entity_ids_old:
@@ -106,7 +106,6 @@ class Migration(migrations.Migration):
             old_name="related_entities",
             new_name="related_entities_old",
         ),
-        
         # Step 2: Create JawafEntity model
         migrations.CreateModel(
             name="JawafEntity",
@@ -159,7 +158,6 @@ class Migration(migrations.Migration):
                 ],
             },
         ),
-        
         # Step 3: Add new ManyToMany fields
         migrations.AddField(
             model_name="documentsource",
@@ -201,13 +199,11 @@ class Migration(migrations.Migration):
                 to="cases.jawafentity",
             ),
         ),
-        
         # Step 4: Migrate data from old fields to new entities
         migrations.RunPython(
             migrate_entity_ids_to_jawafentity,
             reverse_code=migrations.RunPython.noop,
         ),
-        
         # Step 5: Remove old fields
         migrations.RemoveField(
             model_name="documentsource",
