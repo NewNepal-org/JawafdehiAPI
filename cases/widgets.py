@@ -16,12 +16,12 @@ class BaseMultiWidget(Widget):
         css = {
             "all": (
                 "cases/css/widgets.css",
-                "cases/css/nepali.datepicker.v5.0.6.min.css",
+                "https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/css/nepali.datepicker.v5.0.6.min.css",
             )
         }
         js = (
             "cases/js/widgets.js",
-            "cases/js/nepali.datepicker.v5.0.6.min.js",
+            "https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/js/nepali.datepicker.v5.0.6.min.js",
             "cases/js/date_converter.js",
         )
 

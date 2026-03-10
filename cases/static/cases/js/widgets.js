@@ -196,11 +196,9 @@ window.MultiWidgetConfigs = {
         getValues: (container) => {
             return Array.from(container.querySelectorAll('.input-row')).map(row => {
                 const dateAd = row.querySelector('.timeline-date-ad');
-                const dateBs = row.querySelector('.timeline-date-bs');
-                const inputs = row.querySelectorAll('.timeline-input:not(.timeline-date-ad):not(.timeline-date-bs)');
+                const inputs = row.querySelectorAll('.timeline-input:not(.timeline-date-ad)');
                 
                 const adValue = dateAd ? dateAd.value.trim() : '';
-                const bsValue = dateBs ? dateBs.value.trim() : '';
                 const titleValue = inputs[0] ? inputs[0].value.trim() : '';
                 const descValue = inputs[1] ? inputs[1].value.trim() : '';
                 
@@ -208,7 +206,6 @@ window.MultiWidgetConfigs = {
                 
                 return {
                     date: adValue,
-                    date_bs: bsValue,
                     title: titleValue,
                     description: descValue
                 };

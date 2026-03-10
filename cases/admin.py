@@ -6,7 +6,6 @@ from django.db import models
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
 from tinymce.widgets import TinyMCE
-from nepali_datetime import date as nepali_date
 from .models import (
     Case,
     DocumentSource,
@@ -166,35 +165,17 @@ class CaseAdminForm(forms.ModelForm):
 
         # Initialize BS date fields if editing existing case
         if self.instance.pk:
-            if self.instance.case_start_date:
-                self.initial['start_date_bs'] = self.ad_to_bs(self.instance.case_start_date)
-            if self.instance.case_end_date:
-                self.initial['end_date_bs'] = self.ad_to_bs(self.instance.case_end_date)
+            # BS dates will be populated by JavaScript on the frontend
+            pass
 
     class Media:
         css = {
-            'all': ('cases/css/nepali.datepicker.v5.0.6.min.css',)
+            'all': ('https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/css/nepali.datepicker.v5.0.6.min.css',)
         }
         js = (
-            'cases/js/nepali.datepicker.v5.0.6.min.js',
+            'https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/js/nepali.datepicker.v5.0.6.min.js',
             'cases/js/date_converter.js',
         )
-
-    def ad_to_bs(self, ad_date):
-        """Convert AD date object to BS string YYYY-MM-DD."""
-        if not ad_date:
-            return ''
-        return nepali_date.from_datetime_date(ad_date).strftime('%Y-%m-%d')
-
-    def bs_to_ad(self, bs_str):
-        """Convert BS string YYYY-MM-DD to AD date object (for completeness)."""
-        if not bs_str:
-            return None
-        try:
-            y, m, d = map(int, bs_str.split('-'))
-            return nepali_date(y, m, d).to_datetime_date()
-        except (ValueError, TypeError):
-            return None
 
     def clean(self):
         """

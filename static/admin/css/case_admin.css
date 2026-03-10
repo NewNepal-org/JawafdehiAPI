@@ -1,127 +1,45 @@
-/* Ensure Nepali datepicker calendar is visible */
-.ndp-container {
-    z-index: 99999 !important;
-    position: fixed !important;
-    background: white !important;
-    border: 2px solid #4eb5e6 !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,.3) !important;
-}
+/**
+ * Custom CSS for Case Admin
+ * Improves state field radio button layout
+ */
 
-/* Make sure the input field container doesn't hide overflow */
-.form-row {
-    overflow: visible !important;
-}
-
-.field-start_date_bs,
-.field-end_date_bs {
-    overflow: visible !important;
-    position: relative !important;
-}
-
-/* Style the BS date input fields */
-input.nepali-date-picker {
-    cursor: pointer !important;
-    background-color: #fff !important;
-}
-
-input.nepali-date-picker:focus {
-    background-color: #fff !important;
-    border-color: #4eb5e6 !important;
-}
-
-input.nepali-date-picker[readonly] {
-    background-color: #fff !important;
-    cursor: pointer !important;
-}
-
-input.nepali-date-picker[readonly]:focus {
-    background-color: #fff !important;
-    border-color: #4eb5e6 !important;
-}
-
-/* Make BS date fields same width as AD date fields in the form */
-#id_case_start_date,
-#id_start_date_bs,
-#id_case_end_date,
-#id_end_date_bs {
-    width: 200px !important;
-    max-width: 200px !important;
-}
-
-/* Timeline widget styling */
-.timeline-row {
+/* Make state radio buttons display inline for better UX */
+.field-state ul {
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 10px;
-    padding: 10px;
-    background: #f9f9f9;
-    border-radius: 4px;
+    gap: 20px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.field-state ul li {
+    margin: 0;
+}
+
+.field-state ul li label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
     border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
-.timeline-field-group {
-    display: flex;
-    flex-direction: column;
-    overflow: visible !important;
+.field-state ul li label:hover:not([style*="cursor: not-allowed"]) {
+    background-color: #f0f0f0;
+    border-color: #999;
 }
 
-.timeline-field-group label {
-    font-size: 11px;
-    font-weight: 600;
-    color: #666;
-    margin-bottom: 4px;
-    text-transform: uppercase;
+.field-state ul li input[type="radio"]:checked + label,
+.field-state ul li label:has(input[type="radio"]:checked) {
+    background-color: #417690;
+    color: white;
+    border-color: #417690;
 }
 
-.timeline-date-ad,
-.timeline-date-bs {
-    min-width: 140px;
-    max-width: 140px;
-    width: 140px;
-    padding: 6px 8px;
-    border: 1px solid #ccc;
-    border-radius: 3px;
-    font-size: 13px;
-    background-color: #fff;
-}
-
-.timeline-date-bs {
-    cursor: pointer !important;
-}
-
-.timeline-date-bs:focus {
-    background-color: #fff !important;
-    border-color: #4eb5e6 !important;
-    outline: none;
-}
-
-.timeline-date-bs[readonly] {
-    background-color: #fff !important;
-    cursor: pointer !important;
-}
-
-.timeline-date-bs[readonly]:focus {
-    background-color: #fff !important;
-    border-color: #4eb5e6 !important;
-}
-
-.timeline-input.auto-resize {
-    min-width: 200px;
-    padding: 6px 8px;
-    border: 1px solid #ccc;
-    border-radius: 3px;
-    font-size: 13px;
-    resize: vertical;
-}
-
-.drag-handle {
-    cursor: move;
-    color: #999;
-    font-size: 16px;
-    padding: 4px;
-}
-
-.multiple-input-container {
-    overflow: visible !important;
+/* Disabled state styling */
+.field-state ul li label[style*="cursor: not-allowed"] {
+    background-color: #f5f5f5;
 }
