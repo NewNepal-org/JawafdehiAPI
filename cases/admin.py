@@ -43,6 +43,7 @@ User = get_user_model()
 class CaseEntityRelationshipInline(admin.TabularInline):
     """
     Inline admin for managing case-entity relationships.
+    Provides an intuitive interface for adding accused and related entities.
     """
     model = CaseEntityRelationship
     extra = 1
@@ -50,8 +51,18 @@ class CaseEntityRelationshipInline(admin.TabularInline):
     
     fields = ['entity', 'type']
     
-    verbose_name = "Entity Relationship"
-    verbose_name_plural = "Entity Relationships"
+    verbose_name = "Entity"
+    verbose_name_plural = "Accused and Related Entities"
+    
+    # Add help text for the fields
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
+        
+        # Add help text to the form fields
+        formset.form.base_fields['entity'].help_text = "Search for an existing entity or create a new one"
+        formset.form.base_fields['type'].help_text = "Select whether this entity is accused of wrongdoing or just related to the case"
+        
+        return formset
 
 
 class CaseAdminForm(forms.ModelForm):
@@ -281,7 +292,6 @@ class CaseAdmin(admin.ModelAdmin):
     inlines = [CaseEntityRelationshipInline]  # NEW
 
     class Media:
-        js = ("admin/js/case_admin.js",)
         css = {"all": ("admin/css/case_admin.css",)}
 
     list_display = [
@@ -337,16 +347,17 @@ class CaseAdmin(admin.ModelAdmin):
                     "start_date_bs",
                     "case_end_date",
                     "end_date_bs",
-                )
+                ),
+                "description": "Specify the time period when the alleged activities occurred."
             },
         ),
         (
-            "Entities",
+            "Geographic Information",
             {
                 "fields": (
                     "locations",
                 ),
-                "description": "Use the Entity Relationships section below to add accused or related entities."
+                "description": "Select location entities where this case occurred (e.g., districts, municipalities, offices)."
             },
         ),
         (
@@ -357,11 +368,18 @@ class CaseAdmin(admin.ModelAdmin):
                     "timeline",
                     "description",
                     "tags",
-                )
+                ),
+                "description": "Detailed case information including allegations, timeline, and supporting content."
             },
         ),
-        ("Evidence", {"fields": ("evidence",)}),
-        ("Assignment", {"fields": ("contributors",)}),
+        ("Evidence", {
+            "fields": ("evidence",),
+            "description": "Documentary evidence and source materials supporting this case."
+        }),
+        ("Assignment", {
+            "fields": ("contributors",),
+            "description": "Team members assigned to work on this case."
+        }),
         (
             "Metadata",
             {
@@ -372,6 +390,7 @@ class CaseAdmin(admin.ModelAdmin):
                     "version_info_display",
                 ),
                 "classes": ("collapse",),
+                "description": "System-generated information about case versions and timestamps."
             },
         ),
     )

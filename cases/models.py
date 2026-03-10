@@ -227,27 +227,27 @@ class CaseEntityRelationship(models.Model):
     """
     
     class RelationshipType(models.TextChoices):
-        ACCUSED = 'accused', 'Accused'
-        RELATED = 'related', 'Related'
+        ACCUSED = 'accused', 'Accused (being accused of wrongdoing)'
+        RELATED = 'related', 'Related (involved but not accused)'
     
     case = models.ForeignKey(
         'Case',
         on_delete=models.CASCADE,
         related_name='entity_relationships',
-        help_text="The case in this relationship"
+        help_text="The case this entity is involved in"
     )
     
     entity = models.ForeignKey(
         'JawafEntity',
         on_delete=models.CASCADE,
         related_name='case_relationships',
-        help_text="The entity in this relationship"
+        help_text="The person, organization, or entity involved in this case"
     )
     
     type = models.CharField(
         max_length=20,
         choices=RelationshipType.choices,
-        help_text="Type of relationship (accused or related)"
+        help_text="Role: 'Accused' for entities being accused, 'Related' for other involved entities"
     )
     
     created_at = models.DateTimeField(auto_now_add=True)
