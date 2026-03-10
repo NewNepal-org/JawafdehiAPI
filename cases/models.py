@@ -218,6 +218,52 @@ class SourceType(models.TextChoices):
     OTHER_VISUAL = "OTHER_VISUAL", "Other / Visual Assets"
 
 
+class CaseEntityRelationship(models.Model):
+    """
+    Through model for Case-Entity relationships with type discrimination.
+    
+    Allows the same entity to have multiple relationship types with a case
+    (e.g., both accused and related).
+    """
+    
+    class RelationshipType(models.TextChoices):
+        ACCUSED = 'accused', 'Accused'
+        RELATED = 'related', 'Related'
+    
+    case = models.ForeignKey(
+        'Case',
+        on_delete=models.CASCADE,
+        related_name='entity_relationships',
+        help_text="The case in this relationship"
+    )
+    
+    entity = models.ForeignKey(
+        'JawafEntity',
+        on_delete=models.CASCADE,
+        related_name='case_relationships',
+        help_text="The entity in this relationship"
+    )
+    
+    type = models.CharField(
+        max_length=20,
+        choices=RelationshipType.choices,
+        help_text="Type of relationship (accused or related)"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = [['case', 'entity', 'type']]
+        indexes = [
+            models.Index(fields=['case', 'type']),
+            models.Index(fields=['entity', 'type']),
+        ]
+        ordering = ['type', 'entity__display_name']
+    
+    def __str__(self):
+        return f"{self.case.case_id} - {self.entity.display_name} ({self.type})"
+
+
 class Case(models.Model):
     """
     Core model representing a case of alleged misconduct.
@@ -272,18 +318,29 @@ class Case(models.Model):
     )
 
     # Entity relationships (many-to-many)
-    alleged_entities = models.ManyToManyField(
+    # NEW: Unified entity relationship
+    entities = models.ManyToManyField(
         JawafEntity,
-        blank=True,
-        related_name="cases_as_alleged",
-        help_text="Entities being accused",
+        through='CaseEntityRelationship',
+        related_name='cases',
+        help_text="Entities related to this case (accused or related)"
     )
-    related_entities = models.ManyToManyField(
-        JawafEntity,
-        blank=True,
-        related_name="cases_as_related",
-        help_text="Related entities",
-    )
+    
+    # OLD: Keep for migration compatibility (will be removed in migration)
+    # alleged_entities = models.ManyToManyField(
+    #     JawafEntity,
+    #     blank=True,
+    #     related_name="cases_as_alleged",
+    #     help_text="Entities being accused",
+    # )
+    # related_entities = models.ManyToManyField(
+    #     JawafEntity,
+    #     blank=True,
+    #     related_name="cases_as_related",
+    #     help_text="Related entities",
+    # )
+    
+    # UNCHANGED: locations field
     locations = models.ManyToManyField(
         JawafEntity,
         blank=True,
@@ -360,11 +417,21 @@ class Case(models.Model):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Require at least one alleged entity for published cases
-            if self.alleged_entities.count() == 0:
-                errors["alleged_entities"] = (
-                    "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
-                )
+            # Check for at least one accused entity using new relationship model
+            if self.pk:
+                accused_count = self.entity_relationships.filter(
+                    type=CaseEntityRelationship.RelationshipType.ACCUSED
+                ).count()
+                if accused_count == 0:
+                    errors["entities"] = (
+                        "At least one accused entity is required for IN_REVIEW or PUBLISHED state"
+                    )
+            else:
+                # For new cases, check alleged_entities (migration compatibility)
+                if self.alleged_entities.count() == 0:
+                    errors["alleged_entities"] = (
+                        "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+                    )
 
             if not self.key_allegations or len(self.key_allegations) == 0:
                 errors["key_allegations"] = (

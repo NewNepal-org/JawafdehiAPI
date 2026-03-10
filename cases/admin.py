@@ -12,6 +12,7 @@ from .models import (
     JawafEntity,
     CaseState,
     Feedback,
+    CaseEntityRelationship,
 )
 from .widgets import (
     MultiTextField,
@@ -38,6 +39,19 @@ User = get_user_model()
 # ============================================================================
 # Custom Admin Forms
 # ============================================================================
+
+class CaseEntityRelationshipInline(admin.TabularInline):
+    """
+    Inline admin for managing case-entity relationships.
+    """
+    model = CaseEntityRelationship
+    extra = 1
+    autocomplete_fields = ['entity']
+    
+    fields = ['entity', 'type']
+    
+    verbose_name = "Entity Relationship"
+    verbose_name_plural = "Entity Relationships"
 
 
 class CaseAdminForm(forms.ModelForm):
@@ -215,13 +229,16 @@ class CaseAdminForm(forms.ModelForm):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Check alleged_entities (m2m field - check form data)
-            alleged_entities = cleaned_data.get("alleged_entities")
-            if not alleged_entities or alleged_entities.count() == 0:
-                errors["alleged_entities"] = (
-                    "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
-                )
-
+            # Check that at least one accused entity exists
+            # Note: This validation happens after save_related, so we check the instance
+            if self.instance.pk:
+                from cases.models import CaseEntityRelationship
+                accused_count = self.instance.entity_relationships.filter(
+                    type=CaseEntityRelationship.RelationshipType.ACCUSED
+                ).count()
+                if accused_count == 0:
+                    errors["__all__"] = "At least one accused entity is required for IN_REVIEW or PUBLISHED state"
+            
             # Check key_allegations
             key_allegations = cleaned_data.get("key_allegations")
             if not key_allegations or len(key_allegations) == 0:
@@ -261,6 +278,7 @@ class CaseAdmin(admin.ModelAdmin):
     """
 
     form = CaseAdminForm
+    inlines = [CaseEntityRelationshipInline]  # NEW
 
     class Media:
         js = ("admin/js/case_admin.js",)
@@ -308,7 +326,6 @@ class CaseAdmin(admin.ModelAdmin):
                     "banner_url",
                     "case_type",
                     "state",
-                    "alleged_entities",
                 )
             },
         ),
@@ -327,9 +344,9 @@ class CaseAdmin(admin.ModelAdmin):
             "Entities",
             {
                 "fields": (
-                    "related_entities",
                     "locations",
-                )
+                ),
+                "description": "Use the Entity Relationships section below to add accused or related entities."
             },
         ),
         (
@@ -361,8 +378,6 @@ class CaseAdmin(admin.ModelAdmin):
 
     filter_horizontal = [
         "contributors",
-        "alleged_entities",
-        "related_entities",
         "locations",
     ]
 
