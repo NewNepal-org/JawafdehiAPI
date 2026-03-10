@@ -48,7 +48,7 @@ class CaseEntityRelationshipInline(admin.TabularInline):
     extra = 1
     autocomplete_fields = ['entity']
     
-    fields = ['entity', 'type']
+    fields = ['entity', 'type', 'notes']
     
     verbose_name = "Entity"
     verbose_name_plural = "Entities"

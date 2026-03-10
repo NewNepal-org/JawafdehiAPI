@@ -229,6 +229,9 @@ class CaseEntityRelationship(models.Model):
     class RelationshipType(models.TextChoices):
         ALLEGED = 'alleged', 'Alleged'
         RELATED = 'related', 'Related'
+        WITNESS = 'witness', 'Witness'
+        OPPOSITION = 'opposition', 'Opposition'
+        VICTIM = 'victim', 'Victim'
     
     case = models.ForeignKey(
         'Case',
@@ -245,6 +248,13 @@ class CaseEntityRelationship(models.Model):
     type = models.CharField(
         max_length=20,
         choices=RelationshipType.choices
+    )
+    
+    notes = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text='Optional context about this entity\'s role (e.g., "Then president of XXX company")'
     )
     
     created_at = models.DateTimeField(auto_now_add=True)

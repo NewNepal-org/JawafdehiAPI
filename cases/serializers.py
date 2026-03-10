@@ -154,7 +154,7 @@ class CaseSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_entities(self, obj):
         """
-        Get unified entities array with type field.
+        Get unified entities array with type and notes fields.
         
         Returns entities ordered by type (alleged first, then related).
         """
@@ -164,6 +164,8 @@ class CaseSerializer(serializers.ModelSerializer):
         for rel in relationships:
             entity_data = JawafEntitySerializer(rel.entity).data
             entity_data['type'] = rel.type
+            if rel.notes:
+                entity_data['notes'] = rel.notes
             entities_data.append(entity_data)
         
         return entities_data
