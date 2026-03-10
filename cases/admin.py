@@ -43,7 +43,6 @@ User = get_user_model()
 class CaseEntityRelationshipInline(admin.TabularInline):
     """
     Inline admin for managing case-entity relationships.
-    Provides an intuitive interface for adding accused and related entities.
     """
     model = CaseEntityRelationship
     extra = 1
@@ -52,17 +51,7 @@ class CaseEntityRelationshipInline(admin.TabularInline):
     fields = ['entity', 'type']
     
     verbose_name = "Entity"
-    verbose_name_plural = "Accused and Related Entities"
-    
-    # Add help text for the fields
-    def get_formset(self, request, obj=None, **kwargs):
-        formset = super().get_formset(request, obj, **kwargs)
-        
-        # Add help text to the form fields
-        formset.form.base_fields['entity'].help_text = "Search for an existing entity or create a new one"
-        formset.form.base_fields['type'].help_text = "Select whether this entity is accused of wrongdoing or just related to the case"
-        
-        return formset
+    verbose_name_plural = "Entities"
 
 
 class CaseAdminForm(forms.ModelForm):
@@ -240,15 +229,15 @@ class CaseAdminForm(forms.ModelForm):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Check that at least one accused entity exists
+            # Check that at least one alleged entity exists
             # Note: This validation happens after save_related, so we check the instance
             if self.instance.pk:
                 from cases.models import CaseEntityRelationship
-                accused_count = self.instance.entity_relationships.filter(
-                    type=CaseEntityRelationship.RelationshipType.ACCUSED
+                alleged_count = self.instance.entity_relationships.filter(
+                    type=CaseEntityRelationship.RelationshipType.ALLEGED
                 ).count()
-                if accused_count == 0:
-                    errors["__all__"] = "At least one accused entity is required for IN_REVIEW or PUBLISHED state"
+                if alleged_count == 0:
+                    errors["__all__"] = "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
             
             # Check key_allegations
             key_allegations = cleaned_data.get("key_allegations")
@@ -352,12 +341,11 @@ class CaseAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Geographic Information",
+            "Location",
             {
                 "fields": (
                     "locations",
-                ),
-                "description": "Select location entities where this case occurred (e.g., districts, municipalities, offices)."
+                )
             },
         ),
         (
@@ -368,17 +356,14 @@ class CaseAdmin(admin.ModelAdmin):
                     "timeline",
                     "description",
                     "tags",
-                ),
-                "description": "Detailed case information including allegations, timeline, and supporting content."
+                )
             },
         ),
         ("Evidence", {
-            "fields": ("evidence",),
-            "description": "Documentary evidence and source materials supporting this case."
+            "fields": ("evidence",)
         }),
         ("Assignment", {
-            "fields": ("contributors",),
-            "description": "Team members assigned to work on this case."
+            "fields": ("contributors",)
         }),
         (
             "Metadata",
@@ -390,7 +375,6 @@ class CaseAdmin(admin.ModelAdmin):
                     "version_info_display",
                 ),
                 "classes": ("collapse",),
-                "description": "System-generated information about case versions and timestamps."
             },
         ),
     )

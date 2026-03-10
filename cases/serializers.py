@@ -35,7 +35,7 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is alleged.
 
-        Uses new CaseEntityRelationship model with type='accused'.
+        Uses new CaseEntityRelationship model with type='alleged'.
         Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         """
         from django.conf import settings
@@ -43,12 +43,12 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         
         if settings.EXPOSE_CASES_IN_REVIEW:
             relationships = obj.case_relationships.filter(
-                type=CaseEntityRelationship.RelationshipType.ACCUSED,
+                type=CaseEntityRelationship.RelationshipType.ALLEGED,
                 case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
             )
         else:
             relationships = obj.case_relationships.filter(
-                type=CaseEntityRelationship.RelationshipType.ACCUSED,
+                type=CaseEntityRelationship.RelationshipType.ALLEGED,
                 case__state=CaseState.PUBLISHED
             )
         
@@ -156,7 +156,7 @@ class CaseSerializer(serializers.ModelSerializer):
         """
         Get unified entities array with type field.
         
-        Returns entities ordered by type (accused first, then related).
+        Returns entities ordered by type (alleged first, then related).
         """
         relationships = obj.entity_relationships.select_related('entity').all()
         

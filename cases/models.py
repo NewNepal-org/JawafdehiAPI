@@ -227,27 +227,24 @@ class CaseEntityRelationship(models.Model):
     """
     
     class RelationshipType(models.TextChoices):
-        ACCUSED = 'accused', 'Accused (being accused of wrongdoing)'
-        RELATED = 'related', 'Related (involved but not accused)'
+        ALLEGED = 'alleged', 'Alleged'
+        RELATED = 'related', 'Related'
     
     case = models.ForeignKey(
         'Case',
         on_delete=models.CASCADE,
-        related_name='entity_relationships',
-        help_text="The case this entity is involved in"
+        related_name='entity_relationships'
     )
     
     entity = models.ForeignKey(
         'JawafEntity',
         on_delete=models.CASCADE,
-        related_name='case_relationships',
-        help_text="The person, organization, or entity involved in this case"
+        related_name='case_relationships'
     )
     
     type = models.CharField(
         max_length=20,
-        choices=RelationshipType.choices,
-        help_text="Role: 'Accused' for entities being accused, 'Related' for other involved entities"
+        choices=RelationshipType.choices
     )
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -318,12 +315,10 @@ class Case(models.Model):
     )
 
     # Entity relationships (many-to-many)
-    # NEW: Unified entity relationship
     entities = models.ManyToManyField(
         JawafEntity,
         through='CaseEntityRelationship',
-        related_name='cases',
-        help_text="Entities related to this case (accused or related)"
+        related_name='cases'
     )
     
     # OLD: Keep for migration compatibility (will be removed in migration)
@@ -417,14 +412,14 @@ class Case(models.Model):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Check for at least one accused entity using new relationship model
+            # Check for at least one alleged entity
             if self.pk:
-                accused_count = self.entity_relationships.filter(
-                    type=CaseEntityRelationship.RelationshipType.ACCUSED
+                alleged_count = self.entity_relationships.filter(
+                    type=CaseEntityRelationship.RelationshipType.ALLEGED
                 ).count()
-                if accused_count == 0:
+                if alleged_count == 0:
                     errors["entities"] = (
-                        "At least one accused entity is required for IN_REVIEW or PUBLISHED state"
+                        "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
                     )
             else:
                 # For new cases, check alleged_entities (migration compatibility)

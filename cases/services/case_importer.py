@@ -233,7 +233,7 @@ class CaseImporter:
 
             self.log(f"Created case: {case.case_id}")
 
-            # Add alleged entities with type='accused'
+            # Add alleged entities with type='alleged'
             self.log("Processing alleged entities...")
             for entity_name in data.get("alleged_entities", []):
                 entity = self.get_or_create_entity(entity_name)
@@ -242,7 +242,7 @@ class CaseImporter:
                     CaseEntityRelationship.objects.create(
                         case=case,
                         entity=entity,
-                        type=CaseEntityRelationship.RelationshipType.ACCUSED
+                        type=CaseEntityRelationship.RelationshipType.ALLEGED
                     )
 
             # Add related entities with type='related'
