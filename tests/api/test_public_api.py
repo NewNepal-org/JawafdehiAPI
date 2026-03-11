@@ -81,7 +81,7 @@ def test_public_api_only_shows_published_cases(case_data, state):
         detail_response = client.get(f"/api/cases/{case.id}/")
         assert (
             detail_response.status_code == 200
-        ), f"IN_REVIEW case should be accessible via detail endpoint"
+        ), "IN_REVIEW case should be accessible via detail endpoint"
         assert (
             detail_response.data["state"] == CaseState.IN_REVIEW
         ), "State field should show IN_REVIEW"

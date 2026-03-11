@@ -194,8 +194,6 @@ class TestPublicAPIWorkflows:
 
         Validates: Requirements 6.1, 8.3
         """
-        from django.conf import settings
-
         # Test 1: List endpoint only shows published cases (and IN_REVIEW if flag enabled)
         response = self.client.get("/api/cases/")
         assert response.status_code == 200
