@@ -251,18 +251,16 @@ class TestPublicAPIWorkflows:
 
         # IN_REVIEW cases should NOT appear in list endpoint (unless flag enabled)
         response = self.client.get("/api/cases/")
+        case_ids = [case["case_id"] for case in response.data.get("results", [])]
 
-
-case_ids = [case["case_id"] for case in response.data.get("results", [])]
-
-if settings.EXPOSE_CASES_IN_REVIEW:
-    assert (
-        in_review_case.case_id in case_ids
-    ), "In Review cases should appear in list endpoint when flag is enabled"
-else:
-    assert (
-        in_review_case.case_id not in case_ids
-    ), "In Review cases should not appear in list endpoint"
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            assert (
+                in_review_case.case_id in case_ids
+            ), "In Review cases should appear in list endpoint when flag is enabled"
+        else:
+            assert (
+                in_review_case.case_id not in case_ids
+            ), "In Review cases should not appear in list endpoint"
 
     def test_audit_history_retrieval(self):
         """
