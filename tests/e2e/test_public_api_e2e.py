@@ -219,7 +219,7 @@ class TestPublicAPIWorkflows:
         ), "Closed cases should not be accessible via detail endpoint"
 
         # Test 4: Create an IN_REVIEW case and verify accessibility
-        # Detail endpoint should show IN_REVIEW, list endpoint should not
+        # Behavior depends on EXPOSE_CASES_IN_REVIEW feature flag
         in_review_case = create_case_with_entities(
             title="In Review Case",
             alleged_entities=["entity:person/test-person"],
@@ -230,19 +230,32 @@ class TestPublicAPIWorkflows:
             version=1,
         )
 
-        # IN_REVIEW cases should be accessible via detail endpoint
+        # IN_REVIEW cases accessibility depends on feature flag
+        # By default (flag disabled), they should NOT be accessible
         response = self.client.get(f"/api/cases/{in_review_case.id}/")
-        assert (
-            response.status_code == 200
-        ), "In Review cases should be accessible via detail endpoint"
-        assert (
-            response.data["state"] == CaseState.IN_REVIEW
-        ), "State field should show IN_REVIEW"
+        
+        # Import settings to check feature flag
+        from django.conf import settings
+        
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            assert (
+                response.status_code == 200
+            ), "In Review cases should be accessible when flag is enabled"
+            assert (
+                response.data["state"] == CaseState.IN_REVIEW
+            ), "State field should show IN_REVIEW"
+        else:
+            assert (
+                response.status_code == 404
+            ), "In Review cases should NOT be accessible when flag is disabled"
 
-        # IN_REVIEW cases should NOT appear in list endpoint
+        # IN_REVIEW cases should NOT appear in list endpoint (unless flag enabled)
         response = self.client.get("/api/cases/")
         case_ids = [case["case_id"] for case in response.data.get("results", [])]
-        assert (
+        
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            assert (
+                in_review_c
             in_review_case.case_id not in case_ids
         ), "In Review cases should not appear in list endpoint"
 

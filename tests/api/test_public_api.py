@@ -62,7 +62,7 @@ def test_public_api_only_shows_published_cases(case_data, state):
     # Check if case appears in results
     case_ids_in_response = [c.get("case_id") for c in response.data.get("results", [])]
 
-    # List endpoint only shows PUBLISHED cases
+    # List endpoint only shows PUBLISHED cases (unless flag is enabled)
     should_appear = state == CaseState.PUBLISHED
 
     if should_appear:
@@ -76,15 +76,31 @@ def test_public_api_only_shows_published_cases(case_data, state):
             case.case_id not in case_ids_in_response
         ), f"Case {case.case_id} with state={state} should NOT appear in API list response"
 
-    # Test detail endpoint for IN_REVIEW cases
-    if state == CaseState.IN_REVIEW:
-        detail_response = client.get(f"/api/cases/{case.id}/")
+    # Test detail endpoint - should match list endpoint behavior
+    detail_response = client.get(f"/api/cases/{case.id}/")
+    
+    if state == CaseState.PUBLISHED:
         assert (
             detail_response.status_code == 200
-        ), "IN_REVIEW case should be accessible via detail endpoint"
+        ), "PUBLISHED case should be accessible via detail endpoint"
+    elif state == CaseState.IN_REVIEW:
+        # IN_REVIEW cases only accessible when EXPOSE_CASES_IN_REVIEW is enabled
+        if django_settings.EXPOSE_CASES_IN_REVIEW:
+            assert (
+                detail_response.status_code == 200
+            ), "IN_REVIEW case should be accessible when flag is enabled"
+            assert (
+                detail_response.data["state"] == CaseState.IN_REVIEW
+            ), "State field should show IN_REVIEW"
+        else:
+            assert (
+                detail_response.status_code == 404
+            ), "IN_REVIEW case should NOT be accessible when flag is disabled"
+    else:
+        # DRAFT and CLOSED should never be accessible
         assert (
-            detail_response.data["state"] == CaseState.IN_REVIEW
-        ), "State field should show IN_REVIEW"
+            detail_response.status_code == 404
+        ), f"{state} case should NOT be accessible via detail endpoint"
 
 
 @pytest.mark.django_db

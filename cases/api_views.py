@@ -135,27 +135,27 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return cases with the highest version per case_id.
 
-        List endpoint: Only PUBLISHED cases
-        Retrieve endpoint: PUBLISHED or IN_REVIEW cases
+        List endpoint: PUBLISHED cases (and IN_REVIEW if feature flag enabled)
+        Retrieve endpoint: PUBLISHED cases (and IN_REVIEW if feature flag enabled)
 
         Implementation:
-        1. Filter to appropriate states based on action
+        1. Determine allowed states based on EXPOSE_CASES_IN_REVIEW feature flag
         2. For retrieve action, return cases directly without version filtering
         3. For list action, return only the highest version per case_id
         """
-        # Determine which states to include based on action
-        if self.action == "retrieve":
-            # Detail endpoint: show PUBLISHED or IN_REVIEW without version filtering
-            # This allows accessing any version directly by ID
-            if settings.EXPOSE_CASES_IN_REVIEW:
-                queryset = Case.objects.filter(
-                    state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-                )
-            else:
-                queryset = Case.objects.filter(state=CaseState.PUBLISHED)
+        # Determine which states to include based on feature flag
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
         else:
-            # List endpoint: show only PUBLISHED cases with highest version per case_id
-            allowed_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+            allowed_states = [CaseState.PUBLISHED]
+
+        if self.action == "retrieve":
+            # Detail endpoint: show allowed states without version filtering
+            # This allows accessing any version directly by ID
+            queryset = Case.objects.filter(state__in=allowed_states)
+        else:
+            # List endpoint: show only allowed states with highest version per case_id
+            allowed_cases = Case.objects.filter(state__in=allowed_states)
 
             # Find the highest version for each case_id
             # Group by case_id and get the max version
