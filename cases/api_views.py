@@ -147,9 +147,12 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == "retrieve":
             # Detail endpoint: show PUBLISHED or IN_REVIEW without version filtering
             # This allows accessing any version directly by ID
-            queryset = Case.objects.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            )
+            if settings.EXPOSE_CASES_IN_REVIEW:
+                queryset = Case.objects.filter(
+                    state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                )
+            else:
+                queryset = Case.objects.filter(state=CaseState.PUBLISHED)
         else:
             # List endpoint: show only PUBLISHED cases with highest version per case_id
             allowed_cases = Case.objects.filter(state=CaseState.PUBLISHED)
