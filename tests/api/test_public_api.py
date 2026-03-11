@@ -78,7 +78,7 @@ def test_public_api_only_shows_published_cases(case_data, state):
 
     # Test detail endpoint - should match list endpoint behavior
     detail_response = client.get(f"/api/cases/{case.id}/")
-    
+
     if state == CaseState.PUBLISHED:
         assert (
             detail_response.status_code == 200
