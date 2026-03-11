@@ -215,10 +215,11 @@ class TestPublicAPIWorkflows:
         ), "Draft cases should not be accessible via detail endpoint"
 
         # Test 3: Closed cases return 404 when accessed directly
-        response = self.client.get(f'/api/cases/{self.closed_case.id}/')
-        assert response.status_code == 404, \
-            "Closed cases should not be accessible via detail endpoint"
-        
+        response = self.client.get(f"/api/cases/{self.closed_case.id}/")
+        assert (
+            response.status_code == 404
+        ), "Closed cases should not be accessible via detail endpoint"
+
         # Test 4: Create an IN_REVIEW case and verify accessibility
         # Detail endpoint should show IN_REVIEW, list endpoint should not
         in_review_case = create_case_with_entities(
@@ -230,20 +231,23 @@ class TestPublicAPIWorkflows:
             state=CaseState.IN_REVIEW,
             version=1,
         )
-        
+
         # IN_REVIEW cases should be accessible via detail endpoint
-        response = self.client.get(f'/api/cases/{in_review_case.id}/')
-        assert response.status_code == 200, \
-            "In Review cases should be accessible via detail endpoint"
-        assert response.data['state'] == CaseState.IN_REVIEW, \
-            "State field should show IN_REVIEW"
-        
+        response = self.client.get(f"/api/cases/{in_review_case.id}/")
+        assert (
+            response.status_code == 200
+        ), "In Review cases should be accessible via detail endpoint"
+        assert (
+            response.data["state"] == CaseState.IN_REVIEW
+        ), "State field should show IN_REVIEW"
+
         # IN_REVIEW cases should NOT appear in list endpoint
-        response = self.client.get('/api/cases/')
-        case_ids = [case['case_id'] for case in response.data.get('results', [])]
-        assert in_review_case.case_id not in case_ids, \
-            "In Review cases should not appear in list endpoint"
-    
+        response = self.client.get("/api/cases/")
+        case_ids = [case["case_id"] for case in response.data.get("results", [])]
+        assert (
+            in_review_case.case_id not in case_ids
+        ), "In Review cases should not appear in list endpoint"
+
     def test_audit_history_retrieval(self):
         """
         E2E Test: Verify audit history is included when retrieving case details.
