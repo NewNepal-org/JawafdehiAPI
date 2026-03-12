@@ -144,12 +144,21 @@ class JawafEntity(models.Model):
         """
         usage = []
 
-        # Check if used in cases
-        alleged_count = self.cases_as_alleged.count()
+        # Check if used in cases via CaseEntityRelationship
+        alleged_count = self.case_relationships.filter(
+            type=CaseEntityRelationship.RelationshipType.ALLEGED
+        ).count()
         if alleged_count > 0:
             usage.append(f"alleged entity in {alleged_count} case(s)")
 
-        related_count = self.cases_as_related.count()
+        related_count = self.case_relationships.filter(
+            type__in=[
+                CaseEntityRelationship.RelationshipType.RELATED,
+                CaseEntityRelationship.RelationshipType.WITNESS,
+                CaseEntityRelationship.RelationshipType.OPPOSITION,
+                CaseEntityRelationship.RelationshipType.VICTIM,
+            ]
+        ).count()
         if related_count > 0:
             usage.append(f"related entity in {related_count} case(s)")
 
@@ -221,52 +230,45 @@ class SourceType(models.TextChoices):
 class CaseEntityRelationship(models.Model):
     """
     Through model for Case-Entity relationships with type discrimination.
-    
+
     Allows the same entity to have multiple relationship types with a case
     (e.g., both accused and related).
     """
-    
+
     class RelationshipType(models.TextChoices):
-        ALLEGED = 'alleged', 'Alleged'
-        RELATED = 'related', 'Related'
-        WITNESS = 'witness', 'Witness'
-        OPPOSITION = 'opposition', 'Opposition'
-        VICTIM = 'victim', 'Victim'
-    
+        ALLEGED = "alleged", "Alleged"
+        RELATED = "related", "Related"
+        WITNESS = "witness", "Witness"
+        OPPOSITION = "opposition", "Opposition"
+        VICTIM = "victim", "Victim"
+
     case = models.ForeignKey(
-        'Case',
-        on_delete=models.CASCADE,
-        related_name='entity_relationships'
+        "Case", on_delete=models.CASCADE, related_name="entity_relationships"
     )
-    
+
     entity = models.ForeignKey(
-        'JawafEntity',
-        on_delete=models.CASCADE,
-        related_name='case_relationships'
+        "JawafEntity", on_delete=models.CASCADE, related_name="case_relationships"
     )
-    
-    type = models.CharField(
-        max_length=20,
-        choices=RelationshipType.choices
-    )
-    
+
+    type = models.CharField(max_length=20, choices=RelationshipType.choices)
+
     notes = models.CharField(
         max_length=500,
         blank=True,
         null=True,
-        help_text='Optional context about this entity\'s role (e.g., "Then president of XXX company")'
+        help_text='Optional context about this entity\'s role (e.g., "Then president of XXX company")',
     )
-    
+
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     class Meta:
-        unique_together = [['case', 'entity', 'type']]
+        unique_together = [["case", "entity", "type"]]
         indexes = [
-            models.Index(fields=['case', 'type']),
-            models.Index(fields=['entity', 'type']),
+            models.Index(fields=["case", "type"]),
+            models.Index(fields=["entity", "type"]),
         ]
-        ordering = ['type', 'entity__display_name']
-    
+        ordering = ["type", "entity__display_name"]
+
     def __str__(self):
         return f"{self.case.case_id} - {self.entity.display_name} ({self.type})"
 
@@ -326,11 +328,9 @@ class Case(models.Model):
 
     # Entity relationships (many-to-many)
     entities = models.ManyToManyField(
-        JawafEntity,
-        through='CaseEntityRelationship',
-        related_name='cases'
+        JawafEntity, through="CaseEntityRelationship", related_name="cases"
     )
-    
+
     # OLD: Keep for migration compatibility (will be removed in migration)
     # alleged_entities = models.ManyToManyField(
     #     JawafEntity,
@@ -344,7 +344,7 @@ class Case(models.Model):
     #     related_name="cases_as_related",
     #     help_text="Related entities",
     # )
-    
+
     # UNCHANGED: locations field
     locations = models.ManyToManyField(
         JawafEntity,
@@ -431,12 +431,6 @@ class Case(models.Model):
                     errors["entities"] = (
                         "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
                     )
-            else:
-                # For new cases, check alleged_entities (migration compatibility)
-                if self.alleged_entities.count() == 0:
-                    errors["alleged_entities"] = (
-                        "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
-                    )
 
             if not self.key_allegations or len(self.key_allegations) == 0:
                 errors["key_allegations"] = (
@@ -511,12 +505,15 @@ class Case(models.Model):
                 "datetime": timezone.now().isoformat(),
             },
         )
-
         draft.save()
 
-        # Copy many-to-many relationships
-        draft.alleged_entities.set(self.alleged_entities.all())
-        draft.related_entities.set(self.related_entities.all())
+        # Copy CaseEntityRelationship rows to draft
+        for rel in self.entity_relationships.all():
+            CaseEntityRelationship.objects.create(
+                case=draft, entity=rel.entity, type=rel.type, notes=rel.notes
+            )
+
+        # Copy remaining many-to-many relationships
         draft.locations.set(self.locations.all())
         draft.contributors.set(self.contributors.all())
 

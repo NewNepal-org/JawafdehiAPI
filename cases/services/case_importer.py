@@ -239,10 +239,11 @@ class CaseImporter:
                 entity = self.get_or_create_entity(entity_name)
                 if entity:
                     from cases.models import CaseEntityRelationship
+
                     CaseEntityRelationship.objects.create(
                         case=case,
                         entity=entity,
-                        type=CaseEntityRelationship.RelationshipType.ALLEGED
+                        type=CaseEntityRelationship.RelationshipType.ALLEGED,
                     )
 
             # Add related entities with type='related'
@@ -251,10 +252,11 @@ class CaseImporter:
                 entity = self.get_or_create_entity(entity_name)
                 if entity:
                     from cases.models import CaseEntityRelationship
+
                     CaseEntityRelationship.objects.create(
                         case=case,
                         entity=entity,
-                        type=CaseEntityRelationship.RelationshipType.RELATED
+                        type=CaseEntityRelationship.RelationshipType.RELATED,
                     )
 
             # Add locations (unchanged)

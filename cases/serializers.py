@@ -14,7 +14,7 @@ from .models import Case, DocumentSource, JawafEntity, CaseState, Feedback
 class JawafEntitySerializer(serializers.ModelSerializer):
     """
     Serializer for JawafEntity model.
-    
+
     Maintains backward compatibility by returning separate
     alleged_cases and related_cases arrays.
     """
@@ -40,19 +40,19 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         from django.conf import settings
         from .models import CaseEntityRelationship
-        
+
         if settings.EXPOSE_CASES_IN_REVIEW:
             relationships = obj.case_relationships.filter(
                 type=CaseEntityRelationship.RelationshipType.ALLEGED,
-                case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
             )
         else:
             relationships = obj.case_relationships.filter(
                 type=CaseEntityRelationship.RelationshipType.ALLEGED,
-                case__state=CaseState.PUBLISHED
+                case__state=CaseState.PUBLISHED,
             )
-        
-        return list(relationships.values_list('case_id', flat=True))
+
+        return list(relationships.values_list("case__case_id", flat=True))
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_related_cases(self, obj):
@@ -65,12 +65,12 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         from django.conf import settings
         from .models import CaseEntityRelationship
-        
+
         # Get related relationships
         if settings.EXPOSE_CASES_IN_REVIEW:
             related_relationships = obj.case_relationships.filter(
                 type=CaseEntityRelationship.RelationshipType.RELATED,
-                case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
             )
             location_cases = obj.cases_as_location.filter(
                 state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
@@ -78,16 +78,22 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         else:
             related_relationships = obj.case_relationships.filter(
                 type=CaseEntityRelationship.RelationshipType.RELATED,
-                case__state=CaseState.PUBLISHED
+                case__state=CaseState.PUBLISHED,
             )
-            location_cases = obj.cases_as_location.filter(
-                state=CaseState.PUBLISHED
-            )
-        
+            location_cases = obj.cases_as_location.filter(state=CaseState.PUBLISHED)
+
         # Combine and deduplicate
-        case_ids = set(related_relationships.values_list('case_id', flat=True))
-        case_ids.update(location_cases.values_list('id', flat=True))
-        
+        case_ids = set(related_relationships.values_list("case__case_id", flat=True))
+        case_ids.update(location_cases.values_list("case_id", flat=True))
+
+        # Exclude cases where this entity is already alleged (alleged takes precedence)
+        alleged_case_ids = set(
+            obj.case_relationships.filter(
+                type=CaseEntityRelationship.RelationshipType.ALLEGED
+            ).values_list("case__case_id", flat=True)
+        )
+        case_ids -= alleged_case_ids
+
         return list(case_ids)
 
 
@@ -95,7 +101,7 @@ class CaseSerializer(serializers.ModelSerializer):
     """
     Serializer for Case model with unified entities array.
     """
-    
+
     entities = serializers.SerializerMethodField(
         help_text="List of entities with type indicators"
     )
@@ -150,24 +156,30 @@ class CaseSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields  # API is read-only
-    
+
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_entities(self, obj):
         """
         Get unified entities array with type and notes fields.
-        
-        Returns entities ordered by type (alleged first, then related).
+
+        Returns a flat list of entity dicts (id, nes_id, display_name, type,
+        optional notes).  Does NOT nest alleged_cases/related_cases — those
+        belong on the /api/entities/ endpoint, not inside a case detail.
         """
-        relationships = obj.entity_relationships.select_related('entity').all()
-        
+        relationships = obj.entity_relationships.select_related("entity").all()
+
         entities_data = []
         for rel in relationships:
-            entity_data = JawafEntitySerializer(rel.entity).data
-            entity_data['type'] = rel.type
+            entity_data = {
+                "id": rel.entity_id,
+                "nes_id": rel.entity.nes_id,
+                "display_name": rel.entity.display_name,
+                "type": rel.type,
+            }
             if rel.notes:
-                entity_data['notes'] = rel.notes
+                entity_data["notes"] = rel.notes
             entities_data.append(entity_data)
-        
+
         return entities_data
 
 

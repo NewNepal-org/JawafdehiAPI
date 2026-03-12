@@ -40,16 +40,18 @@ User = get_user_model()
 # Custom Admin Forms
 # ============================================================================
 
+
 class CaseEntityRelationshipInline(admin.TabularInline):
     """
     Inline admin for managing case-entity relationships.
     """
+
     model = CaseEntityRelationship
     extra = 1
-    autocomplete_fields = ['entity']
-    
-    fields = ['entity', 'type', 'notes']
-    
+    autocomplete_fields = ["entity"]
+
+    fields = ["entity", "type", "notes"]
+
     verbose_name = "Entity"
     verbose_name_plural = "Entities"
 
@@ -115,6 +117,7 @@ class CaseAdminForm(forms.ModelForm):
     class Meta:
         model = Case
         fields = "__all__"
+        exclude = ["entities"]  # managed via CaseEntityRelationshipInline
         widgets = {
             "description": TinyMCE(attrs={"cols": 80, "rows": 30}),
             "state": forms.RadioSelect(),
@@ -233,12 +236,15 @@ class CaseAdminForm(forms.ModelForm):
             # Note: This validation happens after save_related, so we check the instance
             if self.instance.pk:
                 from cases.models import CaseEntityRelationship
+
                 alleged_count = self.instance.entity_relationships.filter(
                     type=CaseEntityRelationship.RelationshipType.ALLEGED
                 ).count()
                 if alleged_count == 0:
-                    errors["__all__"] = "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
-            
+                    errors["__all__"] = (
+                        "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+                    )
+
             # Check key_allegations
             key_allegations = cleaned_data.get("key_allegations")
             if not key_allegations or len(key_allegations) == 0:
@@ -342,11 +348,7 @@ class CaseAdmin(admin.ModelAdmin):
         ),
         (
             "Location",
-            {
-                "fields": (
-                    "locations",
-                )
-            },
+            {"fields": ("locations",)},
         ),
         (
             "Content",
@@ -359,12 +361,8 @@ class CaseAdmin(admin.ModelAdmin):
                 )
             },
         ),
-        ("Evidence", {
-            "fields": ("evidence",)
-        }),
-        ("Assignment", {
-            "fields": ("contributors",)
-        }),
+        ("Evidence", {"fields": ("evidence",)}),
+        ("Assignment", {"fields": ("contributors",)}),
         (
             "Metadata",
             {

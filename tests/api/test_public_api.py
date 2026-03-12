@@ -397,14 +397,11 @@ def test_published_cases_display_complete_data(case_data, source_data):
 
     returned_case = response.data
 
-    # Verify all core fields are present
-    assert "case_id" in returned_case, "Response should include case_id"
+    # Verify all core fields are present    assert "case_id" in returned_case, "Response should include case_id"
     assert "title" in returned_case, "Response should include title"
     assert "description" in returned_case, "Response should include description"
     assert "case_type" in returned_case, "Response should include case_type"
-    assert (
-        "alleged_entities" in returned_case
-    ), "Response should include alleged_entities"
+    assert "entities" in returned_case, "Response should include entities"
     assert "key_allegations" in returned_case, "Response should include key_allegations"
 
     # Verify timeline is included
@@ -441,8 +438,8 @@ def test_published_cases_include_all_entity_fields(case_data):
     """
     Feature: accountability-platform-core, Property 16: Published cases display complete data
 
-    For any published case, all entity-related fields (alleged_entities,
-    related_entities, locations) should be included in the API response.
+    For any published case, all entity-related fields (entities, locations) should be
+    included in the API response.
     Validates: Requirements 6.3
     """
     # Create and publish a case
@@ -458,34 +455,26 @@ def test_published_cases_include_all_entity_fields(case_data):
 
     returned_case = response.data
 
-    # Verify all entity fields are present
-    assert (
-        "alleged_entities" in returned_case
-    ), "Response should include alleged_entities"
-    assert (
-        "related_entities" in returned_case
-    ), "Response should include related_entities"
+    # Verify unified entity field is present
+    assert "entities" in returned_case, "Response should include entities"
     assert "locations" in returned_case, "Response should include locations"
 
-    # Verify entity lists are present and have correct structure
-    assert isinstance(
-        returned_case["alleged_entities"], list
-    ), "alleged_entities should be a list"
+    # Verify entities list has correct structure
+    assert isinstance(returned_case["entities"], list), "entities should be a list"
+
+    # Verify total entity count matches CaseEntityRelationship rows
+    expected_entity_count = case.entity_relationships.count()
     assert (
-        len(returned_case["alleged_entities"]) == case.alleged_entities.count()
-    ), "alleged_entities count should match"
+        len(returned_case["entities"]) == expected_entity_count
+    ), "entities count should match relationship rows"
 
     # Verify entity objects have required fields
-    for entity in returned_case["alleged_entities"]:
+    for entity in returned_case["entities"]:
         assert "id" in entity, "Entity should have id field"
         assert (
             "nes_id" in entity or "display_name" in entity
         ), "Entity should have nes_id or display_name"
-
-    if case.related_entities.count() > 0:
-        assert (
-            len(returned_case["related_entities"]) == case.related_entities.count()
-        ), "related_entities count should match"
+        assert "type" in entity, "Entity should have type field"
 
     if case.locations.count() > 0:
         assert (

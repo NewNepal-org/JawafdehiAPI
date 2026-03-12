@@ -86,17 +86,16 @@ class TestAPIDocumentationIntegration:
 
         import yaml
 
-        schema = yaml.safe_load(response.content)
-
-        # Verify Case schema includes all expected fields
+        schema = yaml.safe_load(
+            response.content
+        )  # Verify Case schema includes all expected fields
         case_schema = schema["components"]["schemas"]["Case"]
         expected_fields = [
             "id",
             "case_id",
             "case_type",
             "title",
-            "alleged_entities",
-            "related_entities",
+            "entities",
             "locations",
             "tags",
             "description",
