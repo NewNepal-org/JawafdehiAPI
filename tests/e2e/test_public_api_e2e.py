@@ -231,11 +231,9 @@ class TestPublicAPIWorkflows:
         )
 
         # IN_REVIEW cases accessibility depends on feature flag
-        # By default (flag disabled), they should NOT be accessible
-        response = self.client.get(f"/api/cases/{in_review_case.id}/")
-
-        # Import settings to check feature flag
         from django.conf import settings
+
+        response = self.client.get(f"/api/cases/{in_review_case.id}/")
 
         if settings.EXPOSE_CASES_IN_REVIEW:
             assert (
@@ -249,18 +247,19 @@ class TestPublicAPIWorkflows:
                 response.status_code == 404
             ), "In Review cases should NOT be accessible when flag is disabled"
 
-        # IN_REVIEW cases should NOT appear in list endpoint (unless flag enabled)
+        # IN_REVIEW cases in list endpoint depend on flag
         response = self.client.get("/api/cases/")
         case_ids = [case["case_id"] for case in response.data.get("results", [])]
 
         if settings.EXPOSE_CASES_IN_REVIEW:
             assert (
                 in_review_case.case_id in case_ids
-            ), "In Review cases should appear in list endpoint when flag is enabled"
+            ), "In Review cases should appear in list when flag is enabled"
         else:
             assert (
                 in_review_case.case_id not in case_ids
-            ), "In Review cases should not appear in list endpoint"
+            ), "In Review cases should not appear in list when flag is disabled"
+
 
     def test_audit_history_retrieval(self):
         """

@@ -151,17 +151,21 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
         if self.action == "retrieve":
             # Detail endpoint: show allowed states without version filtering
-            # This allows accessing any version directly by ID
             queryset = Case.objects.filter(state__in=allowed_states)
+
         else:
-            # List endpoint: show only allowed states with highest version per case_id
+            # List endpoint: show only the highest version per case_id
             allowed_cases = Case.objects.filter(state__in=allowed_states)
 
-            # Find the highest version for each case_id
-            # Group by case_id and get the max version
-            highest_versions = allowed_cases.values("case_id").annotate(
-                max_version=Max("version")
-            )
+            # Find highest version for each case_id
+            highest_versions = (
+                allowed_cases.values("case_id")
+                .annotate(max_version=Max("version"))
+    )
+
+            queryset = allowed_cases.filter(
+                version__in=[v["max_version"] for v in highest_versions]
+    )
 
             # Build a list of (case_id, version) tuples for filtering
             case_version_pairs = [
@@ -263,11 +267,11 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         """
         # Get all published cases (and in-review if feature flag is enabled)
         if settings.EXPOSE_CASES_IN_REVIEW:
-            published_cases = Case.objects.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            )
+            allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
         else:
-            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+            allowed_states = [CaseState.PUBLISHED]
+
+        published_cases = Case.objects.filter(state__in=allowed_states)
 
         # Extract all source_ids from evidence fields
         source_ids = set()
@@ -406,11 +410,11 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
         if entity_ids is None:
             # Cache miss - compute entity IDs
             if settings.EXPOSE_CASES_IN_REVIEW:
-                published_cases = Case.objects.filter(
-                    state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-                )
+                allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
             else:
-                published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+                allowed_states = [CaseState.PUBLISHED]
+
+            published_cases = Case.objects.filter(state__in=allowed_states)
 
             entity_ids = set()
             for case in published_cases:
