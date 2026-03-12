@@ -158,14 +158,13 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             allowed_cases = Case.objects.filter(state__in=allowed_states)
 
             # Find highest version for each case_id
-            highest_versions = (
-                allowed_cases.values("case_id")
-                .annotate(max_version=Max("version"))
-    )
+            highest_versions = allowed_cases.values("case_id").annotate(
+                max_version=Max("version")
+            )
 
             queryset = allowed_cases.filter(
                 version__in=[v["max_version"] for v in highest_versions]
-    )
+            )
 
             # Build a list of (case_id, version) tuples for filtering
             case_version_pairs = [

@@ -260,7 +260,6 @@ class TestPublicAPIWorkflows:
                 in_review_case.case_id not in case_ids
             ), "In Review cases should not appear in list when flag is disabled"
 
-
     def test_audit_history_retrieval(self):
         """
         E2E Test: Verify audit history is included when retrieving case details.
