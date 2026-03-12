@@ -13,14 +13,8 @@ class BaseMultiWidget(Widget):
     template_name = None
 
     class Media:
-        css = {
-            "all": (
-                "cases/css/widgets.css",
-            )
-        }
-        js = (
-            "cases/js/widgets.js",
-        )
+        css = {"all": ("cases/css/widgets.css",)}
+        js = ("cases/js/widgets.js",)
 
     def get_context(self, name, value, attrs):
         if value is None:

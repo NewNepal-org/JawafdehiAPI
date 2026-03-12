@@ -74,24 +74,28 @@ class CaseAdminForm(forms.ModelForm):
     start_date_bs = forms.CharField(
         label="Case start date (BS)",
         required=False,
-        widget=forms.TextInput(attrs={
-            'placeholder': 'YYYY-MM-DD',
-            'class': 'vTextField nepali-date-picker',
-            'autocomplete': 'off',
-            'readonly': 'readonly',
-            'style': 'cursor: pointer;'
-        })
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "YYYY-MM-DD",
+                "class": "vTextField nepali-date-picker",
+                "autocomplete": "off",
+                "readonly": "readonly",
+                "style": "cursor: pointer;",
+            }
+        ),
     )
     end_date_bs = forms.CharField(
         label="Case end date (BS)",
         required=False,
-        widget=forms.TextInput(attrs={
-            'placeholder': 'YYYY-MM-DD',
-            'class': 'vTextField nepali-date-picker',
-            'autocomplete': 'off',
-            'readonly': 'readonly',
-            'style': 'cursor: pointer;'
-        })
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "YYYY-MM-DD",
+                "class": "vTextField nepali-date-picker",
+                "autocomplete": "off",
+                "readonly": "readonly",
+                "style": "cursor: pointer;",
+            }
+        ),
     )
 
     class Meta:
@@ -163,18 +167,15 @@ class CaseAdminForm(forms.ModelForm):
                     # Create custom choices with disabled options
                     state_field.widget.attrs["class"] = "contributor-state-field"
 
-        # Initialize BS date fields if editing existing case
-        if self.instance.pk:
-            # BS dates will be populated by JavaScript on the frontend
-            pass
-
     class Media:
         css = {
-            'all': ('https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/css/nepali.datepicker.v5.0.6.min.css',)
+            "all": (
+                "https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/css/nepali.datepicker.v5.0.6.min.css",
+            )
         }
         js = (
-            'https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/js/nepali.datepicker.v5.0.6.min.js',
-            'cases/js/date_converter.js',
+            "https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/js/nepali.datepicker.v5.0.6.min.js",
+            "cases/js/date_converter.js",
         )
 
     def clean(self):

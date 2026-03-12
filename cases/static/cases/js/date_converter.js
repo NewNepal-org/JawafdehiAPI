@@ -1,7 +1,4 @@
 (function() {
-    let retryCount = 0;
-    const MAX_RETRIES = 50;
-    
     // Unified date converter class
     class DateConverter {
         constructor() {
@@ -96,16 +93,13 @@
         
         // Initialize all date fields
         init() {
-            retryCount++;
-            
-            if (retryCount > MAX_RETRIES) {
-                console.warn('Date converter: Max retries reached');
-                return;
-            }
-            
             if (typeof NepaliFunctions === 'undefined' || 
                 typeof HTMLElement.prototype.nepaliDatePicker === 'undefined') {
-                setTimeout(() => this.init(), 100);
+                if (document.readyState === 'complete') {
+                    console.warn('Date converter: Required dependencies (NepaliFunctions) not found');
+                    return;
+                }
+                window.addEventListener('load', () => this.init(), { once: true });
                 return;
             }
             
