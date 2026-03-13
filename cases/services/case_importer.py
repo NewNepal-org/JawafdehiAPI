@@ -10,7 +10,14 @@ from datetime import datetime
 
 from django.db import transaction
 
-from cases.models import Case, CaseState, CaseType, DocumentSource, JawafEntity
+from cases.models import (
+    Case,
+    CaseEntityRelationship,
+    CaseState,
+    CaseType,
+    DocumentSource,
+    JawafEntity,
+)
 
 
 class CaseImporter:
@@ -238,9 +245,7 @@ class CaseImporter:
             for entity_name in data.get("alleged_entities", []):
                 entity = self.get_or_create_entity(entity_name)
                 if entity:
-                    from cases.models import CaseEntityRelationship
-
-                    CaseEntityRelationship.objects.create(
+                    CaseEntityRelationship.objects.get_or_create(
                         case=case,
                         entity=entity,
                         type=CaseEntityRelationship.RelationshipType.ALLEGED,
@@ -251,9 +256,7 @@ class CaseImporter:
             for entity_name in data.get("related_entities", []):
                 entity = self.get_or_create_entity(entity_name)
                 if entity:
-                    from cases.models import CaseEntityRelationship
-
-                    CaseEntityRelationship.objects.create(
+                    CaseEntityRelationship.objects.get_or_create(
                         case=case,
                         entity=entity,
                         type=CaseEntityRelationship.RelationshipType.RELATED,

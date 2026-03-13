@@ -59,17 +59,24 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is related or a location.
 
-        Uses new CaseEntityRelationship model with type='related'.
+        Uses new CaseEntityRelationship model with types: related, witness, opposition, victim.
         Also includes location relationships (unchanged).
         Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         """
         from django.conf import settings
         from .models import CaseEntityRelationship
 
-        # Get related relationships
+        # Get all non-alleged relationships (related, witness, opposition, victim)
+        non_alleged_types = [
+            CaseEntityRelationship.RelationshipType.RELATED,
+            CaseEntityRelationship.RelationshipType.WITNESS,
+            CaseEntityRelationship.RelationshipType.OPPOSITION,
+            CaseEntityRelationship.RelationshipType.VICTIM,
+        ]
+
         if settings.EXPOSE_CASES_IN_REVIEW:
             related_relationships = obj.case_relationships.filter(
-                type=CaseEntityRelationship.RelationshipType.RELATED,
+                type__in=non_alleged_types,
                 case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
             )
             location_cases = obj.cases_as_location.filter(
@@ -77,7 +84,7 @@ class JawafEntitySerializer(serializers.ModelSerializer):
             )
         else:
             related_relationships = obj.case_relationships.filter(
-                type=CaseEntityRelationship.RelationshipType.RELATED,
+                type__in=non_alleged_types,
                 case__state=CaseState.PUBLISHED,
             )
             location_cases = obj.cases_as_location.filter(state=CaseState.PUBLISHED)
@@ -167,7 +174,14 @@ class CaseSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields  # API is read-only
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
+    @extend_schema_field(
+        serializers.ListField(
+            child=serializers.DictField(
+                child=serializers.CharField(),
+                help_text="Entity with type and optional notes",
+            )
+        )
+    )
     def get_entities(self, obj):
         """
         Get unified entities array with type and notes fields.
