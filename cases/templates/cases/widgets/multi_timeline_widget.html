@@ -6,8 +6,12 @@
             <i class="fas fa-times"></i>
         </button>
         <div class="timeline-field-group">
-            <label>Date</label>
-            <input type="date" value="{{ item.date }}" class="timeline-input">
+            <label>Date (AD)</label>
+            <input type="date" value="{{ item.date }}" class="timeline-input timeline-date-ad">
+        </div>
+        <div class="timeline-field-group">
+            <label>Date (BS)</label>
+            <input type="text" value="{{ item.date_bs }}" class="timeline-input timeline-date-bs" placeholder="YYYY-MM-DD" readonly>
         </div>
         <div class="timeline-field-group">
             <label>Title</label>
@@ -39,8 +43,12 @@ window.initMultiWidget(
             '<i class="fas fa-times"></i>',
             '</button>',
             '<div class="timeline-field-group">',
-            '<label>Date</label>',
-            '<input type="date" class="timeline-input">',
+            '<label>Date (AD)</label>',
+            '<input type="date" class="timeline-input timeline-date-ad">',
+            '</div>',
+            '<div class="timeline-field-group">',
+            '<label>Date (BS)</label>',
+            '<input type="text" class="timeline-input timeline-date-bs" placeholder="YYYY-MM-DD" readonly>',
             '</div>',
             '<div class="timeline-field-group">',
             '<label>Title</label>',

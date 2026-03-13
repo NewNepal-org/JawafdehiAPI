@@ -71,6 +71,33 @@ class CaseAdminForm(forms.ModelForm):
         help_text="Evidence entries with source references",
     )
 
+    start_date_bs = forms.CharField(
+        label="Case start date (BS)",
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "YYYY-MM-DD",
+                "class": "vTextField nepali-date-picker",
+                "autocomplete": "off",
+                "readonly": "readonly",
+                "style": "cursor: pointer;",
+            }
+        ),
+    )
+    end_date_bs = forms.CharField(
+        label="Case end date (BS)",
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "YYYY-MM-DD",
+                "class": "vTextField nepali-date-picker",
+                "autocomplete": "off",
+                "readonly": "readonly",
+                "style": "cursor: pointer;",
+            }
+        ),
+    )
+
     class Meta:
         model = Case
         fields = "__all__"
@@ -139,6 +166,17 @@ class CaseAdminForm(forms.ModelForm):
                 if state_field:
                     # Create custom choices with disabled options
                     state_field.widget.attrs["class"] = "contributor-state-field"
+
+    class Media:
+        css = {
+            "all": (
+                "https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/css/nepali.datepicker.v5.0.6.min.css",
+            )
+        }
+        js = (
+            "https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/js/nepali.datepicker.v5.0.6.min.js",
+            "cases/js/date_converter.js",
+        )
 
     def clean(self):
         """
@@ -279,7 +317,9 @@ class CaseAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "case_start_date",
+                    "start_date_bs",
                     "case_end_date",
+                    "end_date_bs",
                 )
             },
         ),
