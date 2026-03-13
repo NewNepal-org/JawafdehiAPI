@@ -14,7 +14,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from cases.admin import CaseAdmin
-from cases.models import Case, CaseEntityRelationship, CaseState, CaseType
+from cases.models import Case, CaseState, CaseType
 from tests.conftest import (
     create_case_with_entities,
     create_user_with_role,

@@ -52,9 +52,7 @@ class JawafEntitySerializer(serializers.ModelSerializer):
                 case__state=CaseState.PUBLISHED,
             )
 
-        return sorted(
-            relationships.values_list("case__case_id", flat=True).distinct()
-        )
+        return sorted(relationships.values_list("case__case_id", flat=True).distinct())
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_related_cases(self, obj):

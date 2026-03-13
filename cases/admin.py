@@ -370,7 +370,7 @@ class CaseAdmin(admin.ModelAdmin):
                     "case_end_date",
                     "end_date_bs",
                 ),
-                "description": "Specify the time period when the alleged activities occurred."
+                "description": "Specify the time period when the alleged activities occurred.",
             },
         ),
         (
@@ -529,7 +529,11 @@ class CaseAdmin(admin.ModelAdmin):
         # Store the form so we can pass it to formsets
         if request.method == "POST":
             ModelForm = self.get_form(request, obj=self.get_object(request, object_id))
-            form = ModelForm(request.POST, request.FILES, instance=self.get_object(request, object_id))
+            form = ModelForm(
+                request.POST,
+                request.FILES,
+                instance=self.get_object(request, object_id),
+            )
             self._parent_form = form
 
         return super().changeform_view(request, object_id, form_url, extra_context)
