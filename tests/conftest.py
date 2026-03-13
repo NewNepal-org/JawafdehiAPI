@@ -118,11 +118,15 @@ def create_case_with_entities(**kwargs):
     # Add entities via through model
     for entity in create_entities_from_ids(alleged_entity_ids):
         CaseEntityRelationship.objects.get_or_create(
-            case=case, entity=entity, type="alleged"
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
         )
     for entity in create_entities_from_ids(related_entity_ids):
         CaseEntityRelationship.objects.get_or_create(
-            case=case, entity=entity, type="related"
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.RELATED,
         )
     if location_ids:
         case.locations.set(create_entities_from_ids(location_ids))

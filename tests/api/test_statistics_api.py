@@ -160,7 +160,9 @@ class TestStatisticsCounting:
             title="Published Case",
         )
         CaseEntityRelationship.objects.create(
-            case=published_case, entity=entity1, type="alleged"
+            case=published_case,
+            entity=entity1,
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
         )
 
         Case.objects.create(

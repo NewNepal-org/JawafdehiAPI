@@ -12,19 +12,25 @@ def migrate_entity_data_forward(apps, schema_editor):
     """
     Migrate data from old alleged_entities and related_entities M2M fields
     to new CaseEntityRelationship through model.
+
+    Optimized to use prefetch_related and single-pass iteration.
     """
     Case = apps.get_model("cases", "Case")
     CaseEntityRelationship = apps.get_model("cases", "CaseEntityRelationship")
 
-    # Migrate alleged entities
-    for case in Case.objects.all():
+    # Use prefetch_related to avoid N+1 queries and iterate once
+    cases = Case.objects.prefetch_related(
+        "alleged_entities", "related_entities"
+    ).iterator()
+
+    for case in cases:
+        # Migrate alleged entities
         for entity in case.alleged_entities.all():
             CaseEntityRelationship.objects.get_or_create(
                 case=case, entity=entity, type="alleged"  # Use 'alleged' from the start
             )
 
-    # Migrate related entities
-    for case in Case.objects.all():
+        # Migrate related entities
         for entity in case.related_entities.all():
             CaseEntityRelationship.objects.get_or_create(
                 case=case, entity=entity, type="related"

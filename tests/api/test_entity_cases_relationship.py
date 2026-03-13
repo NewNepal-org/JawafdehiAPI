@@ -12,18 +12,24 @@ from rest_framework.test import APIClient
 from cases.models import Case, CaseEntityRelationship, CaseState, JawafEntity
 
 
-def _add_alleged(case, entity):
+def _add_alleged(case, *entities):
     """Helper: add entity as alleged to case via CaseEntityRelationship through model."""
-    CaseEntityRelationship.objects.get_or_create(
-        case=case, entity=entity, type="alleged"
-    )
+    for entity in entities:
+        CaseEntityRelationship.objects.get_or_create(
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
+        )
 
 
-def _add_related(case, entity):
+def _add_related(case, *entities):
     """Helper: add entity as related to case via CaseEntityRelationship through model."""
-    CaseEntityRelationship.objects.get_or_create(
-        case=case, entity=entity, type="related"
-    )
+    for entity in entities:
+        CaseEntityRelationship.objects.get_or_create(
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.RELATED,
+        )
 
 
 @pytest.fixture(autouse=True)

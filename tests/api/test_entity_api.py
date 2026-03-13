@@ -18,7 +18,9 @@ def _add_alleged(case, *entities):
     """Add entities as alleged to a case via the through model."""
     for entity in entities:
         CaseEntityRelationship.objects.get_or_create(
-            case=case, entity=entity, type="alleged"
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
         )
 
 
@@ -26,7 +28,9 @@ def _add_related(case, *entities):
     """Add entities as related to a case via the through model."""
     for entity in entities:
         CaseEntityRelationship.objects.get_or_create(
-            case=case, entity=entity, type="related"
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.RELATED,
         )
 
 

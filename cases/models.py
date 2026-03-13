@@ -4,17 +4,19 @@ Models for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
-from django.db import models
+import copy
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
+from django.db import models
 from django.utils import timezone
-import uuid
 
 from .fields import (
+    EvidenceListField,
     TextListField,
     TimelineListField,
-    EvidenceListField,
 )
 
 User = get_user_model()
@@ -493,11 +495,13 @@ class Case(models.Model):
             banner_url=self.banner_url,
             case_start_date=self.case_start_date,
             case_end_date=self.case_end_date,
-            tags=self.tags.copy() if self.tags else [],
+            tags=copy.deepcopy(self.tags) if self.tags else [],
             description=self.description,
-            key_allegations=self.key_allegations.copy() if self.key_allegations else [],
-            timeline=self.timeline.copy() if self.timeline else [],
-            evidence=self.evidence.copy() if self.evidence else [],
+            key_allegations=(
+                copy.deepcopy(self.key_allegations) if self.key_allegations else []
+            ),
+            timeline=copy.deepcopy(self.timeline) if self.timeline else [],
+            evidence=copy.deepcopy(self.evidence) if self.evidence else [],
             versionInfo={
                 "version_number": self.version + 1,
                 "action": "draft_created",
