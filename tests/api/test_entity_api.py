@@ -11,7 +11,27 @@ from django.core.cache import cache
 from hypothesis import given, strategies as st, settings
 from rest_framework.test import APIClient
 
-from cases.models import JawafEntity
+from cases.models import CaseEntityRelationship, JawafEntity
+
+
+def _add_alleged(case, *entities):
+    """Add entities as alleged to a case via the through model."""
+    for entity in entities:
+        CaseEntityRelationship.objects.get_or_create(
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
+        )
+
+
+def _add_related(case, *entities):
+    """Add entities as related to a case via the through model."""
+    for entity in entities:
+        CaseEntityRelationship.objects.get_or_create(
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.RELATED,
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -82,8 +102,8 @@ def test_entity_list_includes_all_entities():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity1, entity2)
-    case.related_entities.add(entity3)
+    _add_alleged(case, entity1, entity2)
+    _add_related(case, entity3)
 
     client = APIClient()
     response = client.get("/api/entities/")
@@ -170,7 +190,7 @@ def test_entity_search_by_nes_id():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity1, entity2, entity3)
+    _add_alleged(case, entity1, entity2, entity3)
 
     client = APIClient()
     response = client.get("/api/entities/?search=john")
@@ -199,7 +219,7 @@ def test_entity_search_by_display_name():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity1, entity2, entity3)
+    _add_alleged(case, entity1, entity2, entity3)
 
     client = APIClient()
     response = client.get("/api/entities/?search=Jane")
@@ -226,7 +246,7 @@ def test_entity_search_case_insensitive():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    _add_alleged(case, entity)
 
     client = APIClient()
 
@@ -276,7 +296,7 @@ def test_entity_list_pagination():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(*entities)
+    _add_alleged(case, *entities)
 
     client = APIClient()
     response = client.get("/api/entities/")
@@ -305,7 +325,7 @@ def test_entity_list_pagination_navigation():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(*entities)
+    _add_alleged(case, *entities)
 
     client = APIClient()
 
@@ -445,7 +465,7 @@ class TestEntityAPIWorkflows:
             title="Test Case",
             description="Test",
         )
-        case.alleged_entities.add(entity1, entity2, entity3)
+        _add_alleged(case, entity1, entity2, entity3)
 
         client = APIClient()
 
@@ -498,7 +518,7 @@ class TestEntityAPIWorkflows:
             title="Test Case",
             description="Test",
         )
-        case.alleged_entities.add(*entities)
+        _add_alleged(case, *entities)
 
         client = APIClient()
 

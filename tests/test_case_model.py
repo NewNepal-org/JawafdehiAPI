@@ -11,9 +11,19 @@ import pytest
 from django.core.exceptions import ValidationError
 from hypothesis import given, settings
 
-from cases.models import Case, CaseState, CaseType
+from cases.models import Case, CaseEntityRelationship, CaseState, CaseType
 from tests.conftest import create_case_with_entities
 from tests.strategies import minimal_case_data, complete_case_data
+
+
+def _alleged_entity_ids(case):
+    """Return sorted list of entity PKs linked as alleged to the given case."""
+    return sorted(
+        CaseEntityRelationship.objects.filter(
+            case=case, type=CaseEntityRelationship.RelationshipType.ALLEGED
+        ).values_list("entity_id", flat=True)
+    )
+
 
 # ============================================================================
 # Property 1: New cases start in Draft state
@@ -331,10 +341,9 @@ def test_soft_delete_preserves_all_data(case_data):
     case = create_case_with_entities(**case_data)
     case.state = CaseState.PUBLISHED
     case.save()
-
     original_title = case.title
     original_version = case.version
-    original_alleged_entities = list(case.alleged_entities.all())
+    original_alleged_entity_ids = _alleged_entity_ids(case)
     original_key_allegations = case.key_allegations.copy()
 
     # Soft delete the case
@@ -346,7 +355,7 @@ def test_soft_delete_preserves_all_data(case_data):
     assert case.title == original_title, "Soft-deleted case should preserve title"
     assert case.version == original_version, "Soft-deleted case should preserve version"
     assert (
-        list(case.alleged_entities.all()) == original_alleged_entities
+        _alleged_entity_ids(case) == original_alleged_entity_ids
     ), "Soft-deleted case should preserve alleged_entities"
     assert (
         case.key_allegations == original_key_allegations

@@ -95,15 +95,18 @@ class TestOpenAPIDocumentation:
         assert "schemas" in schema["components"]
         assert "Case" in schema["components"]["schemas"]
         assert "CaseDetail" in schema["components"]["schemas"]
-        assert "DocumentSource" in schema["components"]["schemas"]
-
-        # Verify Case schema has proper fields
+        assert (
+            "DocumentSource" in schema["components"]["schemas"]
+        )  # Verify Case schema has proper fields
         case_schema = schema["components"]["schemas"]["Case"]
         assert "properties" in case_schema
         assert "case_id" in case_schema["properties"]
         assert "case_type" in case_schema["properties"]
         assert "title" in case_schema["properties"]
-        assert "alleged_entities" in case_schema["properties"]
+        assert "entities" in case_schema["properties"], (
+            "Case schema should have unified 'entities' field "
+            "(replaces old alleged_entities/related_entities)"
+        )
         assert "evidence" in case_schema["properties"]
         assert "timeline" in case_schema["properties"]
 
