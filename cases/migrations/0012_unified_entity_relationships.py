@@ -19,9 +19,7 @@ def migrate_entity_data_forward(apps, schema_editor):
     CaseEntityRelationship = apps.get_model("cases", "CaseEntityRelationship")
 
     # Use prefetch_related to avoid N+1 queries and iterate once
-    cases = Case.objects.prefetch_related(
-        "alleged_entities", "related_entities"
-    ).iterator()
+    cases = Case.objects.prefetch_related("alleged_entities", "related_entities")
 
     for case in cases:
         # Migrate alleged entities
