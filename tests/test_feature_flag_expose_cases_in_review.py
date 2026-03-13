@@ -60,7 +60,8 @@ class TestExposeCasesInReviewFeatureFlag:
 
     def test_flag_disabled_hides_in_review_cases(self, settings):
         """
-        When EXPOSE_CASES_IN_REVIEW=False, IN_REVIEW cases should not appear.
+        When EXPOSE_CASES_IN_REVIEW=False, IN_REVIEW cases should not appear in list.
+        However, they are always accessible via detail endpoint.
         """
         settings.EXPOSE_CASES_IN_REVIEW = False
 
@@ -73,14 +74,14 @@ class TestExposeCasesInReviewFeatureFlag:
         assert self.published_case.case_id in case_ids, "Published case should appear"
         assert (
             self.in_review_case.case_id not in case_ids
-        ), "IN_REVIEW case should NOT appear when flag is disabled"
+        ), "IN_REVIEW case should NOT appear in list when flag is disabled"
         assert self.draft_case.case_id not in case_ids, "Draft case should never appear"
 
-        # Detail endpoint - IN_REVIEW should return 404
+        # Detail endpoint - IN_REVIEW is ALWAYS accessible (regardless of flag)
         response = self.client.get(f"/api/cases/{self.in_review_case.id}/")
         assert (
-            response.status_code == 404
-        ), "IN_REVIEW case should not be accessible when flag is disabled"
+            response.status_code == 200
+        ), "IN_REVIEW case should always be accessible via detail endpoint"
 
         # Published case should be accessible
         response = self.client.get(f"/api/cases/{self.published_case.id}/")
