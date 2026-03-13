@@ -230,22 +230,16 @@ class TestPublicAPIWorkflows:
             version=1,
         )
 
-        # IN_REVIEW cases accessibility depends on feature flag
+        # IN_REVIEW cases are ALWAYS accessible via detail endpoint (regardless of feature flag)
         from django.conf import settings
 
         response = self.client.get(f"/api/cases/{in_review_case.id}/")
-
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            assert (
-                response.status_code == 200
-            ), "In Review cases should be accessible when flag is enabled"
-            assert (
-                response.data["state"] == CaseState.IN_REVIEW
-            ), "State field should show IN_REVIEW"
-        else:
-            assert (
-                response.status_code == 404
-            ), "In Review cases should NOT be accessible when flag is disabled"
+        assert (
+            response.status_code == 200
+        ), "IN_REVIEW cases should always be accessible via detail endpoint"
+        assert (
+            response.data["state"] == CaseState.IN_REVIEW
+        ), "State field should show IN_REVIEW"
 
         # IN_REVIEW cases in list endpoint depend on flag
         response = self.client.get("/api/cases/")
