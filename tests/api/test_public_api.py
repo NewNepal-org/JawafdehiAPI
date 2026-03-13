@@ -62,22 +62,40 @@ def test_public_api_only_shows_published_cases(case_data, state):
     # Check if case appears in results
     case_ids_in_response = [c.get("case_id") for c in response.data.get("results", [])]
 
-    # Determine expected visibility based on feature flag
-    if django_settings.EXPOSE_CASES_IN_REVIEW:
-        should_appear = state in [CaseState.PUBLISHED, CaseState.IN_REVIEW]
-    else:
-        should_appear = state == CaseState.PUBLISHED
+    # List endpoint only shows PUBLISHED cases (unless flag is enabled)
+    should_appear = state == CaseState.PUBLISHED
 
     if should_appear:
         # Cases should appear
         assert (
             case.case_id in case_ids_in_response
-        ), f"Case {case.case_id} with state={state} should appear in API response"
+        ), f"Case {case.case_id} with state={state} should appear in API list response"
     else:
         # Cases should NOT appear
         assert (
             case.case_id not in case_ids_in_response
-        ), f"Case {case.case_id} with state={state} should NOT appear in API response"
+        ), f"Case {case.case_id} with state={state} should NOT appear in API list response"
+
+    # Test detail endpoint - IN_REVIEW cases always accessible, others match list behavior
+    detail_response = client.get(f"/api/cases/{case.id}/")
+
+    if state == CaseState.PUBLISHED:
+        assert (
+            detail_response.status_code == 200
+        ), "PUBLISHED case should be accessible via detail endpoint"
+    elif state == CaseState.IN_REVIEW:
+        # IN_REVIEW cases are ALWAYS accessible via detail endpoint (regardless of feature flag)
+        assert (
+            detail_response.status_code == 200
+        ), "IN_REVIEW case should always be accessible via detail endpoint"
+        assert (
+            detail_response.data["state"] == CaseState.IN_REVIEW
+        ), "State field should show IN_REVIEW"
+    else:
+        # DRAFT and CLOSED should never be accessible
+        assert (
+            detail_response.status_code == 404
+        ), f"{state} case should NOT be accessible via detail endpoint"
 
 
 @pytest.mark.django_db
@@ -575,6 +593,58 @@ def test_api_exposes_state_field():
     # State should always be in response
     assert "state" in response.data, "API should always expose state field"
     assert response.data["state"] == CaseState.PUBLISHED
+
+
+@pytest.mark.django_db
+@settings(max_examples=10, deadline=800)
+@given(case_data=complete_case_data())
+def test_public_api_exposes_case_in_review_under_the_retrieve_mode(case_data):
+    """
+    Feature: IN_REVIEW cases are always accessible via detail endpoint.
+
+    The retrieve (detail) endpoint should always show IN_REVIEW cases,
+    regardless of the EXPOSE_CASES_IN_REVIEW feature flag.
+
+    However, IN_REVIEW cases should NOT appear in the list endpoint
+    when the feature flag is disabled.
+
+    Validates: PR #14 - Allow IN_REVIEW cases in detail endpoint
+    """
+    # Create an IN_REVIEW case
+    case = create_case_with_entities(**case_data)
+    case.state = CaseState.IN_REVIEW
+    case.save()
+
+    client = APIClient()
+
+    # Test 1: Detail endpoint should ALWAYS show IN_REVIEW cases
+    detail_response = client.get(f"/api/cases/{case.id}/")
+    assert (
+        detail_response.status_code == 200
+    ), "IN_REVIEW case should always be accessible via detail endpoint"
+    assert (
+        detail_response.data["state"] == CaseState.IN_REVIEW
+    ), "State field should show IN_REVIEW"
+    assert (
+        detail_response.data["case_id"] == case.case_id
+    ), "Should return the correct case"
+
+    # Test 2: List endpoint behavior depends on feature flag
+    list_response = client.get("/api/cases/")
+    assert list_response.status_code == 200
+
+    case_ids_in_list = [c.get("case_id") for c in list_response.data.get("results", [])]
+
+    if django_settings.EXPOSE_CASES_IN_REVIEW:
+        # When flag is ON, IN_REVIEW cases should appear in list
+        assert (
+            case.case_id in case_ids_in_list
+        ), "IN_REVIEW case should appear in list when feature flag is enabled"
+    else:
+        # When flag is OFF, IN_REVIEW cases should NOT appear in list
+        assert (
+            case.case_id not in case_ids_in_list
+        ), "IN_REVIEW case should NOT appear in list when feature flag is disabled"
 
 
 @pytest.mark.django_db
