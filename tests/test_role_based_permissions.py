@@ -137,11 +137,6 @@ def test_contributors_cannot_transition_to_published_or_closed(
         "title": case.title,
         "case_type": case.case_type,
         "state": forbidden_state,
-        "alleged_entities": list(
-            CaseEntityRelationship.objects.filter(
-                case=case, type=CaseEntityRelationship.RelationshipType.ALLEGED
-            ).values_list("entity_id", flat=True)
-        ),
         "key_allegations": case.key_allegations,
         "description": case.description,
     }

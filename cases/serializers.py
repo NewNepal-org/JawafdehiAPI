@@ -30,7 +30,7 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         model = JawafEntity
         fields = ["id", "nes_id", "display_name", "alleged_cases", "related_cases"]
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_alleged_cases(self, obj):
         """
         Get list of case IDs where this entity is alleged.
@@ -52,9 +52,11 @@ class JawafEntitySerializer(serializers.ModelSerializer):
                 case__state=CaseState.PUBLISHED,
             )
 
-        return list(relationships.values_list("case__case_id", flat=True))
+        return sorted(
+            relationships.values_list("case__case_id", flat=True).distinct()
+        )
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_related_cases(self, obj):
         """
         Get list of case IDs where this entity is related or a location.
@@ -87,14 +89,24 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         case_ids.update(location_cases.values_list("case_id", flat=True))
 
         # Exclude cases where this entity is already alleged (alleged takes precedence)
-        alleged_case_ids = set(
-            obj.case_relationships.filter(
-                type=CaseEntityRelationship.RelationshipType.ALLEGED
-            ).values_list("case__case_id", flat=True)
-        )
+        # Use same visibility rules as related_relationships
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            alleged_case_ids = set(
+                obj.case_relationships.filter(
+                    type=CaseEntityRelationship.RelationshipType.ALLEGED,
+                    case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
+                ).values_list("case__case_id", flat=True)
+            )
+        else:
+            alleged_case_ids = set(
+                obj.case_relationships.filter(
+                    type=CaseEntityRelationship.RelationshipType.ALLEGED,
+                    case__state=CaseState.PUBLISHED,
+                ).values_list("case__case_id", flat=True)
+            )
         case_ids -= alleged_case_ids
 
-        return list(case_ids)
+        return sorted(case_ids)
 
 
 class CaseSerializer(serializers.ModelSerializer):

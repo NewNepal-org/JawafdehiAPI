@@ -41,12 +41,49 @@ User = get_user_model()
 # ============================================================================
 
 
+class CaseEntityRelationshipFormSet(forms.BaseInlineFormSet):
+    """
+    Custom formset for CaseEntityRelationship inline with validation.
+    """
+
+    def clean(self):
+        """
+        Validate that at least one alleged entity exists for IN_REVIEW/PUBLISHED states.
+        """
+        super().clean()
+
+        # Get the parent case state from the parent form
+        if hasattr(self, "instance") and self.instance:
+            # Check if we're transitioning to IN_REVIEW or PUBLISHED
+            parent_form = getattr(self, "_parent_form", None)
+            if parent_form and hasattr(parent_form, "cleaned_data"):
+                new_state = parent_form.cleaned_data.get("state")
+
+                if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
+                    # Count alleged entities in the submitted formset
+                    alleged_count = 0
+                    for form in self.forms:
+                        if (
+                            form.cleaned_data
+                            and not form.cleaned_data.get("DELETE", False)
+                            and form.cleaned_data.get("type")
+                            == CaseEntityRelationship.RelationshipType.ALLEGED
+                        ):
+                            alleged_count += 1
+
+                    if alleged_count == 0:
+                        raise ValidationError(
+                            "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+                        )
+
+
 class CaseEntityRelationshipInline(admin.TabularInline):
     """
     Inline admin for managing case-entity relationships.
     """
 
     model = CaseEntityRelationship
+    formset = CaseEntityRelationshipFormSet
     extra = 1
     autocomplete_fields = ["entity"]
 
@@ -232,18 +269,8 @@ class CaseAdminForm(forms.ModelForm):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Check that at least one alleged entity exists
-            # Note: This validation happens after save_related, so we check the instance
-            if self.instance.pk:
-                from cases.models import CaseEntityRelationship
-
-                alleged_count = self.instance.entity_relationships.filter(
-                    type=CaseEntityRelationship.RelationshipType.ALLEGED
-                ).count()
-                if alleged_count == 0:
-                    errors["__all__"] = (
-                        "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
-                    )
+            # Note: Entity validation is handled by CaseEntityRelationshipFormSet.clean()
+            # which runs after inline forms are processed
 
             # Check key_allegations
             key_allegations = cleaned_data.get("key_allegations")
@@ -484,6 +511,28 @@ class CaseAdmin(admin.ModelAdmin):
                 return form_class(*args, **kwargs)
 
         return FormWithRequest
+
+    def get_formsets_with_inlines(self, request, obj=None):
+        """
+        Override to pass parent form to inline formsets for validation.
+        """
+        for inline, formset in super().get_formsets_with_inlines(request, obj):
+            # Store reference to parent form for validation
+            if hasattr(self, "_parent_form"):
+                formset._parent_form = self._parent_form
+            yield inline, formset
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        """
+        Override to store parent form reference for inline validation.
+        """
+        # Store the form so we can pass it to formsets
+        if request.method == "POST":
+            ModelForm = self.get_form(request, obj=self.get_object(request, object_id))
+            form = ModelForm(request.POST, request.FILES, instance=self.get_object(request, object_id))
+            self._parent_form = form
+
+        return super().changeform_view(request, object_id, form_url, extra_context)
 
     def save_related(self, request, form, formsets, change):
         """
