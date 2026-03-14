@@ -372,11 +372,10 @@ class TestPublicAPIWorkflows:
     def test_document_source_visibility_workflow(self):
         """
         E2E Test: Verify document sources are only visible for published cases.
-        (And IN_REVIEW cases if feature flag is enabled)
 
         Workflow:
         1. List all sources
-        2. Verify only sources from published cases appear (and IN_REVIEW if flag enabled)
+        2. Verify only sources from published cases appear
         3. Retrieve specific source
         4. Verify source details are complete
 

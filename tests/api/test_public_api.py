@@ -39,8 +39,8 @@ def test_public_api_only_shows_published_cases(case_data, state):
     """
     Feature: accountability-platform-core, Property 8: Public API only shows published cases
 
-    For any API request to list or retrieve cases, only cases with state=PUBLISHED
-    (and IN_REVIEW if feature flag is enabled) should be returned.
+    For any API request to list cases, only cases with state=PUBLISHED should be returned.
+    The detail endpoint also returns IN_REVIEW cases.
     Validates: Requirements 6.1, 8.3
     """
 
@@ -61,7 +61,7 @@ def test_public_api_only_shows_published_cases(case_data, state):
     # Check if case appears in results
     case_ids_in_response = [c.get("case_id") for c in response.data.get("results", [])]
 
-    # List endpoint only shows PUBLISHED cases (unless flag is enabled)
+    # List endpoint only shows PUBLISHED cases
     should_appear = state == CaseState.PUBLISHED
 
     if should_appear:
@@ -83,7 +83,7 @@ def test_public_api_only_shows_published_cases(case_data, state):
             detail_response.status_code == 200
         ), "PUBLISHED case should be accessible via detail endpoint"
     elif state == CaseState.IN_REVIEW:
-        # IN_REVIEW cases are ALWAYS accessible via detail endpoint (regardless of feature flag)
+        # IN_REVIEW cases are ALWAYS accessible via detail endpoint
         assert (
             detail_response.status_code == 200
         ), "IN_REVIEW case should always be accessible via detail endpoint"
@@ -666,7 +666,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
 
     assert response.status_code == 200
 
-    # Check which sources should appear based on feature flag
+    # Check which sources should appear
     source_ids = [s.get("source_id") for s in response.data.get("results", [])]
 
     assert (
