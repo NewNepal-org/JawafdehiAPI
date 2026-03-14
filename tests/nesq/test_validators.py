@@ -255,7 +255,7 @@ class TestValidateActionPayload:
             action="CREATE_ENTITY",
             payload={
                 "entity_data": {
-                    "type": "person",
+                    "entity_prefix": "person",
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
@@ -292,7 +292,7 @@ class TestCreateEntityPayloadValid:
         """CreateEntityPayload accepts minimal person entity data."""
         payload = CreateEntityPayload(
             entity_data={
-                "type": "person",
+                "entity_prefix": "person",
                 "slug": "sher-bahadur-deuba",
                 "names": [
                     {
@@ -303,7 +303,7 @@ class TestCreateEntityPayloadValid:
                 ],
             },
         )
-        assert payload.entity_data["type"] == "person"
+        assert payload.entity_data["entity_prefix"] == "person"
         assert payload.entity_data["slug"] == "sher-bahadur-deuba"
         assert len(payload.entity_data["names"]) == 1
 
@@ -311,7 +311,7 @@ class TestCreateEntityPayloadValid:
         """CreateEntityPayload accepts person with personal_details."""
         payload = CreateEntityPayload(
             entity_data={
-                "type": "person",
+                "entity_prefix": "person",
                 "slug": "test-person",
                 "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 "tags": ["politician", "test"],
@@ -325,11 +325,10 @@ class TestCreateEntityPayloadValid:
         assert payload.entity_data["tags"] == ["politician", "test"]
 
     def test_valid_organization_with_subtype(self):
-        """CreateEntityPayload accepts organization with subtype."""
+        """CreateEntityPayload accepts organization with multi-level prefix."""
         payload = CreateEntityPayload(
             entity_data={
-                "type": "organization",
-                "sub_type": "political_party",
+                "entity_prefix": "organization/political_party",
                 "slug": "nepali-congress",
                 "names": [
                     {
@@ -340,14 +339,13 @@ class TestCreateEntityPayloadValid:
                 ],
             },
         )
-        assert payload.entity_data["type"] == "organization"
-        assert payload.entity_data["sub_type"] == "political_party"
+        assert payload.entity_data["entity_prefix"] == "organization/political_party"
 
     def test_valid_with_multiple_names(self):
         """CreateEntityPayload accepts multiple names including PRIMARY."""
         payload = CreateEntityPayload(
             entity_data={
-                "type": "person",
+                "entity_prefix": "person",
                 "slug": "test-person",
                 "names": [
                     {"kind": "PRIMARY", "en": {"full": "Test Person"}},
@@ -362,7 +360,7 @@ class TestCreateEntityPayloadValid:
         """CreateEntityPayload accepts all optional entity fields."""
         payload = CreateEntityPayload(
             entity_data={
-                "type": "person",
+                "entity_prefix": "person",
                 "slug": "test-person",
                 "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 "tags": ["test", "example"],
@@ -394,11 +392,10 @@ class TestCreateEntityPayloadValid:
         assert payload.entity_data["attributes"] == {"custom_field": "custom_value"}
 
     def test_valid_location_entity(self):
-        """CreateEntityPayload accepts location entity type."""
+        """CreateEntityPayload accepts location entity with multi-level prefix."""
         payload = CreateEntityPayload(
             entity_data={
-                "type": "location",
-                "sub_type": "district",
+                "entity_prefix": "location/district",
                 "slug": "kathmandu",
                 "names": [
                     {
@@ -409,8 +406,7 @@ class TestCreateEntityPayloadValid:
                 ],
             },
         )
-        assert payload.entity_data["type"] == "location"
-        assert payload.entity_data["sub_type"] == "district"
+        assert payload.entity_data["entity_prefix"] == "location/district"
 
 
 # ============================================================================
@@ -426,7 +422,7 @@ class TestCreateEntityPayloadInvalid:
         with pytest.raises(ValidationError) as exc_info:
             CreateEntityPayload(
                 entity_data={
-                    "type": "person",
+                    "entity_prefix": "person",
                     "slug": "test-person",
                     "names": [{"kind": "ALIAS", "en": {"full": "Test Alias"}}],
                 },
@@ -434,8 +430,8 @@ class TestCreateEntityPayloadInvalid:
         errors = exc_info.value.errors()
         assert any("PRIMARY" in str(e) for e in errors)
 
-    def test_missing_type(self):
-        """CreateEntityPayload rejects entity_data without type field."""
+    def test_missing_entity_prefix(self):
+        """CreateEntityPayload rejects entity_data without entity_prefix field."""
         with pytest.raises(ValidationError) as exc_info:
             CreateEntityPayload(
                 entity_data={
@@ -444,14 +440,14 @@ class TestCreateEntityPayloadInvalid:
                 },
             )
         errors = exc_info.value.errors()
-        assert any("type" in str(e).lower() for e in errors)
+        assert any("entity_prefix" in str(e).lower() for e in errors)
 
     def test_missing_slug(self):
         """CreateEntityPayload rejects entity_data without slug."""
         with pytest.raises(ValidationError) as exc_info:
             CreateEntityPayload(
                 entity_data={
-                    "type": "person",
+                    "entity_prefix": "person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
             )
@@ -463,7 +459,7 @@ class TestCreateEntityPayloadInvalid:
         with pytest.raises(ValidationError) as exc_info:
             CreateEntityPayload(
                 entity_data={
-                    "type": "person",
+                    "entity_prefix": "person",
                     "slug": "test-person",
                 },
             )
@@ -475,7 +471,7 @@ class TestCreateEntityPayloadInvalid:
         with pytest.raises(ValidationError) as exc_info:
             CreateEntityPayload(
                 entity_data={
-                    "type": "person",
+                    "entity_prefix": "person",
                     "slug": "test-person",
                     "names": [],
                 },
@@ -490,24 +486,12 @@ class TestCreateEntityPayloadInvalid:
         errors = exc_info.value.errors()
         assert any("entity_data" in str(e["loc"]) for e in errors)
 
-    def test_invalid_entity_type(self):
-        """CreateEntityPayload rejects invalid entity_type value."""
+    def test_invalid_entity_prefix(self):
+        """CreateEntityPayload rejects invalid entity_prefix value."""
         with pytest.raises(ValidationError):
             CreateEntityPayload(
                 entity_data={
-                    "type": "invalid_type",
-                    "slug": "test-person",
-                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
-                },
-            )
-
-    def test_invalid_entity_subtype(self):
-        """CreateEntityPayload rejects invalid entity_subtype value."""
-        with pytest.raises(ValidationError):
-            CreateEntityPayload(
-                entity_data={
-                    "type": "person",
-                    "sub_type": "invalid_subtype",
+                    "entity_prefix": "invalid_type",
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
@@ -518,7 +502,7 @@ class TestCreateEntityPayloadInvalid:
         with pytest.raises(ValidationError):
             CreateEntityPayload(
                 entity_data={
-                    "type": "person",
+                    "entity_prefix": "person",
                     "slug": "Invalid Slug With Spaces",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
@@ -529,9 +513,44 @@ class TestCreateEntityPayloadInvalid:
         with pytest.raises(ValidationError):
             CreateEntityPayload(
                 entity_data={
-                    "type": "person",
+                    "entity_prefix": "person",
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                     "contacts": [{"type": "EMAIL", "value": "not-an-email"}],
                 },
             )
+
+    def test_rejects_version_summary(self):
+        """CreateEntityPayload rejects entity_data with version_summary."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateEntityPayload(
+                entity_data={
+                    "entity_prefix": "person",
+                    "slug": "test-person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                    "version_summary": {
+                        "entity_or_relationship_id": "entity:person/test-person",
+                        "type": "ENTITY",
+                        "version_number": 1,
+                        "author": {"slug": "test"},
+                        "change_description": "test",
+                        "created_at": "2024-01-01T00:00:00Z",
+                    },
+                },
+            )
+        errors = exc_info.value.errors()
+        assert any("version_summary" in str(e).lower() for e in errors)
+
+    def test_rejects_created_at(self):
+        """CreateEntityPayload rejects entity_data with created_at."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateEntityPayload(
+                entity_data={
+                    "entity_prefix": "person",
+                    "slug": "test-person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                    "created_at": "2024-01-01T00:00:00Z",
+                },
+            )
+        errors = exc_info.value.errors()
+        assert any("created_at" in str(e).lower() for e in errors)

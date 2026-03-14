@@ -27,6 +27,7 @@ from asgiref.sync import sync_to_async
 from nes.core.models.base import Name
 from nes.database.file_database import FileDatabase
 from nes.services.publication import PublicationService
+from nes.core.identifiers import build_entity_id_from_prefix
 
 from django.utils import timezone
 
@@ -223,16 +224,18 @@ class QueueProcessor:
         # Extract payload fields and enrich with missing metadata
         entity_data = item.payload["entity_data"].copy()
 
-        # Construct entity ID from type and slug to use in version_summary
-        entity_type = entity_data["type"]
+        # Get entity_prefix and slug to construct entity ID
+        entity_prefix = entity_data.get("entity_prefix")
         entity_slug = entity_data["slug"]
-        sub_type = entity_data.get("sub_type")
 
-        # Build entity ID following NES format: entity:{type}[/{sub_type}]/{slug}
-        if sub_type:
-            entity_id = f"entity:{entity_type}/{sub_type}/{entity_slug}"
-        else:
-            entity_id = f"entity:{entity_type}/{entity_slug}"
+        # Build entity ID using the entity_prefix system
+        if not entity_prefix:
+            raise ValueError(
+                "entity_data must include 'entity_prefix' field. "
+                "The old type/sub_type system is deprecated."
+            )
+
+        entity_id = build_entity_id_from_prefix(entity_prefix, entity_slug)
 
         # Add version_summary if missing
         if "version_summary" not in entity_data:
@@ -250,8 +253,9 @@ class QueueProcessor:
             entity_data["created_at"] = timezone.now().isoformat()
 
         # Call PublicationService.create_entity()
-        # The entity_data already contains 'type' and optionally 'sub_type'
+        # Extract entity_prefix for the new API
         new_entity = await self.publication_service.create_entity(
+            entity_prefix=entity_prefix,
             entity_data=entity_data,
             author_id=author_id,
             change_description=augmented_description,

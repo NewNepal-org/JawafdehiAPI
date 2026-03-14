@@ -22,7 +22,6 @@ import pytest
 
 from asgiref.sync import sync_to_async
 
-from nes.core.models.entity import EntityType
 from nes.database.file_database import FileDatabase
 from nes.services.publication import PublicationService
 
@@ -46,7 +45,7 @@ SEED_ENTITY_ID = "entity:person/sher-bahadur-deuba"
 
 SEED_ENTITY_DATA = {
     "slug": "sher-bahadur-deuba",
-    "type": "person",
+    "entity_prefix": "person",
     "names": [
         {
             "kind": "PRIMARY",
@@ -84,7 +83,7 @@ async def nes_test_env(tmp_path):
     pub_service = PublicationService(database=db)
 
     seed_entity = await pub_service.create_entity(
-        entity_type=EntityType.PERSON,
+        entity_prefix="person",
         entity_data=SEED_ENTITY_DATA.copy(),
         author_id="author:test-setup",
         change_description="Seed entity for integration test",
@@ -408,7 +407,7 @@ class TestUnsupportedActions:
             "action": "CREATE_ENTITY",
             "payload": {
                 "entity_data": {
-                    "type": "person",
+                    "entity_prefix": "person",
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },

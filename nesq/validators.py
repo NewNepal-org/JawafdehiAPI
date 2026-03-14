@@ -77,16 +77,15 @@ class CreateEntityPayload(BaseModel):
     """Payload for CREATE_ENTITY action — creates a new entity in the NES database.
 
     The entity_data field is validated by delegating to the appropriate NES
-    entity model (Person, Organization, Location, Project) based on entity_type
-    and entity_subtype. This ensures that as the entity schema evolves, the
-    validation stays in sync with the NES models.
+    entity model (Person, Organization, Location, Project) based on entity_prefix.
+    This ensures that as the entity schema evolves, the validation stays in sync
+    with the NES models.
 
     Example payload::
 
         {
             "entity_data": {
-                "type": "person",
-                "sub_type": null,
+                "entity_prefix": "person",
                 "slug": "sher-bahadur-deuba",
                 "names": [
                     {
@@ -98,21 +97,25 @@ class CreateEntityPayload(BaseModel):
                 "tags": ["politician", "prime-minister"],
                 "personal_details": {
                     "gender": "male"
-                },
-                "version_summary": {...},
-                "created_at": "2024-01-01T00:00:00Z"
+                }
             }
         }
 
-    Note: The entity_data must include 'type' field. The 'version_summary'
-    and 'created_at' fields will be added by the processor if not present.
-    The author_id is derived from the authenticated user by the processor.
+    Note: The entity_data must include 'entity_prefix' field (e.g., 'person',
+    'organization/political_party', 'organization/nepal_govt/moha'). The old
+    'type' and 'sub_type' fields are deprecated.
+
+    The entity_data must NOT include 'version_summary' or 'created_at' - these
+    will be automatically added by the processor. The author_id is derived from
+    the authenticated user by the processor.
     """
 
     entity_data: Dict[str, Any] = Field(
         ...,
         description=(
-            "Complete entity data dictionary. Must include 'type' field. "
+            "Complete entity data dictionary. Must include 'entity_prefix' field "
+            "(e.g., 'person', 'organization/political_party'). "
+            "Must NOT include 'version_summary' or 'created_at' - these are added by the processor. "
             "Will be validated against the appropriate NES entity model "
             "(Person, Organization, Location, Project)."
         ),
@@ -124,30 +127,52 @@ class CreateEntityPayload(BaseModel):
         """Validate entity_data using the appropriate NES entity model.
 
         This delegates to entity_from_dict which will:
-        1. Check that 'type' field is present
-        2. Determine the correct entity class (Person, Organization, etc.)
+        1. Check that 'entity_prefix' field is present
+        2. Determine the correct entity class from the first prefix segment
         3. Validate all fields against that entity's Pydantic model
 
-        Note: We allow missing version_summary and created_at since those
+        Note: version_summary and created_at must NOT be in the payload - they
         will be added by the processor.
         """
-        if "type" not in v:
-            raise ValueError("entity_data must include 'type' field")
+        from datetime import datetime, timezone as dt_timezone
+        from nes.core.identifiers import build_entity_id_from_prefix
 
-        # Create a copy with dummy version_summary and created_at if missing
-        # (these will be added by the processor)
+        if "entity_prefix" not in v:
+            raise ValueError(
+                "entity_data must include 'entity_prefix' field. "
+                "The old type/sub_type system is deprecated."
+            )
+
+        # Reject version_summary and created_at - these are added by the processor
+        if "version_summary" in v:
+            raise ValueError(
+                "entity_data must not include 'version_summary' - it will be added by the processor"
+            )
+        if "created_at" in v:
+            raise ValueError(
+                "entity_data must not include 'created_at' - it will be added by the processor"
+            )
+
+        # Create a copy for validation with dummy version_summary and created_at
         validation_data = v.copy()
-        if "version_summary" not in validation_data:
-            validation_data["version_summary"] = {
-                "entity_or_relationship_id": "dummy",
-                "type": "ENTITY",
-                "version_number": 1,
-                "author": {"slug": "dummy"},
-                "change_description": "dummy",
-                "created_at": "2024-01-01T00:00:00Z",
-            }
-        if "created_at" not in validation_data:
-            validation_data["created_at"] = "2024-01-01T00:00:00Z"
+
+        # Build proper entity_id for validation
+        entity_prefix = v["entity_prefix"]
+        entity_slug = v.get("slug", "validation-slug")
+        entity_id = build_entity_id_from_prefix(entity_prefix, entity_slug)
+
+        # Use current timestamp for validation
+        now_iso = datetime.now(dt_timezone.utc).isoformat()
+
+        validation_data["version_summary"] = {
+            "entity_or_relationship_id": entity_id,
+            "type": "ENTITY",
+            "version_number": 1,
+            "author": {"slug": "dummy"},  # Will be replaced by the processor
+            "change_description": "Validation placeholder",  # Will be replaced by the processor
+            "created_at": now_iso,
+        }
+        validation_data["created_at"] = now_iso
 
         # Validate using the appropriate NES entity model
         try:

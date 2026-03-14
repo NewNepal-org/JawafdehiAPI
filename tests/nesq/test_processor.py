@@ -533,8 +533,7 @@ class TestProcessApprovedItems:
 
 VALID_CREATE_ENTITY_PAYLOAD = {
     "entity_data": {
-        "type": "person",
-        "sub_type": None,
+        "entity_prefix": "person",
         "slug": "test-person",
         "names": [
             {
@@ -545,7 +544,6 @@ VALID_CREATE_ENTITY_PAYLOAD = {
         ],
         "tags": ["test"],
     },
-    "author_id": "jawafdehi:test-user",
 }
 
 

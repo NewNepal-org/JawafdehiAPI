@@ -266,7 +266,7 @@ class TestUnsupportedActions:
             "action": "CREATE_ENTITY",
             "payload": {
                 "entity_data": {
-                    "type": "person",
+                    "entity_prefix": "person",
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
@@ -287,7 +287,7 @@ class TestUnsupportedActions:
         item = NESQueueItem.objects.get(pk=resp_data["id"])
         assert item.action == "CREATE_ENTITY"
         assert item.status == QueueStatus.PENDING
-        assert item.payload["entity_data"]["type"] == "person"
+        assert item.payload["entity_data"]["entity_prefix"] == "person"
 
     def test_update_entity_returns_400(self, contributor_client):
         """UPDATE_ENTITY action is rejected with 400 (not supported yet).
