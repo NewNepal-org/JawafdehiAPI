@@ -61,7 +61,6 @@ class Migration(migrations.Migration):
     operations = [
         # 1. Data migration first (while version field still exists)
         migrations.RunPython(consolidate_case_versions, noop),
-
         # 2. Add notes field
         migrations.AddField(
             model_name="case",
@@ -72,7 +71,6 @@ class Migration(migrations.Migration):
                 help_text="Internal notes (markdown supported)",
             ),
         ),
-
         # 3. Remove old compound indexes before dropping the field
         migrations.RemoveIndex(
             model_name="case",
@@ -82,7 +80,6 @@ class Migration(migrations.Migration):
             model_name="case",
             name="cases_case_state_0b1ac4_idx",
         ),
-
         # 4. Remove version field
         migrations.RemoveField(
             model_name="case",

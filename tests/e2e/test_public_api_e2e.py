@@ -260,7 +260,9 @@ class TestPublicAPIWorkflows:
             description="A case with markdown notes.",
             state=CaseState.PUBLISHED,
         )
-        case.notes = "## Background\n\nThis case involves corruption at the ministry level."
+        case.notes = (
+            "## Background\n\nThis case involves corruption at the ministry level."
+        )
         case.save()
 
         # Step 2: Retrieve the case via API
@@ -427,7 +429,6 @@ class TestPublicAPIWorkflows:
         assert (
             response.status_code == 404
         ), "Source from draft case should not be accessible"
-
 
     def test_single_row_per_case_in_list(self):
         """
