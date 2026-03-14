@@ -8,6 +8,7 @@ Validates: Requirements 4.1, 6.1, 6.2, 6.3, 8.1, 8.3
 
 import pytest
 
+from django.conf import settings as django_settings
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from rest_framework.test import APIClient
@@ -39,8 +40,8 @@ def test_public_api_only_shows_published_cases(case_data, state):
     """
     Feature: accountability-platform-core, Property 8: Public API only shows published cases
 
-    For any API request to list cases, only cases with state=PUBLISHED
-    and the highest version per case_id should be returned.
+    For any API request to list or retrieve cases, only cases with state=PUBLISHED
+    (and IN_REVIEW if feature flag is enabled) should be returned.
     Validates: Requirements 6.1, 8.3
     """
 
@@ -61,7 +62,7 @@ def test_public_api_only_shows_published_cases(case_data, state):
     # Check if case appears in results
     case_ids_in_response = [c.get("case_id") for c in response.data.get("results", [])]
 
-    # List endpoint only shows PUBLISHED cases
+    # List endpoint only shows PUBLISHED cases (unless flag is enabled)
     should_appear = state == CaseState.PUBLISHED
 
     if should_appear:
@@ -95,53 +96,6 @@ def test_public_api_only_shows_published_cases(case_data, state):
         assert (
             detail_response.status_code == 404
         ), f"{state} case should NOT be accessible via detail endpoint"
-
-
-@pytest.mark.django_db
-@settings(max_examples=20, deadline=800)
-@given(case_data=complete_case_data())
-def test_public_api_shows_highest_version_only(case_data):
-    """
-    Feature: accountability-platform-core, Property 8: Public API only shows published cases
-
-    For any case_id with multiple published versions, only the highest version
-    should be returned by the API.
-    Validates: Requirements 6.1, 8.3
-    """
-    # Create and publish version 1
-    case_v1 = create_case_with_entities(**case_data)
-    case_v1.state = CaseState.PUBLISHED
-    case_v1.save()
-
-    case_id = case_v1.case_id
-
-    # Create and publish version 2 (same case_id)
-    case_v2 = case_v1.create_draft()
-    case_v2.title = f"{case_v1.title} - Updated"
-    case_v2.state = CaseState.PUBLISHED
-    case_v2.save()
-
-    # Make API request
-    client = APIClient()
-    response = client.get("/api/cases/")
-
-    assert response.status_code == 200
-
-    # Find cases with this case_id in response
-    matching_cases = [
-        c for c in response.data.get("results", []) if c.get("case_id") == case_id
-    ]
-
-    # Should only return one case (highest version)
-    assert (
-        len(matching_cases) == 1
-    ), f"API should return only one version per case_id, but got {len(matching_cases)}"
-
-    # Should be version 2
-    returned_case = matching_cases[0]
-    assert (
-        returned_case.get("title") == case_v2.title
-    ), f"API should return highest version (v2), but got title: {returned_case.get('title')}"
 
 
 # ============================================================================
@@ -602,7 +556,10 @@ def test_public_api_exposes_case_in_review_under_the_retrieve_mode(case_data):
     Feature: IN_REVIEW cases are always accessible via detail endpoint.
 
     The retrieve (detail) endpoint should always show IN_REVIEW cases,
-    and IN_REVIEW cases should NOT appear in the list endpoint.
+    regardless of the EXPOSE_CASES_IN_REVIEW feature flag.
+
+    However, IN_REVIEW cases should NOT appear in the list endpoint
+    when the feature flag is disabled.
 
     Validates: PR #14 - Allow IN_REVIEW cases in detail endpoint
     """
@@ -625,20 +582,29 @@ def test_public_api_exposes_case_in_review_under_the_retrieve_mode(case_data):
         detail_response.data["case_id"] == case.case_id
     ), "Should return the correct case"
 
-    # Test 2: List endpoint should not include IN_REVIEW cases
+    # Test 2: List endpoint behavior depends on feature flag
     list_response = client.get("/api/cases/")
     assert list_response.status_code == 200
 
     case_ids_in_list = [c.get("case_id") for c in list_response.data.get("results", [])]
-    assert (
-        case.case_id not in case_ids_in_list
-    ), "IN_REVIEW case should NOT appear in list"
+
+    if django_settings.EXPOSE_CASES_IN_REVIEW:
+        # When flag is ON, IN_REVIEW cases should appear in list
+        assert (
+            case.case_id in case_ids_in_list
+        ), "IN_REVIEW case should appear in list when feature flag is enabled"
+    else:
+        # When flag is OFF, IN_REVIEW cases should NOT appear in list
+        assert (
+            case.case_id not in case_ids_in_list
+        ), "IN_REVIEW case should NOT appear in list when feature flag is disabled"
 
 
 @pytest.mark.django_db
 def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     """
     Edge case: DocumentSource API should only show sources referenced in evidence of published cases.
+    (And IN_REVIEW cases if feature flag is enabled)
     Validates: Design document - sources visible if referenced by any published case
     """
 
@@ -711,7 +677,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
 
     assert response.status_code == 200
 
-    # Check which sources should appear
+    # Check which sources should appear based on feature flag
     source_ids = [s.get("source_id") for s in response.data.get("results", [])]
 
     assert (
@@ -724,6 +690,12 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
         unreferenced_source.source_id not in source_ids
     ), "Source not referenced by any case should NOT appear in API"
 
-    assert (
-        in_review_source.source_id not in source_ids
-    ), "Source referenced by in-review case should NOT appear in API"
+    # IN_REVIEW source visibility depends on feature flag
+    if django_settings.EXPOSE_CASES_IN_REVIEW:
+        assert (
+            in_review_source.source_id in source_ids
+        ), "Source referenced by in-review case should appear when EXPOSE_CASES_IN_REVIEW is enabled"
+    else:
+        assert (
+            in_review_source.source_id not in source_ids
+        ), "Source referenced by in-review case should NOT appear when EXPOSE_CASES_IN_REVIEW is disabled"

@@ -31,9 +31,16 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is alleged.
 
-        Only includes PUBLISHED cases.
+        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         """
-        cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
+        from django.conf import settings
+
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            cases = obj.cases_as_alleged.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            )
+        else:
+            cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
 
         return list(cases.values_list("id", flat=True))
 
@@ -42,22 +49,38 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is related or a location.
 
-        Only includes PUBLISHED cases.
+        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         Excludes cases where entity is already alleged (to avoid duplicates).
         """
+        from django.conf import settings
+
         # Get alleged case IDs to exclude
-        alleged_case_ids = obj.cases_as_alleged.filter(
-            state=CaseState.PUBLISHED
-        ).values_list("id", flat=True)
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            alleged_case_ids = obj.cases_as_alleged.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            ).values_list("id", flat=True)
+        else:
+            alleged_case_ids = obj.cases_as_alleged.filter(
+                state=CaseState.PUBLISHED
+            ).values_list("id", flat=True)
 
         # Get related and location cases
-        related_cases = obj.cases_as_related.filter(state=CaseState.PUBLISHED).exclude(
-            id__in=alleged_case_ids
-        )
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            related_cases = obj.cases_as_related.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            ).exclude(id__in=alleged_case_ids)
 
-        location_cases = obj.cases_as_location.filter(
-            state=CaseState.PUBLISHED
-        ).exclude(id__in=alleged_case_ids)
+            location_cases = obj.cases_as_location.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            ).exclude(id__in=alleged_case_ids)
+        else:
+            related_cases = obj.cases_as_related.filter(
+                state=CaseState.PUBLISHED
+            ).exclude(id__in=alleged_case_ids)
+
+            location_cases = obj.cases_as_location.filter(
+                state=CaseState.PUBLISHED
+            ).exclude(id__in=alleged_case_ids)
 
         # Combine and deduplicate
         case_ids = set(related_cases.values_list("id", flat=True))
@@ -70,9 +93,7 @@ class CaseSerializer(serializers.ModelSerializer):
     """
     Serializer for Case model.
 
-    Exposes all fields except:
-    - contributors (internal only)
-    - version (internal versioning detail)
+    Exposes all fields except contributors (internal only).
 
     The state field is always included to indicate case status (PUBLISHED or IN_REVIEW).
     """
@@ -126,6 +147,7 @@ class CaseSerializer(serializers.ModelSerializer):
             "key_allegations",
             "timeline",
             "evidence",
+            "notes",
             "versionInfo",
             "created_at",
             "updated_at",
@@ -135,37 +157,13 @@ class CaseSerializer(serializers.ModelSerializer):
 
 class CaseDetailSerializer(CaseSerializer):
     """
-    Serializer for Case detail view with audit history.
+    Serializer for Case detail view.
 
-    Includes audit_history field containing versionInfo from all
-    published versions with the same case_id.
+    Inherits all fields from CaseSerializer including the `notes` field.
     """
 
-    audit_history = serializers.SerializerMethodField(
-        help_text="Complete audit trail showing all published versions of this case"
-    )
-
     class Meta(CaseSerializer.Meta):
-        fields = CaseSerializer.Meta.fields + ["audit_history"]
-
-    @extend_schema_field(OpenApiTypes.OBJECT)
-    def get_audit_history(self, obj):
-        """
-        Get versionInfo from all published versions with the same case_id.
-
-        Returns a list of versionInfo objects ordered by version (newest first).
-        """
-        all_versions = Case.objects.filter(
-            case_id=obj.case_id, state=CaseState.PUBLISHED
-        ).order_by("-version")
-
-        # Extract versionInfo from each version
-        audit_history = []
-        for version in all_versions:
-            if version.versionInfo:
-                audit_history.append(version.versionInfo)
-
-        return audit_history
+        pass
 
 
 class DocumentSourceSerializer(serializers.ModelSerializer):

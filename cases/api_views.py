@@ -4,9 +4,9 @@ API ViewSets for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
-from django.db.models import Max, Q
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -42,7 +42,8 @@ from .serializers import (
         description="""
         Retrieve a paginated list of published accountability cases.
         
-        Only cases with state=PUBLISHED and the highest version per case_id are returned.
+        Only cases with state=PUBLISHED are returned (plus IN_REVIEW when the
+        EXPOSE_CASES_IN_REVIEW feature flag is enabled).
         Results are ordered by creation date (newest first).
         
         **Filtering:**
@@ -90,15 +91,14 @@ from .serializers import (
         tags=["cases"],
     ),
     retrieve=extend_schema(
-        summary="Retrieve a case with audit history",
+        summary="Retrieve a case",
         description="""
         Retrieve detailed information about a specific published case.
         
-        This endpoint includes:
-        - Complete case data (title, description, allegations, evidence, timeline)
-        - Audit history showing all published versions of this case
+        This endpoint includes complete case data (title, description, allegations,
+        evidence, timeline) and any internal notes.
         
-        Only published cases are accessible through this endpoint.
+        Published and IN_REVIEW cases are accessible through this endpoint.
         """,
         tags=["cases"],
     ),
@@ -109,7 +109,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
     Provides:
     - List endpoint: GET /api/cases/
-    - Retrieve endpoint: GET /api/cases/{id}/ (includes audit history)
+    - Retrieve endpoint: GET /api/cases/{id}/
     - Patch endpoint: PATCH /api/cases/{id}/ (authenticated users only)
 
     Filtering:
@@ -119,8 +119,9 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     Search:
     - Full-text search across title, description, key_allegations
 
-    Only published cases (state=PUBLISHED) with the highest version
-    per case_id are accessible.
+    Only published cases (state=PUBLISHED) are accessible. IN_REVIEW cases are
+    also included when the EXPOSE_CASES_IN_REVIEW feature flag is enabled.
+    The detail endpoint always includes IN_REVIEW cases regardless of the flag.
     """
 
     serializer_class = CaseSerializer
@@ -138,58 +139,32 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         return super().get_permissions()
 
     def get_serializer_class(self):
-        """
-        Use CaseDetailSerializer for retrieve action to include audit history.
-        """
         if self.action == "retrieve":
             return CaseDetailSerializer
         return CaseSerializer
 
     def get_queryset(self):
         """
-        Return cases with the highest version per case_id.
+        Return cases filtered by state.
 
-        List endpoint: PUBLISHED cases only
-        Retrieve endpoint: PUBLISHED and IN_REVIEW cases
-
-        Implementation:
-        1. For retrieve action, return PUBLISHED and IN_REVIEW cases without version filtering
-        2. For list action, return only highest published version per case_id
-        3. For partial_update action, return all cases (permission check happens in the method)
+        List endpoint: PUBLISHED cases only (or + IN_REVIEW if feature flag is set).
+        Retrieve endpoint: PUBLISHED and IN_REVIEW cases (always, regardless of flag).
+        Partial update endpoint: all cases (permission check happens in partial_update).
         """
         if self.action == "partial_update":
             # PATCH endpoint: return all cases, permission check happens in partial_update method
             return Case.objects.all()
 
         if self.action == "retrieve":
-            # Detail endpoint: always show both PUBLISHED and IN_REVIEW cases
             queryset = Case.objects.filter(
                 state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
             )
-
         else:
-            # List endpoint: only published cases
-            allowed_cases = Case.objects.filter(state=CaseState.PUBLISHED)
-
-            # Find highest version for each case_id
-            highest_versions = allowed_cases.values("case_id").annotate(
-                max_version=Max("version")
-            )
-
-            # Build a list of (case_id, version) tuples for filtering
-            case_version_pairs = [
-                (item["case_id"], item["max_version"]) for item in highest_versions
-            ]
-
-            # Filter to only include cases matching (case_id, version) pairs
-            q_objects = Q()
-            for case_id, version in case_version_pairs:
-                q_objects |= Q(case_id=case_id, version=version)
-
-            if q_objects:
-                queryset = allowed_cases.filter(q_objects)
+            if settings.EXPOSE_CASES_IN_REVIEW:
+                allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
             else:
-                queryset = allowed_cases.none()
+                allowed_states = [CaseState.PUBLISHED]
+            queryset = Case.objects.filter(state__in=allowed_states)
 
         # Apply tag filtering if provided
         tags_param = self.request.query_params.get("tags", None)
@@ -393,10 +368,19 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return only sources referenced in evidence of published cases.
 
+        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes sources
+        from IN_REVIEW cases.
+
         A source is accessible if it's referenced in the evidence field
-        of at least one published case.
+        of at least one published case (or in-review case if flag is enabled).
         """
-        published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+        # Get all published cases (and in-review if feature flag is enabled)
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
+        else:
+            allowed_states = [CaseState.PUBLISHED]
+
+        published_cases = Case.objects.filter(state__in=allowed_states)
 
         # Extract all source_ids from evidence fields
         source_ids = set()
@@ -517,6 +501,9 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
 
         Note: Location entities are excluded from the list.
 
+        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes
+        entities from IN_REVIEW cases.
+
         Uses caching to avoid expensive queryset evaluation.
         """
         # For retrieve action, return all entities
@@ -531,7 +518,12 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
 
         if entity_ids is None:
             # Cache miss - compute entity IDs
-            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+            if settings.EXPOSE_CASES_IN_REVIEW:
+                allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            else:
+                allowed_states = [CaseState.PUBLISHED]
+
+            published_cases = Case.objects.filter(state__in=allowed_states)
 
             entity_ids = set()
             for case in published_cases:
