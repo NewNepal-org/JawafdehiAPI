@@ -1692,7 +1692,7 @@ optional = false
 python-versions = "^3.12"
 groups = ["main"]
 files = []
-develop = true
+develop = false
 
 [package.dependencies]
 beaker = "^1.13.0"
@@ -1714,8 +1714,10 @@ api = ["fastapi[standard] (>=0.120.4,<0.121.0)", "markdown (>=3.5.0,<4.0.0)", "p
 scraping = ["google-auth (>=2.23.0,<3.0.0)", "google-cloud-aiplatform (>=1.38.0,<2.0.0)", "wikipedia (>=1.4.0,<2.0.0)"]
 
 [package.source]
-type = "directory"
-url = "../nes"
+type = "git"
+url = "https://github.com/NewNepal-org/NepalEntityService.git"
+reference = "HEAD"
+resolved_reference = "1a7fb073af17a12002102ebb9c7a83b989e5ffcb"
 
 [[package]]
 name = "nepali-date-utils"
@@ -3514,4 +3516,4 @@ requests = ">=2.0.0,<3.0.0"
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "7560ae646f24af454ab8bd1199a31ca7866ce071523d56ecb07e17d96f3797e1"
+content-hash = "9e0cb9ee519916fb99a7b39630358d3d4f90f3a48002d5207a27b9b8c5e6e0f9"
