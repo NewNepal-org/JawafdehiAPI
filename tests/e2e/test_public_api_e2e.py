@@ -187,14 +187,14 @@ class TestPublicAPIWorkflows:
         E2E Test: Verify that only published cases are accessible through the API.
 
         Tests:
-        1. List endpoint only shows published cases (and IN_REVIEW if flag enabled)
+        1. List endpoint only shows published cases
         2. Draft cases are not accessible via detail endpoint
         3. Closed cases are not accessible via detail endpoint
-        4. In Review cases behavior depends on feature flag
+        4. In Review cases are accessible via detail endpoint but not list endpoint
 
         Validates: Requirements 6.1, 8.3
         """
-        # Test 1: List endpoint only shows published cases (and IN_REVIEW if flag enabled)
+        # Test 1: List endpoint only shows published cases
         response = self.client.get("/api/cases/")
         assert response.status_code == 200
 
@@ -219,7 +219,6 @@ class TestPublicAPIWorkflows:
         ), "Closed cases should not be accessible via detail endpoint"
 
         # Test 4: Create an IN_REVIEW case and verify accessibility
-        # Behavior depends on EXPOSE_CASES_IN_REVIEW feature flag
         in_review_case = create_case_with_entities(
             title="In Review Case",
             alleged_entities=["entity:person/test-person"],
@@ -230,9 +229,7 @@ class TestPublicAPIWorkflows:
             version=1,
         )
 
-        # IN_REVIEW cases are ALWAYS accessible via detail endpoint (regardless of feature flag)
-        from django.conf import settings
-
+        # IN_REVIEW cases are always accessible via detail endpoint
         response = self.client.get(f"/api/cases/{in_review_case.id}/")
         assert (
             response.status_code == 200
@@ -241,18 +238,12 @@ class TestPublicAPIWorkflows:
             response.data["state"] == CaseState.IN_REVIEW
         ), "State field should show IN_REVIEW"
 
-        # IN_REVIEW cases in list endpoint depend on flag
+        # IN_REVIEW cases should not appear in list endpoint
         response = self.client.get("/api/cases/")
         case_ids = [case["case_id"] for case in response.data.get("results", [])]
-
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            assert (
-                in_review_case.case_id in case_ids
-            ), "In Review cases should appear in list when flag is enabled"
-        else:
-            assert (
-                in_review_case.case_id not in case_ids
-            ), "In Review cases should not appear in list when flag is disabled"
+        assert (
+            in_review_case.case_id not in case_ids
+        ), "In Review cases should not appear in list"
 
     def test_audit_history_retrieval(self):
         """

@@ -85,7 +85,6 @@ Required environment variables:
 - `ALLOWED_HOSTS`: Comma-separated hostnames
 - `CSRF_TRUSTED_ORIGINS`: Comma-separated origins
 - `DATABASE_URL`: PostgreSQL connection string
-- `EXPOSE_CASES_IN_REVIEW`: Feature flag (True/False)
 
 ## Code Quality Standards
 

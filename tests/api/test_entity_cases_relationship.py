@@ -409,37 +409,9 @@ def test_entity_with_mix_of_published_and_draft_cases():
     assert len(response.data["related_cases"]) == 0
 
 
-# ============================================================================
-# Feature Flag Tests (EXPOSE_CASES_IN_REVIEW)
-# ============================================================================
-
-
 @pytest.mark.django_db
-def test_in_review_cases_included_when_feature_flag_enabled(settings):
-    """Test that IN_REVIEW cases are included when EXPOSE_CASES_IN_REVIEW is True."""
-    settings.EXPOSE_CASES_IN_REVIEW = True
-
-    entity = JawafEntity.objects.create(nes_id="entity:person/test")
-
-    case = Case.objects.create(
-        case_id="case-001",
-        state=CaseState.IN_REVIEW,
-        title="In Review Case",
-        description="Test",
-    )
-    case.alleged_entities.add(entity)
-
-    client = APIClient()
-    response = client.get(f"/api/entities/{entity.id}/")
-
-    assert response.status_code == 200
-    assert case.id in response.data["alleged_cases"]
-
-
-@pytest.mark.django_db
-def test_in_review_cases_excluded_when_feature_flag_disabled(settings):
-    """Test that IN_REVIEW cases are excluded when EXPOSE_CASES_IN_REVIEW is False."""
-    settings.EXPOSE_CASES_IN_REVIEW = False
+def test_in_review_cases_excluded_from_entity_detail_case_lists():
+    """Test that IN_REVIEW cases are excluded from related case lists."""
 
     entity = JawafEntity.objects.create(nes_id="entity:person/test")
 
