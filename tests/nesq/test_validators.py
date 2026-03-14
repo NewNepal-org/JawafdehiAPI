@@ -15,7 +15,7 @@ Tests cover:
 import pytest
 from pydantic import ValidationError
 
-from nesq.validators import AddNamePayload, validate_action_payload
+from nesq.validators import AddNamePayload, CreateEntityPayload, validate_action_payload
 from nes.core.models.base import NameKind
 
 # ============================================================================
@@ -249,12 +249,20 @@ class TestValidateActionPayload:
             )
 
     def test_create_entity_action_unsupported(self):
-        """validate_action_payload raises ValueError for CREATE_ENTITY (not in MVP)."""
-        with pytest.raises(ValueError, match="not supported"):
-            validate_action_payload(
-                action="CREATE_ENTITY",
-                payload={},
-            )
+        """validate_action_payload now supports CREATE_ENTITY."""
+        # This test is updated to reflect CREATE_ENTITY support
+        result = validate_action_payload(
+            action="CREATE_ENTITY",
+            payload={
+                "entity_data": {
+                    "type": "person",
+                    "slug": "test-person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                },
+                "author_id": "jawafdehi:test-user",
+            },
+        )
+        assert isinstance(result, CreateEntityPayload)
 
     def test_update_entity_action_unsupported(self):
         """validate_action_payload raises ValueError for UPDATE_ENTITY (not in MVP)."""
@@ -270,4 +278,292 @@ class TestValidateActionPayload:
             validate_action_payload(
                 action="DELETE_ENTITY",
                 payload={},
+            )
+
+
+# ============================================================================
+# CreateEntityPayload — Valid payloads
+# ============================================================================
+
+
+class TestCreateEntityPayloadValid:
+    """Tests for CreateEntityPayload with valid inputs."""
+
+    def test_valid_person_minimal(self):
+        """CreateEntityPayload accepts minimal person entity data."""
+        payload = CreateEntityPayload(
+            entity_data={
+                "type": "person",
+                "slug": "sher-bahadur-deuba",
+                "names": [
+                    {
+                        "kind": "PRIMARY",
+                        "en": {"full": "Sher Bahadur Deuba"},
+                        "ne": {"full": "शेर बहादुर देउबा"},
+                    }
+                ],
+            },
+            author_id="jawafdehi:contributor",
+        )
+        assert payload.entity_data["type"] == "person"
+        assert payload.entity_data["slug"] == "sher-bahadur-deuba"
+        assert len(payload.entity_data["names"]) == 1
+        assert payload.author_id == "jawafdehi:contributor"
+
+    def test_valid_person_with_details(self):
+        """CreateEntityPayload accepts person with personal_details."""
+        payload = CreateEntityPayload(
+            entity_data={
+                "type": "person",
+                "slug": "test-person",
+                "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                "tags": ["politician", "test"],
+                "personal_details": {
+                    "gender": "male",
+                    "birth_date": "1990-01-01",
+                },
+            },
+            author_id="jawafdehi:test",
+        )
+        assert payload.entity_data["personal_details"]["gender"] == "male"
+        assert payload.entity_data["tags"] == ["politician", "test"]
+
+    def test_valid_organization_with_subtype(self):
+        """CreateEntityPayload accepts organization with subtype."""
+        payload = CreateEntityPayload(
+            entity_data={
+                "type": "organization",
+                "sub_type": "political_party",
+                "slug": "nepali-congress",
+                "names": [
+                    {
+                        "kind": "PRIMARY",
+                        "en": {"full": "Nepali Congress"},
+                        "ne": {"full": "नेपाली कांग्रेस"},
+                    }
+                ],
+            },
+            author_id="jawafdehi:admin",
+        )
+        assert payload.entity_data["type"] == "organization"
+        assert payload.entity_data["sub_type"] == "political_party"
+
+    def test_valid_with_multiple_names(self):
+        """CreateEntityPayload accepts multiple names including PRIMARY."""
+        payload = CreateEntityPayload(
+            entity_data={
+                "type": "person",
+                "slug": "test-person",
+                "names": [
+                    {"kind": "PRIMARY", "en": {"full": "Test Person"}},
+                    {"kind": "ALIAS", "en": {"full": "T.P."}},
+                    {"kind": "ALTERNATE", "ne": {"full": "टेस्ट व्यक्ति"}},
+                ],
+            },
+            author_id="jawafdehi:test",
+        )
+        assert len(payload.entity_data["names"]) == 3
+
+    def test_valid_with_optional_fields(self):
+        """CreateEntityPayload accepts all optional entity fields."""
+        payload = CreateEntityPayload(
+            entity_data={
+                "type": "person",
+                "slug": "test-person",
+                "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                "tags": ["test", "example"],
+                "short_description": {"en": {"value": "A test person"}},
+                "description": {"en": {"value": "Detailed description"}},
+                "contacts": [{"type": "EMAIL", "value": "test@example.com"}],
+                "identifiers": [
+                    {
+                        "scheme": "wikipedia",
+                        "value": "Test_Person",
+                        "url": "https://en.wikipedia.org/wiki/Test_Person",
+                    }
+                ],
+                "attributes": {"custom_field": "custom_value"},
+                "pictures": [
+                    {
+                        "type": "thumb",
+                        "url": "https://example.com/thumb.jpg",
+                        "width": 100,
+                        "height": 100,
+                    }
+                ],
+            },
+            author_id="jawafdehi:test",
+        )
+        assert payload.entity_data["tags"] == ["test", "example"]
+        assert payload.entity_data["contacts"] is not None
+        assert len(payload.entity_data["contacts"]) == 1
+        assert payload.entity_data["identifiers"] is not None
+        assert payload.entity_data["attributes"] == {"custom_field": "custom_value"}
+
+    def test_valid_location_entity(self):
+        """CreateEntityPayload accepts location entity type."""
+        payload = CreateEntityPayload(
+            entity_data={
+                "type": "location",
+                "sub_type": "district",
+                "slug": "kathmandu",
+                "names": [
+                    {
+                        "kind": "PRIMARY",
+                        "en": {"full": "Kathmandu"},
+                        "ne": {"full": "काठमाडौं"},
+                    }
+                ],
+            },
+            author_id="jawafdehi:admin",
+        )
+        assert payload.entity_data["type"] == "location"
+        assert payload.entity_data["sub_type"] == "district"
+
+
+# ============================================================================
+# CreateEntityPayload — Invalid payloads
+# ============================================================================
+
+
+class TestCreateEntityPayloadInvalid:
+    """Tests for CreateEntityPayload with invalid inputs."""
+
+    def test_missing_primary_name(self):
+        """CreateEntityPayload rejects entity_data without PRIMARY name."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateEntityPayload(
+                entity_data={
+                    "type": "person",
+                    "slug": "test-person",
+                    "names": [{"kind": "ALIAS", "en": {"full": "Test Alias"}}],
+                },
+                author_id="jawafdehi:test",
+            )
+        errors = exc_info.value.errors()
+        assert any("PRIMARY" in str(e) for e in errors)
+
+    def test_missing_type(self):
+        """CreateEntityPayload rejects entity_data without type field."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateEntityPayload(
+                entity_data={
+                    "slug": "test-person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                },
+                author_id="jawafdehi:test",
+            )
+        errors = exc_info.value.errors()
+        assert any("type" in str(e).lower() for e in errors)
+
+    def test_missing_slug(self):
+        """CreateEntityPayload rejects entity_data without slug."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateEntityPayload(
+                entity_data={
+                    "type": "person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                },
+                author_id="jawafdehi:test",
+            )
+        errors = exc_info.value.errors()
+        assert any("slug" in str(e).lower() for e in errors)
+
+    def test_missing_names(self):
+        """CreateEntityPayload rejects entity_data without names."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateEntityPayload(
+                entity_data={
+                    "type": "person",
+                    "slug": "test-person",
+                },
+                author_id="jawafdehi:test",
+            )
+        errors = exc_info.value.errors()
+        assert any("names" in str(e).lower() for e in errors)
+
+    def test_empty_names_list(self):
+        """CreateEntityPayload rejects entity_data with empty names list."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateEntityPayload(
+                entity_data={
+                    "type": "person",
+                    "slug": "test-person",
+                    "names": [],
+                },
+                author_id="jawafdehi:test",
+            )
+        errors = exc_info.value.errors()
+        assert any("names" in str(e).lower() for e in errors)
+
+    def test_missing_entity_data(self):
+        """CreateEntityPayload rejects payload without entity_data."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateEntityPayload(
+                author_id="jawafdehi:test",
+            )
+        errors = exc_info.value.errors()
+        assert any("entity_data" in str(e["loc"]) for e in errors)
+
+    def test_missing_author_id(self):
+        """CreateEntityPayload rejects payload without author_id."""
+        with pytest.raises(ValidationError) as exc_info:
+            CreateEntityPayload(
+                entity_data={
+                    "type": "person",
+                    "slug": "test-person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                },
+            )
+        errors = exc_info.value.errors()
+        assert any("author_id" in str(e["loc"]) for e in errors)
+
+    def test_invalid_entity_type(self):
+        """CreateEntityPayload rejects invalid entity_type value."""
+        with pytest.raises(ValidationError):
+            CreateEntityPayload(
+                entity_data={
+                    "type": "invalid_type",
+                    "slug": "test-person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                },
+                author_id="jawafdehi:test",
+            )
+
+    def test_invalid_entity_subtype(self):
+        """CreateEntityPayload rejects invalid entity_subtype value."""
+        with pytest.raises(ValidationError):
+            CreateEntityPayload(
+                entity_data={
+                    "type": "person",
+                    "sub_type": "invalid_subtype",
+                    "slug": "test-person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                },
+                author_id="jawafdehi:test",
+            )
+
+    def test_invalid_slug_format(self):
+        """CreateEntityPayload rejects invalid slug format (uppercase, spaces)."""
+        with pytest.raises(ValidationError):
+            CreateEntityPayload(
+                entity_data={
+                    "type": "person",
+                    "slug": "Invalid Slug With Spaces",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                },
+                author_id="jawafdehi:test",
+            )
+
+    def test_invalid_contact_format(self):
+        """CreateEntityPayload rejects invalid contact data."""
+        with pytest.raises(ValidationError):
+            CreateEntityPayload(
+                entity_data={
+                    "type": "person",
+                    "slug": "test-person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                    "contacts": [{"type": "EMAIL", "value": "not-an-email"}],
+                },
+                author_id="jawafdehi:test",
             )

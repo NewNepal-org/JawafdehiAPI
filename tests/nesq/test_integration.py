@@ -402,16 +402,23 @@ class TestErrorHandling:
 class TestUnsupportedActions:
     """Test that unsupported actions are rejected at the API level."""
 
-    def test_create_entity_rejected(self, contributor_client):
-        """CREATE_ENTITY returns 400 and creates no queue item."""
+    def test_create_entity_now_supported(self, contributor_client):
+        """CREATE_ENTITY is now supported and creates a queue item."""
         data = {
             "action": "CREATE_ENTITY",
-            "payload": {"name": "Test"},
-            "change_description": "Trying CREATE_ENTITY",
+            "payload": {
+                "entity_data": {
+                    "type": "person",
+                    "slug": "test-person",
+                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
+                },
+                "author_id": "jawafdehi:test",
+            },
+            "change_description": "Creating new entity via CREATE_ENTITY",
         }
         response = contributor_client.post(SUBMIT_URL, data=data, format="json")
-        assert response.status_code == 400
-        assert NESQueueItem.objects.count() == 0
+        assert response.status_code == 201
+        assert NESQueueItem.objects.count() == 1
 
     def test_update_entity_rejected(self, contributor_client):
         """UPDATE_ENTITY returns 400 and creates no queue item."""

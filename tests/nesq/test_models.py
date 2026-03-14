@@ -75,9 +75,9 @@ class TestQueueAction:
         assert ("ADD_NAME", "Add Name") in QueueAction.choices
 
     def test_mvp_has_only_add_name(self):
-        """MVP should only have ADD_NAME — no CREATE_ENTITY or UPDATE_ENTITY."""
+        """MVP now includes ADD_NAME and CREATE_ENTITY."""
         values = [choice[0] for choice in QueueAction.choices]
-        assert values == ["ADD_NAME"]
+        assert values == ["ADD_NAME", "CREATE_ENTITY"]
 
 
 # ============================================================================

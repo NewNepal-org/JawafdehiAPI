@@ -22,8 +22,8 @@ class QueueAction(models.TextChoices):
     """
 
     ADD_NAME = "ADD_NAME", "Add Name"
+    CREATE_ENTITY = "CREATE_ENTITY", "Create Entity"
     # Future actions (not in MVP):
-    # CREATE_ENTITY = "CREATE_ENTITY", "Create Entity"
     # UPDATE_ENTITY = "UPDATE_ENTITY", "Update Entity"
 
 
