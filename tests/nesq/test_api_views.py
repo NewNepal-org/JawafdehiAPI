@@ -270,13 +270,24 @@ class TestUnsupportedActions:
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
-                "author_id": "jawafdehi:test",
             },
             "change_description": "Creating new entity",
         }
         response = contributor_client.post(SUBMIT_URL, data=data, format="json")
         # Should succeed with 201 (CREATE_ENTITY is now supported)
         assert response.status_code == 201
+
+        # Verify the response contains expected fields
+        resp_data = response.json()
+        assert "id" in resp_data
+        assert resp_data["action"] == "CREATE_ENTITY"
+        assert resp_data["status"] == "PENDING"
+
+        # Verify the stored queue item
+        item = NESQueueItem.objects.get(pk=resp_data["id"])
+        assert item.action == "CREATE_ENTITY"
+        assert item.status == QueueStatus.PENDING
+        assert item.payload["entity_data"]["type"] == "person"
 
     def test_update_entity_returns_400(self, contributor_client):
         """UPDATE_ENTITY action is rejected with 400 (not supported yet).

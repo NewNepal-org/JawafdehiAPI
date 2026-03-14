@@ -12,7 +12,7 @@ See .kiro/specs/nes-queue-system/ for full specification.
 
 from typing import Any, Dict
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from nes.core.identifiers.validators import validate_entity_id
 from nes.core.models.base import Name
@@ -101,12 +101,12 @@ class CreateEntityPayload(BaseModel):
                 },
                 "version_summary": {...},
                 "created_at": "2024-01-01T00:00:00Z"
-            },
-            "author_id": "jawafdehi:contributor_user"
+            }
         }
 
     Note: The entity_data must include 'type' field. The 'version_summary'
     and 'created_at' fields will be added by the processor if not present.
+    The author_id is derived from the authenticated user by the processor.
     """
 
     entity_data: Dict[str, Any] = Field(
@@ -116,10 +116,6 @@ class CreateEntityPayload(BaseModel):
             "Will be validated against the appropriate NES entity model "
             "(Person, Organization, Location, Project)."
         ),
-    )
-    author_id: str = Field(
-        ...,
-        description="Author ID in the format 'jawafdehi:username'.",
     )
 
     @field_validator("entity_data")
@@ -156,8 +152,8 @@ class CreateEntityPayload(BaseModel):
         # Validate using the appropriate NES entity model
         try:
             entity_from_dict(validation_data)
-        except Exception as e:
-            raise ValueError(f"Invalid entity_data: {str(e)}")
+        except (ValueError, ValidationError) as e:
+            raise ValueError(f"Invalid entity_data: {e}") from e
 
         return v
 

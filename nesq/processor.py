@@ -220,8 +220,34 @@ class QueueProcessor:
         augmented_description = _augment_change_description(item)
         author_id = _derive_author_id(item)
 
-        # Extract payload fields
-        entity_data = item.payload["entity_data"]
+        # Extract payload fields and enrich with missing metadata
+        entity_data = item.payload["entity_data"].copy()
+
+        # Construct entity ID from type and slug to use in version_summary
+        entity_type = entity_data["type"]
+        entity_slug = entity_data["slug"]
+        sub_type = entity_data.get("sub_type")
+
+        # Build entity ID following NES format: entity:{type}[/{sub_type}]/{slug}
+        if sub_type:
+            entity_id = f"entity:{entity_type}/{sub_type}/{entity_slug}"
+        else:
+            entity_id = f"entity:{entity_type}/{entity_slug}"
+
+        # Add version_summary if missing
+        if "version_summary" not in entity_data:
+            entity_data["version_summary"] = {
+                "entity_or_relationship_id": entity_id,
+                "type": "ENTITY",
+                "version_number": 1,
+                "author": {"slug": author_id.split(":")[-1]},
+                "change_description": augmented_description,
+                "created_at": timezone.now().isoformat(),
+            }
+
+        # Add created_at if missing
+        if "created_at" not in entity_data:
+            entity_data["created_at"] = timezone.now().isoformat()
 
         # Call PublicationService.create_entity()
         # The entity_data already contains 'type' and optionally 'sub_type'
@@ -263,6 +289,11 @@ def _derive_author_id(item: NESQueueItem) -> str:
     slug = re.sub(r"[^a-z0-9]", "-", slug)
     slug = re.sub(r"-{2,}", "-", slug)
     slug = slug.strip("-")
+
+    # If sanitization results in empty slug, use user ID as fallback
+    if not slug:
+        slug = f"user-{item.submitted_by.id}"
+
     return f"jawafdehi:{slug}"
 
 

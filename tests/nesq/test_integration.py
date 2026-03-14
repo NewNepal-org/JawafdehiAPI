@@ -412,7 +412,6 @@ class TestUnsupportedActions:
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
-                "author_id": "jawafdehi:test",
             },
             "change_description": "Creating new entity via CREATE_ENTITY",
         }

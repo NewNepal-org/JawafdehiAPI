@@ -248,7 +248,7 @@ class TestValidateActionPayload:
                 payload={"entity_id": "bad-id"},
             )
 
-    def test_create_entity_action_unsupported(self):
+    def test_validate_action_payload_create_entity_support(self):
         """validate_action_payload now supports CREATE_ENTITY."""
         # This test is updated to reflect CREATE_ENTITY support
         result = validate_action_payload(
@@ -259,7 +259,6 @@ class TestValidateActionPayload:
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
-                "author_id": "jawafdehi:test-user",
             },
         )
         assert isinstance(result, CreateEntityPayload)
@@ -303,12 +302,10 @@ class TestCreateEntityPayloadValid:
                     }
                 ],
             },
-            author_id="jawafdehi:contributor",
         )
         assert payload.entity_data["type"] == "person"
         assert payload.entity_data["slug"] == "sher-bahadur-deuba"
         assert len(payload.entity_data["names"]) == 1
-        assert payload.author_id == "jawafdehi:contributor"
 
     def test_valid_person_with_details(self):
         """CreateEntityPayload accepts person with personal_details."""
@@ -323,7 +320,6 @@ class TestCreateEntityPayloadValid:
                     "birth_date": "1990-01-01",
                 },
             },
-            author_id="jawafdehi:test",
         )
         assert payload.entity_data["personal_details"]["gender"] == "male"
         assert payload.entity_data["tags"] == ["politician", "test"]
@@ -343,7 +339,6 @@ class TestCreateEntityPayloadValid:
                     }
                 ],
             },
-            author_id="jawafdehi:admin",
         )
         assert payload.entity_data["type"] == "organization"
         assert payload.entity_data["sub_type"] == "political_party"
@@ -360,7 +355,6 @@ class TestCreateEntityPayloadValid:
                     {"kind": "ALTERNATE", "ne": {"full": "टेस्ट व्यक्ति"}},
                 ],
             },
-            author_id="jawafdehi:test",
         )
         assert len(payload.entity_data["names"]) == 3
 
@@ -392,7 +386,6 @@ class TestCreateEntityPayloadValid:
                     }
                 ],
             },
-            author_id="jawafdehi:test",
         )
         assert payload.entity_data["tags"] == ["test", "example"]
         assert payload.entity_data["contacts"] is not None
@@ -415,7 +408,6 @@ class TestCreateEntityPayloadValid:
                     }
                 ],
             },
-            author_id="jawafdehi:admin",
         )
         assert payload.entity_data["type"] == "location"
         assert payload.entity_data["sub_type"] == "district"
@@ -438,7 +430,6 @@ class TestCreateEntityPayloadInvalid:
                     "slug": "test-person",
                     "names": [{"kind": "ALIAS", "en": {"full": "Test Alias"}}],
                 },
-                author_id="jawafdehi:test",
             )
         errors = exc_info.value.errors()
         assert any("PRIMARY" in str(e) for e in errors)
@@ -451,7 +442,6 @@ class TestCreateEntityPayloadInvalid:
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
-                author_id="jawafdehi:test",
             )
         errors = exc_info.value.errors()
         assert any("type" in str(e).lower() for e in errors)
@@ -464,7 +454,6 @@ class TestCreateEntityPayloadInvalid:
                     "type": "person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
-                author_id="jawafdehi:test",
             )
         errors = exc_info.value.errors()
         assert any("slug" in str(e).lower() for e in errors)
@@ -477,7 +466,6 @@ class TestCreateEntityPayloadInvalid:
                     "type": "person",
                     "slug": "test-person",
                 },
-                author_id="jawafdehi:test",
             )
         errors = exc_info.value.errors()
         assert any("names" in str(e).lower() for e in errors)
@@ -491,7 +479,6 @@ class TestCreateEntityPayloadInvalid:
                     "slug": "test-person",
                     "names": [],
                 },
-                author_id="jawafdehi:test",
             )
         errors = exc_info.value.errors()
         assert any("names" in str(e).lower() for e in errors)
@@ -499,24 +486,9 @@ class TestCreateEntityPayloadInvalid:
     def test_missing_entity_data(self):
         """CreateEntityPayload rejects payload without entity_data."""
         with pytest.raises(ValidationError) as exc_info:
-            CreateEntityPayload(
-                author_id="jawafdehi:test",
-            )
+            CreateEntityPayload()
         errors = exc_info.value.errors()
         assert any("entity_data" in str(e["loc"]) for e in errors)
-
-    def test_missing_author_id(self):
-        """CreateEntityPayload rejects payload without author_id."""
-        with pytest.raises(ValidationError) as exc_info:
-            CreateEntityPayload(
-                entity_data={
-                    "type": "person",
-                    "slug": "test-person",
-                    "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
-                },
-            )
-        errors = exc_info.value.errors()
-        assert any("author_id" in str(e["loc"]) for e in errors)
 
     def test_invalid_entity_type(self):
         """CreateEntityPayload rejects invalid entity_type value."""
@@ -527,7 +499,6 @@ class TestCreateEntityPayloadInvalid:
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
-                author_id="jawafdehi:test",
             )
 
     def test_invalid_entity_subtype(self):
@@ -540,7 +511,6 @@ class TestCreateEntityPayloadInvalid:
                     "slug": "test-person",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
-                author_id="jawafdehi:test",
             )
 
     def test_invalid_slug_format(self):
@@ -552,7 +522,6 @@ class TestCreateEntityPayloadInvalid:
                     "slug": "Invalid Slug With Spaces",
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                 },
-                author_id="jawafdehi:test",
             )
 
     def test_invalid_contact_format(self):
@@ -565,5 +534,4 @@ class TestCreateEntityPayloadInvalid:
                     "names": [{"kind": "PRIMARY", "en": {"full": "Test Person"}}],
                     "contacts": [{"type": "EMAIL", "value": "not-an-email"}],
                 },
-                author_id="jawafdehi:test",
             )

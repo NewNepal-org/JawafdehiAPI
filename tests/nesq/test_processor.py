@@ -596,7 +596,20 @@ class TestProcessItemCreateEntitySuccess:
         processor.publication_service.create_entity.assert_called_once()
         call_kwargs = processor.publication_service.create_entity.call_args.kwargs
 
-        assert call_kwargs["entity_data"] == VALID_CREATE_ENTITY_PAYLOAD["entity_data"]
+        # Verify entity_data contains original data plus enriched fields
+        entity_data = call_kwargs["entity_data"]
+        for key, value in VALID_CREATE_ENTITY_PAYLOAD["entity_data"].items():
+            assert entity_data[key] == value
+        # Verify enriched fields were added
+        assert "version_summary" in entity_data
+        assert "created_at" in entity_data
+        # Verify version_summary has correct entity_id
+        assert (
+            entity_data["version_summary"]["entity_or_relationship_id"]
+            == "entity:person/test-person"
+        )
+        assert entity_data["version_summary"]["type"] == "ENTITY"
+        assert entity_data["version_summary"]["version_number"] == 1
         assert call_kwargs["author_id"] == "jawafdehi:sita-ce2"
         assert "(submitted by sita_ce2)" in call_kwargs["change_description"]
 
