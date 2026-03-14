@@ -4,7 +4,6 @@ API ViewSets for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
-from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.db.models import Max, Q
@@ -135,12 +134,12 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return cases with the highest version per case_id.
 
-        List endpoint: PUBLISHED cases only (respects feature flag)
-        Retrieve endpoint: PUBLISHED and IN_REVIEW cases (always, regardless of feature flag)
+        List endpoint: PUBLISHED cases only
+        Retrieve endpoint: PUBLISHED and IN_REVIEW cases
 
         Implementation:
         1. For retrieve action, return PUBLISHED and IN_REVIEW cases without version filtering
-        2. For list action, determine allowed states based on feature flag and return only highest version per case_id
+        2. For list action, return only highest published version per case_id
         """
         if self.action == "retrieve":
             # Detail endpoint: always show both PUBLISHED and IN_REVIEW cases
@@ -149,13 +148,8 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         else:
-            # List endpoint: respect feature flag for which states to include
-            if settings.EXPOSE_CASES_IN_REVIEW:
-                allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            else:
-                allowed_states = [CaseState.PUBLISHED]
-
-            allowed_cases = Case.objects.filter(state__in=allowed_states)
+            # List endpoint: only published cases
+            allowed_cases = Case.objects.filter(state=CaseState.PUBLISHED)
 
             # Find highest version for each case_id
             highest_versions = allowed_cases.values("case_id").annotate(
@@ -254,19 +248,10 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return only sources referenced in evidence of published cases.
 
-        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes sources
-        from IN_REVIEW cases.
-
         A source is accessible if it's referenced in the evidence field
-        of at least one published case (or in-review case if flag is enabled).
+        of at least one published case.
         """
-        # Get all published cases (and in-review if feature flag is enabled)
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
-        else:
-            allowed_states = [CaseState.PUBLISHED]
-
-        published_cases = Case.objects.filter(state__in=allowed_states)
+        published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
 
         # Extract all source_ids from evidence fields
         source_ids = set()
@@ -387,9 +372,6 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
 
         Note: Location entities are excluded from the list.
 
-        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes
-        entities from IN_REVIEW cases.
-
         Uses caching to avoid expensive queryset evaluation.
         """
         # For retrieve action, return all entities
@@ -404,12 +386,7 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
 
         if entity_ids is None:
             # Cache miss - compute entity IDs
-            if settings.EXPOSE_CASES_IN_REVIEW:
-                allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            else:
-                allowed_states = [CaseState.PUBLISHED]
-
-            published_cases = Case.objects.filter(state__in=allowed_states)
+            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
 
             entity_ids = set()
             for case in published_cases:

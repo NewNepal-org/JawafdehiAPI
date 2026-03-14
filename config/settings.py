@@ -235,9 +235,6 @@ NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
 # Points to the local clone of the nes-db repository.
 NES_DB_PATH = os.getenv("NES_DB_PATH")
 
-# Feature Flags
-EXPOSE_CASES_IN_REVIEW = os.getenv("EXPOSE_CASES_IN_REVIEW", "False") == "True"
-
 # Cache Configuration
 CACHES = {
     "default": {

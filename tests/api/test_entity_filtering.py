@@ -181,54 +181,9 @@ def test_entity_in_both_alleged_and_related_appears_once():
     assert entity_count == 1
 
 
-# ============================================================================
-# Feature Flag Tests
-# ============================================================================
-
-
 @pytest.mark.django_db
-def test_entity_list_with_expose_cases_in_review_flag(settings):
-    """Test that IN_REVIEW cases are included when feature flag is enabled."""
-    settings.EXPOSE_CASES_IN_REVIEW = True
-
-    entity_in_review = JawafEntity.objects.create(nes_id="entity:person/in-review")
-    entity_in_published = JawafEntity.objects.create(
-        nes_id="entity:person/in-published"
-    )
-
-    # Create IN_REVIEW case
-    review_case = Case.objects.create(
-        case_id="case-001",
-        state=CaseState.IN_REVIEW,
-        title="Review Case",
-        description="Test",
-    )
-    review_case.alleged_entities.add(entity_in_review)
-
-    # Create PUBLISHED case
-    published_case = Case.objects.create(
-        case_id="case-002",
-        state=CaseState.PUBLISHED,
-        title="Published Case",
-        description="Test",
-    )
-    published_case.alleged_entities.add(entity_in_published)
-
-    client = APIClient()
-    response = client.get("/api/entities/")
-
-    assert response.status_code == 200
-    entity_ids = [e["id"] for e in response.data["results"]]
-
-    # Both entities should be returned
-    assert entity_in_review.id in entity_ids
-    assert entity_in_published.id in entity_ids
-
-
-@pytest.mark.django_db
-def test_entity_list_without_expose_cases_in_review_flag(settings):
-    """Test that IN_REVIEW cases are excluded when feature flag is disabled."""
-    settings.EXPOSE_CASES_IN_REVIEW = False
+def test_entity_list_excludes_in_review_cases():
+    """Test that IN_REVIEW cases are excluded from public entity list."""
 
     entity_in_review = JawafEntity.objects.create(nes_id="entity:person/in-review")
     entity_in_published = JawafEntity.objects.create(

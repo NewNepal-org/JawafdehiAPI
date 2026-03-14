@@ -25,16 +25,10 @@ hypothesis_settings.load_profile("default")
 
 
 @pytest.fixture(autouse=True)
-def reset_feature_flags(settings):
+def configure_test_settings(settings):
     """
-    Reset all feature flags to their default values for each test.
-
-    This ensures tests run with predictable, default behavior unless
-    explicitly overridden within a specific test.
+    Configure stable test settings for each test run.
     """
-    # Reset EXPOSE_CASES_IN_REVIEW to default (False)
-    settings.EXPOSE_CASES_IN_REVIEW = False
-
     # Disable static file manifest checking for tests
     # This prevents errors when static files haven't been collected
     settings.STORAGES = {

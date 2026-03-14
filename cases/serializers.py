@@ -5,7 +5,6 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 from rest_framework import serializers
-from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from drf_spectacular.types import OpenApiTypes
 from .models import Case, DocumentSource, JawafEntity, CaseState, Feedback
@@ -32,16 +31,9 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is alleged.
 
-        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
+        Only includes PUBLISHED cases.
         """
-        from django.conf import settings
-
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            cases = obj.cases_as_alleged.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            )
-        else:
-            cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
+        cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
 
         return list(cases.values_list("id", flat=True))
 
@@ -50,38 +42,22 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is related or a location.
 
-        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
+        Only includes PUBLISHED cases.
         Excludes cases where entity is already alleged (to avoid duplicates).
         """
-        from django.conf import settings
-
         # Get alleged case IDs to exclude
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            alleged_case_ids = obj.cases_as_alleged.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            ).values_list("id", flat=True)
-        else:
-            alleged_case_ids = obj.cases_as_alleged.filter(
-                state=CaseState.PUBLISHED
-            ).values_list("id", flat=True)
+        alleged_case_ids = obj.cases_as_alleged.filter(
+            state=CaseState.PUBLISHED
+        ).values_list("id", flat=True)
 
         # Get related and location cases
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            related_cases = obj.cases_as_related.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            ).exclude(id__in=alleged_case_ids)
+        related_cases = obj.cases_as_related.filter(state=CaseState.PUBLISHED).exclude(
+            id__in=alleged_case_ids
+        )
 
-            location_cases = obj.cases_as_location.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            ).exclude(id__in=alleged_case_ids)
-        else:
-            related_cases = obj.cases_as_related.filter(
-                state=CaseState.PUBLISHED
-            ).exclude(id__in=alleged_case_ids)
-
-            location_cases = obj.cases_as_location.filter(
-                state=CaseState.PUBLISHED
-            ).exclude(id__in=alleged_case_ids)
+        location_cases = obj.cases_as_location.filter(
+            state=CaseState.PUBLISHED
+        ).exclude(id__in=alleged_case_ids)
 
         # Combine and deduplicate
         case_ids = set(related_cases.values_list("id", flat=True))
@@ -177,21 +153,11 @@ class CaseDetailSerializer(CaseSerializer):
         """
         Get versionInfo from all published versions with the same case_id.
 
-        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes IN_REVIEW versions.
-
         Returns a list of versionInfo objects ordered by version (newest first).
         """
-        # Get all published versions with the same case_id
-        # (and in-review if feature flag is enabled)
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            all_versions = Case.objects.filter(
-                case_id=obj.case_id,
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
-            ).order_by("-version")
-        else:
-            all_versions = Case.objects.filter(
-                case_id=obj.case_id, state=CaseState.PUBLISHED
-            ).order_by("-version")
+        all_versions = Case.objects.filter(
+            case_id=obj.case_id, state=CaseState.PUBLISHED
+        ).order_by("-version")
 
         # Extract versionInfo from each version
         audit_history = []
