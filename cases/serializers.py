@@ -31,16 +31,9 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is alleged.
 
-        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
+        Only includes PUBLISHED cases.
         """
-        from django.conf import settings
-
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            cases = obj.cases_as_alleged.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            )
-        else:
-            cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
+        cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
 
         return list(cases.values_list("id", flat=True))
 
@@ -49,38 +42,22 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is related or a location.
 
-        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
+        Only includes PUBLISHED cases.
         Excludes cases where entity is already alleged (to avoid duplicates).
         """
-        from django.conf import settings
-
         # Get alleged case IDs to exclude
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            alleged_case_ids = obj.cases_as_alleged.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            ).values_list("id", flat=True)
-        else:
-            alleged_case_ids = obj.cases_as_alleged.filter(
-                state=CaseState.PUBLISHED
-            ).values_list("id", flat=True)
+        alleged_case_ids = obj.cases_as_alleged.filter(
+            state=CaseState.PUBLISHED
+        ).values_list("id", flat=True)
 
         # Get related and location cases
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            related_cases = obj.cases_as_related.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            ).exclude(id__in=alleged_case_ids)
+        related_cases = obj.cases_as_related.filter(state=CaseState.PUBLISHED).exclude(
+            id__in=alleged_case_ids
+        )
 
-            location_cases = obj.cases_as_location.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            ).exclude(id__in=alleged_case_ids)
-        else:
-            related_cases = obj.cases_as_related.filter(
-                state=CaseState.PUBLISHED
-            ).exclude(id__in=alleged_case_ids)
-
-            location_cases = obj.cases_as_location.filter(
-                state=CaseState.PUBLISHED
-            ).exclude(id__in=alleged_case_ids)
+        location_cases = obj.cases_as_location.filter(
+            state=CaseState.PUBLISHED
+        ).exclude(id__in=alleged_case_ids)
 
         # Combine and deduplicate
         case_ids = set(related_cases.values_list("id", flat=True))

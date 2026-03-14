@@ -4,7 +4,6 @@ API ViewSets for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
-from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.utils import timezone
@@ -42,8 +41,7 @@ from .serializers import (
         description="""
         Retrieve a paginated list of published accountability cases.
         
-        Only cases with state=PUBLISHED are returned (plus IN_REVIEW when the
-        EXPOSE_CASES_IN_REVIEW feature flag is enabled).
+        Only cases with state=PUBLISHED are returned.
         Results are ordered by creation date (newest first).
         
         **Filtering:**
@@ -119,9 +117,8 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     Search:
     - Full-text search across title, description, key_allegations
 
-    Only published cases (state=PUBLISHED) are accessible. IN_REVIEW cases are
-    also included when the EXPOSE_CASES_IN_REVIEW feature flag is enabled.
-    The detail endpoint always includes IN_REVIEW cases regardless of the flag.
+    Only published cases (state=PUBLISHED) are accessible.
+    The detail endpoint also includes IN_REVIEW cases.
     """
 
     serializer_class = CaseSerializer
@@ -147,8 +144,8 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return cases filtered by state.
 
-        List endpoint: PUBLISHED cases only (or + IN_REVIEW if feature flag is set).
-        Retrieve endpoint: PUBLISHED and IN_REVIEW cases (always, regardless of flag).
+        List endpoint: PUBLISHED cases only.
+        Retrieve endpoint: PUBLISHED and IN_REVIEW cases.
         Partial update endpoint: all cases (permission check happens in partial_update).
         """
         if self.action == "partial_update":
@@ -160,11 +157,8 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
             )
         else:
-            if settings.EXPOSE_CASES_IN_REVIEW:
-                allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            else:
-                allowed_states = [CaseState.PUBLISHED]
-            queryset = Case.objects.filter(state__in=allowed_states)
+            # List endpoint: only published cases
+            queryset = Case.objects.filter(state=CaseState.PUBLISHED)
 
         # Apply tag filtering if provided
         tags_param = self.request.query_params.get("tags", None)
@@ -368,19 +362,10 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return only sources referenced in evidence of published cases.
 
-        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes sources
-        from IN_REVIEW cases.
-
         A source is accessible if it's referenced in the evidence field
-        of at least one published case (or in-review case if flag is enabled).
+        of at least one published case.
         """
-        # Get all published cases (and in-review if feature flag is enabled)
-        if settings.EXPOSE_CASES_IN_REVIEW:
-            allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
-        else:
-            allowed_states = [CaseState.PUBLISHED]
-
-        published_cases = Case.objects.filter(state__in=allowed_states)
+        published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
 
         # Extract all source_ids from evidence fields
         source_ids = set()
@@ -501,9 +486,6 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
 
         Note: Location entities are excluded from the list.
 
-        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes
-        entities from IN_REVIEW cases.
-
         Uses caching to avoid expensive queryset evaluation.
         """
         # For retrieve action, return all entities
@@ -518,12 +500,7 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
 
         if entity_ids is None:
             # Cache miss - compute entity IDs
-            if settings.EXPOSE_CASES_IN_REVIEW:
-                allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            else:
-                allowed_states = [CaseState.PUBLISHED]
-
-            published_cases = Case.objects.filter(state__in=allowed_states)
+            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
 
             entity_ids = set()
             for case in published_cases:
