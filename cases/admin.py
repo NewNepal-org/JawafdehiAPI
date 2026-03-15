@@ -467,9 +467,13 @@ class CaseAdmin(admin.ModelAdmin):
         fieldsets = super().get_fieldsets(request, obj)
         if is_contributor(request.user) and not is_admin_or_moderator(request.user):
             return [
-                (name, {**options, "fields": tuple(
-                    f for f in options["fields"] if f != "notes"
-                )})
+                (
+                    name,
+                    {
+                        **options,
+                        "fields": tuple(f for f in options["fields"] if f != "notes"),
+                    },
+                )
                 for name, options in fieldsets
             ]
         return fieldsets
