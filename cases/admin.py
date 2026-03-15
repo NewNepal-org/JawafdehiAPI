@@ -103,6 +103,7 @@ class CaseAdminForm(forms.ModelForm):
         fields = "__all__"
         widgets = {
             "description": TinyMCE(attrs={"cols": 80, "rows": 30}),
+            "notes": TinyMCE(attrs={"cols": 80, "rows": 20}),
             "state": forms.RadioSelect(),
             "case_start_date": forms.DateInput(attrs={"type": "date"}),
             "case_end_date": forms.DateInput(attrs={"type": "date"}),
@@ -158,6 +159,7 @@ class CaseAdminForm(forms.ModelForm):
         self.fields["evidence"].widget.sources = list(sources)
 
         # Disable PUBLISHED and CLOSED states for Contributors
+        # Hide notes field from contributors (internal admin/moderator field)
         if self.request:
             user = self.request.user
             if is_contributor(user) and not is_admin_or_moderator(user):
@@ -166,6 +168,10 @@ class CaseAdminForm(forms.ModelForm):
                 if state_field:
                     # Create custom choices with disabled options
                     state_field.widget.attrs["class"] = "contributor-state-field"
+
+                # Remove notes field — internal use by admins/moderators only
+                if "notes" in self.fields:
+                    del self.fields["notes"]
 
     class Media:
         css = {
