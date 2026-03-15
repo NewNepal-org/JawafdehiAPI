@@ -16,8 +16,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from nes.core.identifiers.validators import validate_entity_id
 from nes.core.models.base import Name
-
-from nesq.entity_utils import entity_from_dict
+from nes.core.utils.entity_utils import entity_from_dict
 
 
 class AddNamePayload(BaseModel):
