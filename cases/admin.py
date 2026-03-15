@@ -159,7 +159,6 @@ class CaseAdminForm(forms.ModelForm):
         self.fields["evidence"].widget.sources = list(sources)
 
         # Disable PUBLISHED and CLOSED states for Contributors
-        # Hide notes field from contributors (internal admin/moderator field)
         if self.request:
             user = self.request.user
             if is_contributor(user) and not is_admin_or_moderator(user):
@@ -168,10 +167,6 @@ class CaseAdminForm(forms.ModelForm):
                 if state_field:
                     # Create custom choices with disabled options
                     state_field.widget.attrs["class"] = "contributor-state-field"
-
-                # Remove notes field — internal use by admins/moderators only
-                if "notes" in self.fields:
-                    del self.fields["notes"]
 
     class Media:
         css = {
@@ -466,6 +461,18 @@ class CaseAdmin(admin.ModelAdmin):
                 return form_class(*args, **kwargs)
 
         return FormWithRequest
+
+    def get_fieldsets(self, request, obj=None):
+        """Remove notes from fieldsets for contributors (admin/moderator only)."""
+        fieldsets = super().get_fieldsets(request, obj)
+        if is_contributor(request.user) and not is_admin_or_moderator(request.user):
+            return [
+                (name, {**options, "fields": tuple(
+                    f for f in options["fields"] if f != "notes"
+                )})
+                for name, options in fieldsets
+            ]
+        return fieldsets
 
     def save_related(self, request, form, formsets, change):
         """
