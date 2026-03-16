@@ -125,7 +125,6 @@ class CaseSerializer(serializers.ModelSerializer):
             "timeline",
             "evidence",
             "notes",
-            "audit_notes",
             "versionInfo",
             "created_at",
             "updated_at",
