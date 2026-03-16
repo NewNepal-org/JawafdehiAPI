@@ -474,7 +474,7 @@ class CaseAdmin(admin.ModelAdmin):
         return FormWithRequest
 
     def get_fieldsets(self, request, obj=None):
-        """Remove notes from fieldsets for contributors (admin/moderator only)."""
+        """Remove notes and audit_notes from fieldsets for contributors (admin/moderator only)."""
         fieldsets = super().get_fieldsets(request, obj)
         if is_contributor(request.user) and not is_admin_or_moderator(request.user):
             return [
@@ -482,7 +482,11 @@ class CaseAdmin(admin.ModelAdmin):
                     name,
                     {
                         **options,
-                        "fields": tuple(f for f in options["fields"] if f != "notes"),
+                        "fields": tuple(
+                            f
+                            for f in options["fields"]
+                            if f not in ("notes", "audit_notes")
+                        ),
                     },
                 )
                 for name, options in fieldsets
