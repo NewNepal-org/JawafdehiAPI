@@ -225,8 +225,27 @@ The cases endpoint supports:
 }
 
 # CORS
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS"]
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
 
 # NES API Configuration
 NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
@@ -234,6 +253,9 @@ NES_API_URL = os.getenv("NES_API_URL", "https://nes.newnepal.org/api")
 # NES Database Path - required for GitHub Actions queue processing only.
 # Points to the local clone of the nes-db repository.
 NES_DB_PATH = os.getenv("NES_DB_PATH")
+
+# Feature Flags
+EXPOSE_CASES_IN_REVIEW = os.getenv("EXPOSE_CASES_IN_REVIEW", "False") == "True"
 
 # Cache Configuration
 CACHES = {

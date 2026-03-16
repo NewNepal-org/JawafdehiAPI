@@ -14,7 +14,8 @@ This command will:
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from cases.models import JawafEntity
+
+from cases.models import CaseEntityRelationship, JawafEntity
 
 
 class Command(BaseCommand):
@@ -151,15 +152,17 @@ class Command(BaseCommand):
                         f"Merging entity {source_entity.id} into {target_entity.id}..."
                     )
 
-                    # Update Case alleged_entities
-                    for case in source_entity.cases_as_alleged.all():
-                        case.alleged_entities.remove(source_entity)
-                        case.alleged_entities.add(target_entity)
-
-                    # Update Case related_entities
-                    for case in source_entity.cases_as_related.all():
-                        case.related_entities.remove(source_entity)
-                        case.related_entities.add(target_entity)
+                    # Update CaseEntityRelationship (alleged and related)
+                    for rel in source_entity.case_relationships.all():
+                        # Create or update relationship with target entity
+                        CaseEntityRelationship.objects.get_or_create(
+                            case=rel.case,
+                            entity=target_entity,
+                            type=rel.type,
+                            defaults={"notes": rel.notes},
+                        )
+                        # Delete old relationship
+                        rel.delete()
 
                     # Update Case locations
                     for case in source_entity.cases_as_location.all():

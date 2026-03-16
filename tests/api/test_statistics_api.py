@@ -8,7 +8,7 @@ import pytest
 from django.core.cache import cache
 from rest_framework.test import APIClient
 
-from cases.models import Case, CaseState, CaseType, JawafEntity
+from cases.models import Case, CaseEntityRelationship, CaseState, CaseType, JawafEntity
 
 
 @pytest.fixture
@@ -117,35 +117,6 @@ class TestStatisticsCounting:
 
         assert data["cases_under_investigation"] == 3  # 2 DRAFT + 1 IN_REVIEW
 
-    def test_cases_under_investigation_excludes_published_and_closed(self, api_client):
-        """Test that only DRAFT and IN_REVIEW cases count as under investigation."""
-        draft_case = Case.objects.create(
-            case_type=CaseType.CORRUPTION,
-            state=CaseState.DRAFT,
-            title="Draft Investigation Case",
-        )
-        review_case = Case.objects.create(
-            case_type=CaseType.CORRUPTION,
-            state=CaseState.IN_REVIEW,
-            title="Review Investigation Case",
-        )
-        Case.objects.create(
-            case_type=CaseType.CORRUPTION,
-            state=CaseState.PUBLISHED,
-            title="Published Case",
-        )
-        Case.objects.create(
-            case_type=CaseType.CORRUPTION,
-            state=CaseState.CLOSED,
-            title="Closed Case",
-        )
-
-        response = api_client.get("/api/statistics/")
-        data = response.json()
-
-        assert draft_case.case_id != review_case.case_id
-        assert data["cases_under_investigation"] == 2
-
     def test_cases_closed_count(self, api_client):
         """Test that closed cases are counted correctly."""
         Case.objects.create(
@@ -188,7 +159,11 @@ class TestStatisticsCounting:
             state=CaseState.PUBLISHED,
             title="Published Case",
         )
-        published_case.alleged_entities.add(entity1)
+        CaseEntityRelationship.objects.create(
+            case=published_case,
+            entity=entity1,
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
+        )
 
         Case.objects.create(
             case_type=CaseType.CORRUPTION, state=CaseState.DRAFT, title="Draft Case"

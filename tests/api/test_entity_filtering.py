@@ -9,7 +9,27 @@ import pytest
 from django.core.cache import cache
 from rest_framework.test import APIClient
 
-from cases.models import Case, CaseState, JawafEntity
+from cases.models import Case, CaseEntityRelationship, CaseState, JawafEntity
+
+
+def _add_alleged(case, *entities):
+    """Add entities as alleged to a case via the through model."""
+    for entity in entities:
+        CaseEntityRelationship.objects.get_or_create(
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
+        )
+
+
+def _add_related(case, *entities):
+    """Add entities as related to a case via the through model."""
+    for entity in entities:
+        CaseEntityRelationship.objects.get_or_create(
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.RELATED,
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +64,7 @@ def test_entity_list_only_returns_entities_in_published_cases():
         title="Published Case",
         description="Test case",
     )
-    published_case.alleged_entities.add(entity_in_published)
+    _add_alleged(published_case, entity_in_published)
 
     # Create draft case with entity
     draft_case = Case.objects.create(
@@ -53,7 +73,7 @@ def test_entity_list_only_returns_entities_in_published_cases():
         title="Draft Case",
         description="Test case",
     )
-    draft_case.alleged_entities.add(entity_in_draft)
+    _add_alleged(draft_case, entity_in_draft)
 
     client = APIClient()
     response = client.get("/api/entities/")
@@ -80,7 +100,7 @@ def test_entity_in_alleged_entities_is_returned():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    _add_alleged(case, entity)
 
     client = APIClient()
     response = client.get("/api/entities/")
@@ -101,7 +121,7 @@ def test_entity_in_related_entities_is_returned():
         title="Test Case",
         description="Test",
     )
-    case.related_entities.add(entity)
+    _add_related(case, entity)
 
     client = APIClient()
     response = client.get("/api/entities/")
@@ -145,7 +165,7 @@ def test_entity_in_multiple_cases_appears_once():
             title=f"Case {i}",
             description="Test",
         )
-        case.alleged_entities.add(entity)
+        _add_alleged(case, entity)
 
     client = APIClient()
     response = client.get("/api/entities/")
@@ -168,8 +188,8 @@ def test_entity_in_both_alleged_and_related_appears_once():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
-    case.related_entities.add(entity)
+    _add_alleged(case, entity)
+    _add_related(case, entity)
 
     client = APIClient()
     response = client.get("/api/entities/")
@@ -181,9 +201,15 @@ def test_entity_in_both_alleged_and_related_appears_once():
     assert entity_count == 1
 
 
+# ============================================================================
+# Feature Flag Tests
+# ============================================================================
+
+
 @pytest.mark.django_db
-def test_entity_list_excludes_in_review_cases():
-    """Test that IN_REVIEW cases are excluded from public entity list."""
+def test_entity_list_with_expose_cases_in_review_flag(settings):
+    """Test that IN_REVIEW cases are included when feature flag is enabled."""
+    settings.EXPOSE_CASES_IN_REVIEW = True
 
     entity_in_review = JawafEntity.objects.create(nes_id="entity:person/in-review")
     entity_in_published = JawafEntity.objects.create(
@@ -197,7 +223,7 @@ def test_entity_list_excludes_in_review_cases():
         title="Review Case",
         description="Test",
     )
-    review_case.alleged_entities.add(entity_in_review)
+    _add_alleged(review_case, entity_in_review)
 
     # Create PUBLISHED case
     published_case = Case.objects.create(
@@ -206,7 +232,46 @@ def test_entity_list_excludes_in_review_cases():
         title="Published Case",
         description="Test",
     )
-    published_case.alleged_entities.add(entity_in_published)
+    _add_alleged(published_case, entity_in_published)
+
+    client = APIClient()
+    response = client.get("/api/entities/")
+
+    assert response.status_code == 200
+    entity_ids = [e["id"] for e in response.data["results"]]
+
+    # Both entities should be returned
+    assert entity_in_review.id in entity_ids
+    assert entity_in_published.id in entity_ids
+
+
+@pytest.mark.django_db
+def test_entity_list_without_expose_cases_in_review_flag(settings):
+    """Test that IN_REVIEW cases are excluded when feature flag is disabled."""
+    settings.EXPOSE_CASES_IN_REVIEW = False
+
+    entity_in_review = JawafEntity.objects.create(nes_id="entity:person/in-review")
+    entity_in_published = JawafEntity.objects.create(
+        nes_id="entity:person/in-published"
+    )
+
+    # Create IN_REVIEW case
+    review_case = Case.objects.create(
+        case_id="case-001",
+        state=CaseState.IN_REVIEW,
+        title="Review Case",
+        description="Test",
+    )
+    _add_alleged(review_case, entity_in_review)
+
+    # Create PUBLISHED case
+    published_case = Case.objects.create(
+        case_id="case-002",
+        state=CaseState.PUBLISHED,
+        title="Published Case",
+        description="Test",
+    )
+    _add_alleged(published_case, entity_in_published)
 
     client = APIClient()
     response = client.get("/api/entities/")
@@ -235,7 +300,7 @@ def test_entity_list_uses_cache():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    _add_alleged(case, entity)
 
     client = APIClient()
 
@@ -267,7 +332,7 @@ def test_entity_list_cache_expires():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    _add_alleged(case, entity)
 
     client = APIClient()
 
@@ -286,7 +351,7 @@ def test_entity_list_cache_expires():
         title="New Case",
         description="Test",
     )
-    new_case.alleged_entities.add(new_entity)
+    _add_alleged(new_case, new_entity)
 
     # Second request - cache miss, should include new entity
     response2 = client.get("/api/entities/")
@@ -327,7 +392,7 @@ def test_entity_list_excludes_closed_cases():
         title="Closed Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    _add_alleged(case, entity)
 
     client = APIClient()
     response = client.get("/api/entities/")

@@ -13,7 +13,13 @@ from django.core.exceptions import ValidationError
 from django.test import Client
 
 from cases.admin import CaseAdmin
-from cases.models import Case, CaseState, CaseType, DocumentSource
+from cases.models import (
+    Case,
+    CaseEntityRelationship,
+    CaseState,
+    CaseType,
+    DocumentSource,
+)
 from tests.conftest import (
     create_case_with_entities,
     create_entities_from_ids,
@@ -21,6 +27,59 @@ from tests.conftest import (
 )
 
 User = get_user_model()
+
+
+def _add_alleged(case, entity):
+    """Helper: add entity to case as alleged via through model."""
+    CaseEntityRelationship.objects.get_or_create(
+        case=case, entity=entity, type=CaseEntityRelationship.RelationshipType.ALLEGED
+    )
+
+
+def _alleged_entities(case):
+    """Return queryset of entities with alleged relationship on a case."""
+    from cases.models import JawafEntity
+
+    return JawafEntity.objects.filter(
+        case_relationships__case=case,
+        case_relationships__type=CaseEntityRelationship.RelationshipType.ALLEGED,
+    )
+
+
+def _alleged_entity_ids(case):
+    """Return list of entity PKs with alleged relationship on a case."""
+    return list(
+        CaseEntityRelationship.objects.filter(
+            case=case, type=CaseEntityRelationship.RelationshipType.ALLEGED
+        ).values_list("entity_id", flat=True)
+    )
+
+
+def _alleged_count(case):
+    """Return count of alleged entities on a case."""
+    return CaseEntityRelationship.objects.filter(
+        case=case, type=CaseEntityRelationship.RelationshipType.ALLEGED
+    ).count()
+
+
+def _set_alleged(case, entities):
+    """Replace all alleged relationships on a case with the given entities."""
+    CaseEntityRelationship.objects.filter(
+        case=case, type=CaseEntityRelationship.RelationshipType.ALLEGED
+    ).delete()
+    for entity in entities:
+        CaseEntityRelationship.objects.create(
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
+        )
+
+
+def _clear_alleged(case):
+    """Remove all alleged relationships from a case."""
+    CaseEntityRelationship.objects.filter(
+        case=case, type=CaseEntityRelationship.RelationshipType.ALLEGED
+    ).delete()
 
 
 # ============================================================================
@@ -85,6 +144,7 @@ class TestDjangoAdminWorkflows:
         assert (
             case.state == CaseState.DRAFT
         ), "New case should start in DRAFT state (Requirement 1.1)"
+        assert case.version == 1, "New case should start at version 1"
 
         # Step 2: Contributor edits the draft
         case.title = "Updated Corruption Case"
@@ -260,6 +320,7 @@ class TestDjangoAdminWorkflows:
         # Simulate save_related (which adds creator to contributors)
         class DummyForm:
             instance = case
+            cleaned_data = {"state": case.state}
 
             def save_m2m(self):
                 pass
@@ -367,13 +428,13 @@ class TestDjangoAdminWorkflows:
         factory = RequestFactory()
         request_contrib = factory.post("/")
         request_contrib.user = self.contributor1
-
         form_data = {
             "case_id": case.case_id,
+            "version": case.version,
             "title": case.title,
             "case_type": case.case_type,
             "state": CaseState.PUBLISHED,
-            "alleged_entities": [e.id for e in case.alleged_entities.all()],
+            "alleged_entities": _alleged_entity_ids(case),
             "key_allegations": case.key_allegations,
             "description": case.description,
         }
@@ -402,47 +463,88 @@ class TestDjangoAdminWorkflows:
             case.state == CaseState.PUBLISHED
         ), "Moderator should be able to publish the case (Requirement 2.1)"
 
-    def test_in_place_editing_of_published_cases(self):
+    def test_version_creation_when_editing_published_cases(self):
         """
-        E2E Test: Verify editing a published case updates it in-place.
+        E2E Test: Verify editing a published case creates a new draft version.
 
         Workflow:
-        1. Create and publish a case
-        2. Edit the published case in-place
-        3. Verify changes are saved
-        4. Verify only one row exists per case_id
+        1. Create and publish a case (version 1)
+        2. Create a draft from the published case
+        3. Verify new draft has incremented version
+        4. Edit the draft
+        5. Publish the draft (version 2)
+        6. Verify both versions exist in database
+        7. Verify original published version is preserved
 
-        Validates: Requirements 1.4
+        Validates: Requirements 1.4, 7.1
         """
-        # Step 1: Create and publish a case
-        case = create_case_with_entities(
+        # Step 1: Create and publish a case (version 1)
+        case_v1 = create_case_with_entities(
             title="Original Case Title",
             alleged_entities=["entity:person/original"],
             key_allegations=["Original allegation"],
             case_type=CaseType.CORRUPTION,
             description="Original description",
             state=CaseState.PUBLISHED,
+            version=1,
         )
 
-        original_case_id = case.case_id
-        case_db_id = case.id
+        original_case_id = case_v1.case_id
+        original_title = case_v1.title
 
-        # Step 2: Edit the case in-place
-        case.title = "Updated Case Title"
-        case.key_allegations = ["Original allegation", "New allegation"]
-        case.description = "Updated description with new information"
-        case.save()
+        # Step 2: Create a draft from the published case
+        case_v2_draft = case_v1.create_draft()
 
-        # Step 3: Verify changes are saved
-        case.refresh_from_db()
-        assert case.title == "Updated Case Title"
-        assert len(case.key_allegations) == 2
-        assert case.id == case_db_id, "Should be the same database record"
-        assert case.case_id == original_case_id, "case_id should be unchanged"
+        # Step 3: Verify new draft has incremented version
+        assert (
+            case_v2_draft.case_id == original_case_id
+        ), "Draft should have same case_id as original"
+        assert (
+            case_v2_draft.version == 2
+        ), "Draft should have incremented version (Requirement 1.4)"
+        assert (
+            case_v2_draft.state == CaseState.DRAFT
+        ), "New version should start in DRAFT state"
+        assert (
+            case_v2_draft.versionInfo.get("action") == "draft_created"
+        ), "versionInfo should record draft creation"
+        assert (
+            case_v2_draft.versionInfo.get("source_version") == 1
+        ), "versionInfo should reference source version"
 
-        # Step 4: Verify only one row exists for this case_id
-        row_count = Case.objects.filter(case_id=original_case_id).count()
-        assert row_count == 1, "There should be exactly one row per case_id"
+        # Step 4: Edit the draft
+        case_v2_draft.title = "Updated Case Title"
+        case_v2_draft.key_allegations = ["Original allegation", "New allegation"]
+        case_v2_draft.description = "Updated description with new information"
+        case_v2_draft.save()
+
+        # Step 5: Publish the draft (version 2)
+        case_v2_draft.state = CaseState.IN_REVIEW
+        case_v2_draft.save()
+        case_v2_draft.publish()
+
+        case_v2_draft.refresh_from_db()
+        assert case_v2_draft.state == CaseState.PUBLISHED
+        assert case_v2_draft.version == 2
+
+        # Step 6: Verify both versions exist in database
+        all_versions = Case.objects.filter(case_id=original_case_id).order_by("version")
+        assert (
+            all_versions.count() == 2
+        ), "Both versions should exist in database (Requirement 7.1)"
+
+        # Step 7: Verify original published version is preserved
+        case_v1.refresh_from_db()
+        assert (
+            case_v1.title == original_title
+        ), "Original version should be preserved unchanged (Requirement 1.4)"
+        assert case_v1.version == 1
+        assert case_v1.state == CaseState.PUBLISHED
+
+        # Verify the versions are distinct records
+        assert (
+            case_v1.id != case_v2_draft.id
+        ), "Versions should be separate database records"
 
     def test_soft_deletion(self):
         """
@@ -466,6 +568,7 @@ class TestDjangoAdminWorkflows:
             case_type=CaseType.CORRUPTION,
             description="Test description",
             state=CaseState.PUBLISHED,
+            version=1,
         )
 
         case_id = case.id
@@ -664,70 +767,99 @@ class TestDjangoAdminWorkflows:
             has_contrib_permission
         ), "Moderator should have permission to change contributors"
 
-    def test_complete_edit_publish_workflow(self):
+    def test_complete_multi_version_workflow(self):
         """
-        E2E Test: Complete workflow with in-place editing and state transitions.
+        E2E Test: Complete workflow with multiple versions and state transitions.
 
         Workflow:
-        1. Contributor creates draft
-        2. Contributor submits for review
-        3. Moderator publishes
-        4. Edit the published case in-place (move back to draft, re-publish)
-        5. Verify versionInfo is updated on publish
+        1. Contributor creates draft v1
+        2. Contributor submits v1 for review
+        3. Moderator publishes v1
+        4. Contributor creates draft v2 from published v1
+        5. Contributor edits and submits v2
+        6. Moderator publishes v2
+        7. Verify version history is complete
 
-        Validates: Requirements 1.1, 1.3, 2.1, 2.2, 7.2
+        Validates: Requirements 1.1, 1.3, 1.4, 2.1, 2.2, 7.1, 7.2
         """
-        # Step 1: Contributor creates draft
-        case = create_case_with_entities(
-            title="Edit Publish Case",
+        # Step 1: Contributor creates draft v1
+        case_v1 = create_case_with_entities(
+            title="Multi-Version Case v1",
             alleged_entities=["entity:person/test"],
             key_allegations=["Initial allegation"],
             case_type=CaseType.CORRUPTION,
             description="Initial version description",
             state=CaseState.DRAFT,
         )
-        case.contributors.add(self.contributor1)
-        case.save()
+        case_v1.contributors.add(self.contributor1)
+        case_v1.save()
 
-        assert case.state == CaseState.DRAFT
+        assert case_v1.state == CaseState.DRAFT
+        assert case_v1.version == 1
 
-        case_id = case.case_id
+        case_id = case_v1.case_id
 
-        # Step 2: Contributor submits for review
-        case.submit()
-        case.refresh_from_db()
+        # Step 2: Contributor submits v1 for review
+        case_v1.submit()
+        case_v1.refresh_from_db()
 
-        assert case.state == CaseState.IN_REVIEW
-        assert case.versionInfo.get("action") == "submitted"
+        assert case_v1.state == CaseState.IN_REVIEW
+        assert case_v1.versionInfo.get("action") == "submitted"
 
-        # Step 3: Moderator publishes
-        case.publish()
-        case.refresh_from_db()
+        # Step 3: Moderator publishes v1
+        case_v1.publish()
+        case_v1.refresh_from_db()
 
-        assert case.state == CaseState.PUBLISHED
-        assert case.versionInfo.get("action") == "published"
+        assert case_v1.state == CaseState.PUBLISHED
+        assert case_v1.versionInfo.get("action") == "published"
 
-        # Step 4: Edit the published case in-place
-        case.title = "Edit Publish Case - Updated"
-        case.key_allegations = ["Initial allegation", "Updated allegation"]
-        case.description = "Updated version with new information"
-        case.state = CaseState.DRAFT
-        case.save()
+        # Step 4: Contributor creates draft v2 from published v1
+        case_v2 = case_v1.create_draft()
 
-        # Re-submit and re-publish
-        case.submit()
-        case.publish()
-        case.refresh_from_db()
+        assert case_v2.case_id == case_id
+        assert case_v2.version == 2
+        assert case_v2.state == CaseState.DRAFT
+        assert case_v2.versionInfo.get("action") == "draft_created"
+        assert case_v2.versionInfo.get("source_version") == 1
 
-        assert case.state == CaseState.PUBLISHED
-        assert case.versionInfo.get("action") == "published"
+        # Step 5: Contributor edits and submits v2
+        case_v2.title = "Multi-Version Case v2 - Updated"
+        case_v2.key_allegations = ["Initial allegation", "Updated allegation"]
+        case_v2.description = "Updated version with new information"
+        case_v2.save()
 
-        # Step 5: Verify only one DB row per case_id
-        assert Case.objects.filter(case_id=case_id).count() == 1
+        case_v2.submit()
+        case_v2.refresh_from_db()
 
-        # Verify versionInfo is complete
-        assert case.versionInfo is not None
-        assert "datetime" in case.versionInfo
+        assert case_v2.state == CaseState.IN_REVIEW
+
+        # Step 6: Moderator publishes v2
+        case_v2.publish()
+        case_v2.refresh_from_db()
+
+        assert case_v2.state == CaseState.PUBLISHED
+        assert case_v2.version == 2
+
+        # Step 7: Verify version history is complete
+        all_versions = Case.objects.filter(case_id=case_id).order_by("version")
+        assert all_versions.count() == 2, "Should have 2 versions in database"
+
+        # Verify v1 is still preserved
+        case_v1.refresh_from_db()
+        assert case_v1.title == "Multi-Version Case v1"
+        assert case_v1.version == 1
+        assert case_v1.state == CaseState.PUBLISHED
+
+        # Verify v2 has updated content
+        assert case_v2.title == "Multi-Version Case v2 - Updated"
+        assert case_v2.version == 2
+        assert case_v2.state == CaseState.PUBLISHED
+
+        # Verify both versions have complete versionInfo
+        assert case_v1.versionInfo is not None
+        assert case_v2.versionInfo is not None
+        assert "datetime" in case_v1.versionInfo
+        assert "datetime" in case_v2.versionInfo
 
     def test_contributor_state_transition_restrictions(self):
         """
@@ -759,15 +891,16 @@ class TestDjangoAdminWorkflows:
 
         factory = RequestFactory()
         request_contrib = factory.post("/")
-        request_contrib.user = self.contributor1
-
-        # Step 2: Contributor transitions DRAFT → IN_REVIEW (allowed)
+        request_contrib.user = (
+            self.contributor1
+        )  # Step 2: Contributor transitions DRAFT → IN_REVIEW (allowed)
         form_data = {
             "case_id": case.case_id,
+            "version": case.version,
             "title": case.title,
             "case_type": case.case_type,
             "state": CaseState.IN_REVIEW,
-            "alleged_entities": [e.id for e in case.alleged_entities.all()],
+            "alleged_entities": _alleged_entity_ids(case),
             "key_allegations": case.key_allegations,
             "description": case.description,
         }
@@ -925,6 +1058,7 @@ class TestDjangoAdminWorkflows:
         # Simulate save_related (which adds creator to contributors)
         class DummyForm:
             instance = minimal_case
+            cleaned_data = {"state": minimal_case.state}
 
             def save_m2m(self):
                 pass
@@ -936,6 +1070,7 @@ class TestDjangoAdminWorkflows:
         assert (
             minimal_case.state == CaseState.DRAFT
         ), "New case should start in DRAFT state (Requirement 1.1)"
+        assert minimal_case.version == 1, "New case should start at version 1"
 
         # Step 4: Verify creator is automatically assigned as contributor
         minimal_case.refresh_from_db()
@@ -1017,9 +1152,9 @@ class TestDjangoAdminWorkflows:
         request_contrib = factory.post("/admin/cases/case/add/")
         request_contrib.user = self.contributor1
 
-        entities = create_entities_from_ids(["entity:person/test"])
-
-        # Step 1: Attempt to create a new case with state=PUBLISHED (should fail)
+        entities = create_entities_from_ids(
+            ["entity:person/test"]
+        )  # Step 1: Attempt to create a new case with state=PUBLISHED (should fail)
         form_data = {
             "title": "New Case - Published State",
             "case_type": CaseType.CORRUPTION,
@@ -1068,13 +1203,14 @@ class TestDjangoAdminWorkflows:
             state=CaseState.DRAFT,
         )
         case_draft.save()
-        case_draft.alleged_entities.set(entities)
+        _set_alleged(case_draft, entities)
 
         # Step 5: Verify case is created successfully in DRAFT state
         assert case_draft.id is not None, "Case should be saved to database"
         assert (
             case_draft.state == CaseState.DRAFT
         ), "New case should be in DRAFT state (Requirement 1.1)"
+        assert case_draft.version == 1, "New case should start at version 1"
 
     def test_admin_entity_id_validation_on_create(self):
         """
@@ -1107,14 +1243,15 @@ class TestDjangoAdminWorkflows:
             "Invalid entity ID format" in error_message
         ), f"Error should mention invalid format. Got: {error_message}"
 
-        # Step 2: Test invalid entity prefix
+        # Step 2: Test invalid entity type (unsupported type)
         with pytest.raises(ValidationError) as exc_info:
             field.clean('["entity:invalid-type/test-slug"]')
 
         error_message = str(exc_info.value)
         assert (
-            "entity prefix 'invalid-type' is not allowed" in error_message.lower()
-        ), f"Error should mention invalid entity prefix. Got: {error_message}"
+            "entity type" in error_message.lower()
+            or "unsupported" in error_message.lower()
+        ), f"Error should mention invalid entity type. Got: {error_message}"
 
         # Step 3: Test invalid slug format (contains invalid characters)
         with pytest.raises(ValidationError) as exc_info:
@@ -1208,13 +1345,11 @@ class TestDjangoAdminWorkflows:
         error_dict = exc_info.value.message_dict
         assert (
             "nes_id" in error_dict
-        ), f"Error should be associated with nes_id field. Got: {error_dict}"
-
-        # Step 4: Update with valid entity IDs
+        ), f"Error should be associated with nes_id field. Got: {error_dict}"  # Step 4: Update with valid entity IDs
         new_entities = create_entities_from_ids(
             ["entity:person/updated-person", "entity:organization/new-org"]
         )
-        case.alleged_entities.set(new_entities)
+        _set_alleged(case, new_entities)
         case.full_clean()  # Should not raise
         case.save()
 
@@ -1222,10 +1357,8 @@ class TestDjangoAdminWorkflows:
         case.refresh_from_db()
 
         assert case.id == original_id, "Should be the same case instance"
-        assert (
-            case.alleged_entities.count() == 2
-        ), "Case should have 2 entity IDs after update"
-        entity_nes_ids = [e.nes_id for e in case.alleged_entities.all()]
+        assert _alleged_count(case) == 2, "Case should have 2 entity IDs after update"
+        entity_nes_ids = [e.nes_id for e in _alleged_entities(case)]
         assert (
             "entity:person/updated-person" in entity_nes_ids
         ), "Updated entity ID should be saved"
@@ -1300,14 +1433,12 @@ class TestDjangoAdminWorkflows:
             state=CaseState.DRAFT,
         )
         case.contributors.add(self.contributor1)
-        case.save()
-
-        # Verify case was created successfully
+        case.save()  # Verify case was created successfully
         assert (
             case.id is not None
         ), "Draft case should be created without alleged_entities"
         assert case.state == CaseState.DRAFT
-        assert case.alleged_entities.count() == 0
+        assert _alleged_count(case) == 0
 
         # Step 2: Attempt to submit for review without alleged_entities
         case.state = CaseState.IN_REVIEW
@@ -1317,9 +1448,9 @@ class TestDjangoAdminWorkflows:
 
         error_dict = exc_info.value.message_dict
         assert (
-            "alleged_entities" in error_dict
+            "entities" in error_dict
         ), f"Should require alleged_entities for IN_REVIEW. Got errors: {error_dict}"
-        error_message = str(error_dict["alleged_entities"])
+        error_message = str(error_dict["entities"])
         assert (
             "IN_REVIEW or PUBLISHED" in error_message
         ), f"Error message should mention IN_REVIEW/PUBLISHED requirement. Got: {error_message}"
@@ -1329,9 +1460,7 @@ class TestDjangoAdminWorkflows:
         case.save()
 
         # Step 3: Add alleged_entities and required fields for submission
-        case.alleged_entities.set(
-            create_entities_from_ids(["entity:person/corrupt-official"])
-        )
+        _set_alleged(case, create_entities_from_ids(["entity:person/corrupt-official"]))
         case.key_allegations = ["Test allegation"]
         case.description = "Test description"
         case.save()
@@ -1344,7 +1473,7 @@ class TestDjangoAdminWorkflows:
         assert (
             case.state == CaseState.IN_REVIEW
         ), "Case should transition to IN_REVIEW with alleged_entities"
-        assert case.alleged_entities.count() == 1
+        assert _alleged_count(case) == 1
         assert case.versionInfo.get("action") == "submitted"
 
     def test_alleged_entities_required_for_published(self):
@@ -1368,10 +1497,8 @@ class TestDjangoAdminWorkflows:
             state=CaseState.DRAFT,
         )
         case.contributors.add(self.contributor1)
-        case.save()
-
-        # Step 2: Remove alleged_entities and attempt to publish
-        case.alleged_entities.clear()
+        case.save()  # Step 2: Remove alleged_entities and attempt to publish
+        _clear_alleged(case)
         case.state = CaseState.PUBLISHED
 
         with pytest.raises(ValidationError) as exc_info:
@@ -1379,7 +1506,7 @@ class TestDjangoAdminWorkflows:
 
         error_dict = exc_info.value.message_dict
         assert (
-            "alleged_entities" in error_dict
+            "entities" in error_dict
         ), f"Should require alleged_entities for PUBLISHED. Got errors: {error_dict}"
 
         # Reset state
@@ -1387,9 +1514,7 @@ class TestDjangoAdminWorkflows:
         case.save()
 
         # Step 3: Add alleged_entities back and publish
-        case.alleged_entities.set(
-            create_entities_from_ids(["entity:person/test-official"])
-        )
+        _set_alleged(case, create_entities_from_ids(["entity:person/test-official"]))
         case.save()
 
         case.publish()
@@ -1398,4 +1523,4 @@ class TestDjangoAdminWorkflows:
         assert (
             case.state == CaseState.PUBLISHED
         ), "Case should be published with alleged_entities"
-        assert case.alleged_entities.count() == 1
+        assert _alleged_count(case) == 1

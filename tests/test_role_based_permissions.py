@@ -133,10 +133,10 @@ def test_contributors_cannot_transition_to_published_or_closed(
 
     form_data = {
         "case_id": case.case_id,
+        "version": case.version,
         "title": case.title,
         "case_type": case.case_type,
         "state": forbidden_state,
-        "alleged_entities": [e.id for e in case.alleged_entities.all()],
         "key_allegations": case.key_allegations,
         "description": case.description,
     }

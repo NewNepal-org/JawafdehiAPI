@@ -12,6 +12,7 @@ from .models import (
     JawafEntity,
     CaseState,
     Feedback,
+    CaseEntityRelationship,
 )
 from .widgets import (
     MultiTextField,
@@ -38,6 +39,58 @@ User = get_user_model()
 # ============================================================================
 # Custom Admin Forms
 # ============================================================================
+
+
+class CaseEntityRelationshipFormSet(forms.BaseInlineFormSet):
+    """
+    Custom formset for CaseEntityRelationship inline with validation.
+    """
+
+    def clean(self):
+        """
+        Validate that at least one alleged entity exists for IN_REVIEW/PUBLISHED states.
+        """
+        super().clean()
+
+        # Get the parent case state from the parent form
+        if hasattr(self, "instance") and self.instance:
+            # Check if we're transitioning to IN_REVIEW or PUBLISHED
+            parent_form = getattr(self, "_parent_form", None)
+            if parent_form and hasattr(parent_form, "cleaned_data"):
+                new_state = parent_form.cleaned_data.get("state")
+
+                if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
+                    # Count alleged entities in the submitted formset
+                    alleged_count = 0
+                    for form in self.forms:
+                        if (
+                            form.cleaned_data
+                            and not form.cleaned_data.get("DELETE", False)
+                            and form.cleaned_data.get("type")
+                            == CaseEntityRelationship.RelationshipType.ALLEGED
+                        ):
+                            alleged_count += 1
+
+                    if alleged_count == 0:
+                        raise ValidationError(
+                            "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+                        )
+
+
+class CaseEntityRelationshipInline(admin.TabularInline):
+    """
+    Inline admin for managing case-entity relationships.
+    """
+
+    model = CaseEntityRelationship
+    formset = CaseEntityRelationshipFormSet
+    extra = 1
+    autocomplete_fields = ["entity"]
+
+    fields = ["entity", "type", "notes"]
+
+    verbose_name = "Entity"
+    verbose_name_plural = "Entities"
 
 
 class CaseAdminForm(forms.ModelForm):
@@ -101,9 +154,9 @@ class CaseAdminForm(forms.ModelForm):
     class Meta:
         model = Case
         fields = "__all__"
+        exclude = ["entities"]  # managed via CaseEntityRelationshipInline
         widgets = {
             "description": TinyMCE(attrs={"cols": 80, "rows": 30}),
-            "notes": TinyMCE(attrs={"cols": 80, "rows": 20}),
             "state": forms.RadioSelect(),
             "case_start_date": forms.DateInput(attrs={"type": "date"}),
             "case_end_date": forms.DateInput(attrs={"type": "date"}),
@@ -216,12 +269,8 @@ class CaseAdminForm(forms.ModelForm):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Check alleged_entities (m2m field - check form data)
-            alleged_entities = cleaned_data.get("alleged_entities")
-            if not alleged_entities or alleged_entities.count() == 0:
-                errors["alleged_entities"] = (
-                    "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
-                )
+            # Note: Entity validation is handled by CaseEntityRelationshipFormSet.clean()
+            # which runs after inline forms are processed
 
             # Check key_allegations
             key_allegations = cleaned_data.get("key_allegations")
@@ -262,13 +311,14 @@ class CaseAdmin(admin.ModelAdmin):
     """
 
     form = CaseAdminForm
+    inlines = [CaseEntityRelationshipInline]  # NEW
 
     class Media:
-        js = ("admin/js/case_admin.js",)
         css = {"all": ("admin/css/case_admin.css",)}
 
     list_display = [
         "case_id",
+        "version",
         "title",
         "case_type",
         "state_badge",
@@ -290,6 +340,7 @@ class CaseAdmin(admin.ModelAdmin):
 
     readonly_fields = [
         "case_id",
+        "version",
         "created_at",
         "updated_at",
         "version_info_display",
@@ -307,7 +358,6 @@ class CaseAdmin(admin.ModelAdmin):
                     "banner_url",
                     "case_type",
                     "state",
-                    "alleged_entities",
                 )
             },
         ),
@@ -319,17 +369,13 @@ class CaseAdmin(admin.ModelAdmin):
                     "start_date_bs",
                     "case_end_date",
                     "end_date_bs",
-                )
+                ),
+                "description": "Specify the time period when the alleged activities occurred.",
             },
         ),
         (
-            "Entities",
-            {
-                "fields": (
-                    "related_entities",
-                    "locations",
-                )
-            },
+            "Location",
+            {"fields": ("locations",)},
         ),
         (
             "Content",
@@ -339,7 +385,6 @@ class CaseAdmin(admin.ModelAdmin):
                     "timeline",
                     "description",
                     "tags",
-                    "notes",
                 )
             },
         ),
@@ -349,6 +394,7 @@ class CaseAdmin(admin.ModelAdmin):
             "Metadata",
             {
                 "fields": (
+                    "version",
                     "created_at",
                     "updated_at",
                     "version_info_display",
@@ -360,8 +406,6 @@ class CaseAdmin(admin.ModelAdmin):
 
     filter_horizontal = [
         "contributors",
-        "alleged_entities",
-        "related_entities",
         "locations",
     ]
 
@@ -390,11 +434,17 @@ class CaseAdmin(admin.ModelAdmin):
         info = obj.versionInfo
         html = "<div style='font-family: monospace;'>"
 
+        if "version_number" in info:
+            html += f"<strong>Version:</strong> {info['version_number']}<br>"
+
         if "action" in info:
             html += f"<strong>Action:</strong> {info['action']}<br>"
 
         if "datetime" in info:
             html += f"<strong>DateTime:</strong> {info['datetime']}<br>"
+
+        if "source_version" in info:
+            html += f"<strong>Source Version:</strong> {info['source_version']}<br>"
 
         if "user_id" in info:
             html += f"<strong>User ID:</strong> {info['user_id']}<br>"
@@ -462,21 +512,31 @@ class CaseAdmin(admin.ModelAdmin):
 
         return FormWithRequest
 
-    def get_fieldsets(self, request, obj=None):
-        """Remove notes from fieldsets for contributors (admin/moderator only)."""
-        fieldsets = super().get_fieldsets(request, obj)
-        if is_contributor(request.user) and not is_admin_or_moderator(request.user):
-            return [
-                (
-                    name,
-                    {
-                        **options,
-                        "fields": tuple(f for f in options["fields"] if f != "notes"),
-                    },
-                )
-                for name, options in fieldsets
-            ]
-        return fieldsets
+    def get_formsets_with_inlines(self, request, obj=None):
+        """
+        Override to pass parent form to inline formsets for validation.
+        """
+        for inline, formset in super().get_formsets_with_inlines(request, obj):
+            # Store reference to parent form for validation
+            if hasattr(self, "_parent_form"):
+                formset._parent_form = self._parent_form
+            yield inline, formset
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        """
+        Override to store parent form reference for inline validation.
+        """
+        # Store the form so we can pass it to formsets
+        if request.method == "POST":
+            ModelForm = self.get_form(request, obj=self.get_object(request, object_id))
+            form = ModelForm(
+                request.POST,
+                request.FILES,
+                instance=self.get_object(request, object_id),
+            )
+            self._parent_form = form
+
+        return super().changeform_view(request, object_id, form_url, extra_context)
 
     def save_related(self, request, form, formsets, change):
         """

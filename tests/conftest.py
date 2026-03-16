@@ -12,7 +12,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.test import RequestFactory
 from hypothesis import settings as hypothesis_settings
 
-from cases.models import Case, JawafEntity, DocumentSource
+from cases.models import Case, CaseEntityRelationship, JawafEntity, DocumentSource
 
 User = get_user_model()
 
@@ -25,10 +25,16 @@ hypothesis_settings.load_profile("default")
 
 
 @pytest.fixture(autouse=True)
-def configure_test_settings(settings):
+def reset_feature_flags(settings):
     """
-    Configure stable test settings for each test run.
+    Reset all feature flags to their default values for each test.
+
+    This ensures tests run with predictable, default behavior unless
+    explicitly overridden within a specific test.
     """
+    # Reset EXPOSE_CASES_IN_REVIEW to default (False)
+    settings.EXPOSE_CASES_IN_REVIEW = False
+
     # Disable static file manifest checking for tests
     # This prevents errors when static files haven't been collected
     settings.STORAGES = {
@@ -106,16 +112,22 @@ def create_case_with_entities(**kwargs):
     # Extract entity fields
     alleged_entity_ids = kwargs.pop("alleged_entities", [])
     related_entity_ids = kwargs.pop("related_entities", [])
-    location_ids = kwargs.pop("locations", [])
-
-    # Create the case without entities
+    location_ids = kwargs.pop("locations", [])  # Create the case without entities
     case = Case.objects.create(**kwargs)
 
-    # Add entities using set()
-    if alleged_entity_ids:
-        case.alleged_entities.set(create_entities_from_ids(alleged_entity_ids))
-    if related_entity_ids:
-        case.related_entities.set(create_entities_from_ids(related_entity_ids))
+    # Add entities via through model
+    for entity in create_entities_from_ids(alleged_entity_ids):
+        CaseEntityRelationship.objects.get_or_create(
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
+        )
+    for entity in create_entities_from_ids(related_entity_ids):
+        CaseEntityRelationship.objects.get_or_create(
+            case=case,
+            entity=entity,
+            type=CaseEntityRelationship.RelationshipType.RELATED,
+        )
     if location_ids:
         case.locations.set(create_entities_from_ids(location_ids))
 

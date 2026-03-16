@@ -10,6 +10,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from cases.models import (
             Case,
+            CaseEntityRelationship,
             CaseType,
             CaseState,
             DocumentSource,
@@ -202,20 +203,26 @@ class Command(BaseCommand):
             case_start_date=datetime(2018, 3, 15).date(),
             created_at=timezone.make_aware(datetime(2018, 3, 10)),
         )
-        lalita.alleged_entities.set(
-            [
-                get_entity("entity:person/balakrishna-khand"),
-                get_entity("entity:person/madhav-prasad-ghimire"),
-            ]
-        )
-        lalita.related_entities.set(
-            [
-                get_entity("entity:organization/government_body/nepal-government"),
-                get_entity(
-                    "entity:organization/government_body/land-revenue-office-dillibazar"
-                ),
-            ]
-        )
+        for entity in [
+            get_entity("entity:person/balakrishna-khand"),
+            get_entity("entity:person/madhav-prasad-ghimire"),
+        ]:
+            CaseEntityRelationship.objects.get_or_create(
+                case=lalita,
+                entity=entity,
+                type=CaseEntityRelationship.RelationshipType.ALLEGED,
+            )
+        for entity in [
+            get_entity("entity:organization/government_body/nepal-government"),
+            get_entity(
+                "entity:organization/government_body/land-revenue-office-dillibazar"
+            ),
+        ]:
+            CaseEntityRelationship.objects.get_or_create(
+                case=lalita,
+                entity=entity,
+                type=CaseEntityRelationship.RelationshipType.RELATED,
+            )
         lalita.locations.set([get_entity("entity:location/district/kathmandu")])
 
         # 2. Rabi Lamichhane
@@ -278,9 +285,17 @@ class Command(BaseCommand):
             case_start_date=datetime(2023, 5, 18).date(),
             created_at=timezone.make_aware(datetime(2023, 5, 20)),
         )
-        rabi.alleged_entities.set([get_entity("entity:person/rabi-lamichhane")])
-        rabi.related_entities.set(
-            [get_entity("entity:organization/political_party/rastriya-swatantra-party")]
+        CaseEntityRelationship.objects.get_or_create(
+            case=rabi,
+            entity=get_entity("entity:person/rabi-lamichhane"),
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
+        )
+        CaseEntityRelationship.objects.get_or_create(
+            case=rabi,
+            entity=get_entity(
+                "entity:organization/political_party/rastriya-swatantra-party"
+            ),
+            type=CaseEntityRelationship.RelationshipType.RELATED,
         )
         rabi.locations.set([get_entity("entity:location/district/chitwan")])
 
@@ -345,16 +360,23 @@ class Command(BaseCommand):
             case_start_date=datetime(1998, 6, 1).date(),
             created_at=timezone.make_aware(datetime(2020, 1, 1)),
         )
-        melamchi.alleged_entities.set(
-            [
-                get_entity("entity:organization/government_body/nepal-government"),
-                get_entity(
-                    "entity:organization/government_body/melamchi-water-supply-board"
-                ),
-            ]
-        )
-        melamchi.related_entities.set(
-            [get_entity("entity:organization/government_body/ministry-of-water-supply")]
+        for entity in [
+            get_entity("entity:organization/government_body/nepal-government"),
+            get_entity(
+                "entity:organization/government_body/melamchi-water-supply-board"
+            ),
+        ]:
+            CaseEntityRelationship.objects.get_or_create(
+                case=melamchi,
+                entity=entity,
+                type=CaseEntityRelationship.RelationshipType.ALLEGED,
+            )
+        CaseEntityRelationship.objects.get_or_create(
+            case=melamchi,
+            entity=get_entity(
+                "entity:organization/government_body/ministry-of-water-supply"
+            ),
+            type=CaseEntityRelationship.RelationshipType.RELATED,
         )
         melamchi.locations.set(
             [get_entity("entity:location/district/kathmandu-valley")]
@@ -422,13 +444,20 @@ class Command(BaseCommand):
             case_start_date=datetime(2017, 11, 15).date(),
             created_at=timezone.make_aware(datetime(2021, 7, 15)),
         )
-        oli.alleged_entities.set([get_entity("entity:person/kp-sharma-oli")])
-        oli.related_entities.set(
-            [
-                get_entity("entity:organization/political_party/nepal-communist-party"),
-                get_entity("entity:organization/government_body/nepal-government"),
-            ]
+        CaseEntityRelationship.objects.get_or_create(
+            case=oli,
+            entity=get_entity("entity:person/kp-sharma-oli"),
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
         )
+        for entity in [
+            get_entity("entity:organization/political_party/nepal-communist-party"),
+            get_entity("entity:organization/government_body/nepal-government"),
+        ]:
+            CaseEntityRelationship.objects.get_or_create(
+                case=oli,
+                entity=entity,
+                type=CaseEntityRelationship.RelationshipType.RELATED,
+            )
         oli.locations.set([get_entity("entity:location/nepal")])
 
         # 5. Media Trial
@@ -495,13 +524,17 @@ class Command(BaseCommand):
             case_start_date=datetime(2022, 9, 8).date(),
             created_at=timezone.make_aware(datetime(2022, 9, 10)),
         )
-        media.alleged_entities.set([get_entity("entity:person/sandeep-lamichhane")])
-        media.related_entities.set(
-            [
-                get_entity(
-                    "entity:organization/political_party/national-independent-party"
-                )
-            ]
+        CaseEntityRelationship.objects.get_or_create(
+            case=media,
+            entity=get_entity("entity:person/sandeep-lamichhane"),
+            type=CaseEntityRelationship.RelationshipType.ALLEGED,
+        )
+        CaseEntityRelationship.objects.get_or_create(
+            case=media,
+            entity=get_entity(
+                "entity:organization/political_party/national-independent-party"
+            ),
+            type=CaseEntityRelationship.RelationshipType.RELATED,
         )
         media.locations.set([get_entity("entity:location/district/kathmandu")])
 

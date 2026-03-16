@@ -10,7 +10,14 @@ from datetime import datetime
 
 from django.db import transaction
 
-from cases.models import Case, CaseState, CaseType, DocumentSource, JawafEntity
+from cases.models import (
+    Case,
+    CaseEntityRelationship,
+    CaseState,
+    CaseType,
+    DocumentSource,
+    JawafEntity,
+)
 
 
 class CaseImporter:
@@ -233,21 +240,29 @@ class CaseImporter:
 
             self.log(f"Created case: {case.case_id}")
 
-            # Add alleged entities
+            # Add alleged entities with type='alleged'
             self.log("Processing alleged entities...")
             for entity_name in data.get("alleged_entities", []):
                 entity = self.get_or_create_entity(entity_name)
                 if entity:
-                    case.alleged_entities.add(entity)
+                    CaseEntityRelationship.objects.get_or_create(
+                        case=case,
+                        entity=entity,
+                        type=CaseEntityRelationship.RelationshipType.ALLEGED,
+                    )
 
-            # Add related entities
+            # Add related entities with type='related'
             self.log("Processing related entities...")
             for entity_name in data.get("related_entities", []):
                 entity = self.get_or_create_entity(entity_name)
                 if entity:
-                    case.related_entities.add(entity)
+                    CaseEntityRelationship.objects.get_or_create(
+                        case=case,
+                        entity=entity,
+                        type=CaseEntityRelationship.RelationshipType.RELATED,
+                    )
 
-            # Add locations (handle both string and dict formats)
+            # Add locations (unchanged)
             self.log("Processing locations...")
             for location in data.get("locations", []):
                 if isinstance(location, str):

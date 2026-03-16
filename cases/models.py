@@ -4,17 +4,19 @@ Models for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
-from django.db import models
+import copy
+import uuid
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
+from django.db import models
 from django.utils import timezone
-import uuid
 
 from .fields import (
+    EvidenceListField,
     TextListField,
     TimelineListField,
-    EvidenceListField,
 )
 
 User = get_user_model()
@@ -144,12 +146,21 @@ class JawafEntity(models.Model):
         """
         usage = []
 
-        # Check if used in cases
-        alleged_count = self.cases_as_alleged.count()
+        # Check if used in cases via CaseEntityRelationship
+        alleged_count = self.case_relationships.filter(
+            type=CaseEntityRelationship.RelationshipType.ALLEGED
+        ).count()
         if alleged_count > 0:
             usage.append(f"alleged entity in {alleged_count} case(s)")
 
-        related_count = self.cases_as_related.count()
+        related_count = self.case_relationships.filter(
+            type__in=[
+                CaseEntityRelationship.RelationshipType.RELATED,
+                CaseEntityRelationship.RelationshipType.WITNESS,
+                CaseEntityRelationship.RelationshipType.OPPOSITION,
+                CaseEntityRelationship.RelationshipType.VICTIM,
+            ]
+        ).count()
         if related_count > 0:
             usage.append(f"related entity in {related_count} case(s)")
 
@@ -218,20 +229,70 @@ class SourceType(models.TextChoices):
     OTHER_VISUAL = "OTHER_VISUAL", "Other / Visual Assets"
 
 
+class CaseEntityRelationship(models.Model):
+    """
+    Through model for Case-Entity relationships with type discrimination.
+
+    Allows the same entity to have multiple relationship types with a case
+    (e.g., both accused and related).
+    """
+
+    class RelationshipType(models.TextChoices):
+        ALLEGED = "alleged", "Alleged"
+        RELATED = "related", "Related"
+        WITNESS = "witness", "Witness"
+        OPPOSITION = "opposition", "Opposition"
+        VICTIM = "victim", "Victim"
+
+    case = models.ForeignKey(
+        "Case", on_delete=models.CASCADE, related_name="entity_relationships"
+    )
+
+    entity = models.ForeignKey(
+        "JawafEntity", on_delete=models.CASCADE, related_name="case_relationships"
+    )
+
+    type = models.CharField(max_length=20, choices=RelationshipType.choices)
+
+    notes = models.CharField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text='Optional context about this entity\'s role (e.g., "Then president of XXX company")',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [["case", "entity", "type"]]
+        indexes = [
+            models.Index(fields=["case", "type"]),
+            models.Index(fields=["entity", "type"]),
+        ]
+        ordering = ["type", "entity__display_name"]
+
+    def __str__(self):
+        return f"{self.case.case_id} - {self.entity.display_name} ({self.type})"
+
+
 class Case(models.Model):
     """
     Core model representing a case of alleged misconduct.
 
-    Each case has a single row identified by case_id. Edits are made in-place.
-    State transitions (submit/publish) are recorded in the versionInfo JSON field.
+    Supports versioning: multiple Case records can share the same case_id
+    to represent different versions/drafts of the same case.
     """
 
-    # Stable public identifier
+    # Versioning fields
     case_id = models.CharField(
         max_length=100,
         db_index=True,
-        unique=True,
-        help_text="Stable unique identifier for this case",
+        help_text="Unique identifier shared across versions of the same case",
+    )
+    version = models.IntegerField(
+        default=1,
+        db_index=True,
+        help_text="Version number, increments with each published update",
     )
 
     # Core fields
@@ -268,18 +329,25 @@ class Case(models.Model):
     )
 
     # Entity relationships (many-to-many)
-    alleged_entities = models.ManyToManyField(
-        JawafEntity,
-        blank=True,
-        related_name="cases_as_alleged",
-        help_text="Entities being accused",
+    entities = models.ManyToManyField(
+        JawafEntity, through="CaseEntityRelationship", related_name="cases"
     )
-    related_entities = models.ManyToManyField(
-        JawafEntity,
-        blank=True,
-        related_name="cases_as_related",
-        help_text="Related entities",
-    )
+
+    # OLD: Keep for migration compatibility (will be removed in migration)
+    # alleged_entities = models.ManyToManyField(
+    #     JawafEntity,
+    #     blank=True,
+    #     related_name="cases_as_alleged",
+    #     help_text="Entities being accused",
+    # )
+    # related_entities = models.ManyToManyField(
+    #     JawafEntity,
+    #     blank=True,
+    #     related_name="cases_as_related",
+    #     help_text="Related entities",
+    # )
+
+    # UNCHANGED: locations field
     locations = models.ManyToManyField(
         JawafEntity,
         blank=True,
@@ -319,18 +387,15 @@ class Case(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Notes field (markdown supported, internal use)
-    notes = models.TextField(
-        blank=True,
-        default="",
-        help_text="Internal notes about the case (markdown supported)",
-    )
-
     class Meta:
+        indexes = [
+            models.Index(fields=["case_id", "state", "version"]),
+            models.Index(fields=["state", "version"]),
+        ]
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.case_id} - {self.title} ({self.state})"
+        return f"{self.case_id} v{self.version} - {self.title} ({self.state})"
 
     def save(self, *args, **kwargs):
         """Override save to generate case_id for new cases."""
@@ -359,11 +424,15 @@ class Case(models.Model):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Require at least one alleged entity for published cases
-            if self.alleged_entities.count() == 0:
-                errors["alleged_entities"] = (
-                    "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
-                )
+            # Check for at least one alleged entity
+            if self.pk:
+                alleged_count = self.entity_relationships.filter(
+                    type=CaseEntityRelationship.RelationshipType.ALLEGED
+                ).count()
+                if alleged_count == 0:
+                    errors["entities"] = (
+                        "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
+                    )
 
             if not self.key_allegations or len(self.key_allegations) == 0:
                 errors["key_allegations"] = (
@@ -395,11 +464,64 @@ class Case(models.Model):
 
         # Update versionInfo
         self.versionInfo = {
+            "version_number": self.version,
             "action": "submitted",
             "datetime": timezone.now().isoformat(),
         }
 
         self.save()
+
+    def create_draft(self):
+        """
+        Create a new draft version from this case.
+
+        Creates a new Case record with:
+        - Same case_id
+        - Incremented version
+        - State set to DRAFT
+        - Copy of all content fields
+
+        Returns the new draft Case instance.
+        """
+        # Create new draft with incremented version
+        draft = Case(
+            case_id=self.case_id,
+            version=self.version + 1,
+            case_type=self.case_type,
+            state=CaseState.DRAFT,
+            title=self.title,
+            short_description=self.short_description,
+            thumbnail_url=self.thumbnail_url,
+            banner_url=self.banner_url,
+            case_start_date=self.case_start_date,
+            case_end_date=self.case_end_date,
+            tags=copy.deepcopy(self.tags) if self.tags else [],
+            description=self.description,
+            key_allegations=(
+                copy.deepcopy(self.key_allegations) if self.key_allegations else []
+            ),
+            timeline=copy.deepcopy(self.timeline) if self.timeline else [],
+            evidence=copy.deepcopy(self.evidence) if self.evidence else [],
+            versionInfo={
+                "version_number": self.version + 1,
+                "action": "draft_created",
+                "source_version": self.version,
+                "datetime": timezone.now().isoformat(),
+            },
+        )
+        draft.save()
+
+        # Copy CaseEntityRelationship rows to draft
+        for rel in self.entity_relationships.all():
+            CaseEntityRelationship.objects.create(
+                case=draft, entity=rel.entity, type=rel.type, notes=rel.notes
+            )
+
+        # Copy remaining many-to-many relationships
+        draft.locations.set(self.locations.all())
+        draft.contributors.set(self.contributors.all())
+
+        return draft
 
     def publish(self):
         """
@@ -418,6 +540,7 @@ class Case(models.Model):
 
         # Update versionInfo
         self.versionInfo = {
+            "version_number": self.version,
             "action": "published",
             "datetime": timezone.now().isoformat(),
         }
@@ -428,13 +551,14 @@ class Case(models.Model):
         """
         Soft delete the case by setting state to CLOSED.
 
-        The case record is never hard-deleted; state is set to CLOSED so it
-        remains in the database but is no longer publicly visible.
+        Cases are never hard-deleted to preserve audit history.
+        Instead, the state is set to CLOSED and the record remains in the database.
         """
         self.state = CaseState.CLOSED
 
         # Update versionInfo to track the deletion
         self.versionInfo = {
+            "version_number": self.version,
             "action": "deleted",
             "datetime": timezone.now().isoformat(),
         }

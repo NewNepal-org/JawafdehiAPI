@@ -7,8 +7,20 @@ Ensures entities cannot be deleted if they are referenced by cases or document s
 import pytest
 from django.core.exceptions import ValidationError
 
-from cases.models import CaseType, DocumentSource, JawafEntity
+from cases.models import CaseEntityRelationship, CaseType, DocumentSource, JawafEntity
 from tests.conftest import create_case_with_entities
+
+
+def _add_alleged(case, entity):
+    CaseEntityRelationship.objects.get_or_create(
+        case=case, entity=entity, type=CaseEntityRelationship.RelationshipType.ALLEGED
+    )
+
+
+def _add_related(case, entity):
+    CaseEntityRelationship.objects.get_or_create(
+        case=case, entity=entity, type=CaseEntityRelationship.RelationshipType.RELATED
+    )
 
 
 @pytest.mark.django_db
@@ -24,7 +36,6 @@ class TestEntityDeletionProtection:
         entity_id = entity.id
         entity.delete()
 
-        # Verify entity was deleted
         assert not JawafEntity.objects.filter(id=entity_id).exists()
 
     def test_cannot_delete_entity_used_as_alleged_entity(self):
@@ -37,15 +48,15 @@ class TestEntityDeletionProtection:
             description="Test description",
         )
 
-        entity = case.alleged_entities.first()
+        entity = case.entities.filter(
+            case_relationships__type=CaseEntityRelationship.RelationshipType.ALLEGED
+        ).first()
 
         with pytest.raises(ValidationError) as exc_info:
             entity.delete()
 
         assert "Cannot delete entity" in str(exc_info.value)
         assert "alleged entity" in str(exc_info.value).lower()
-
-        # Verify entity still exists
         assert JawafEntity.objects.filter(id=entity.id).exists()
 
     def test_cannot_delete_entity_used_as_related_entity(self):
@@ -61,15 +72,13 @@ class TestEntityDeletionProtection:
             case_type=CaseType.CORRUPTION,
             description="Test description",
         )
-        case.related_entities.add(entity)
+        _add_related(case, entity)
 
         with pytest.raises(ValidationError) as exc_info:
             entity.delete()
 
         assert "Cannot delete entity" in str(exc_info.value)
         assert "related entity" in str(exc_info.value).lower()
-
-        # Verify entity still exists
         assert JawafEntity.objects.filter(id=entity.id).exists()
 
     def test_cannot_delete_entity_used_as_location(self):
@@ -92,8 +101,6 @@ class TestEntityDeletionProtection:
 
         assert "Cannot delete entity" in str(exc_info.value)
         assert "location" in str(exc_info.value).lower()
-
-        # Verify entity still exists
         assert JawafEntity.objects.filter(id=entity.id).exists()
 
     def test_cannot_delete_entity_used_in_document_source(self):
@@ -112,8 +119,6 @@ class TestEntityDeletionProtection:
 
         assert "Cannot delete entity" in str(exc_info.value)
         assert "document source" in str(exc_info.value).lower()
-
-        # Verify entity still exists
         assert JawafEntity.objects.filter(id=entity.id).exists()
 
     def test_cannot_delete_entity_used_in_multiple_places(self):
@@ -122,7 +127,6 @@ class TestEntityDeletionProtection:
             nes_id="entity:person/multi-use", display_name="Multi Use Person"
         )
 
-        # Create two cases using the entity
         case1 = create_case_with_entities(
             title="Case 1",
             alleged_entities=["entity:person/other"],
@@ -130,7 +134,7 @@ class TestEntityDeletionProtection:
             case_type=CaseType.CORRUPTION,
             description="Description 1",
         )
-        case1.related_entities.add(entity)
+        _add_related(case1, entity)
 
         case2 = create_case_with_entities(
             title="Case 2",
@@ -146,11 +150,8 @@ class TestEntityDeletionProtection:
 
         error_message = str(exc_info.value)
         assert "Cannot delete entity" in error_message
-        # Should mention both usages
         assert "related entity" in error_message.lower()
         assert "location" in error_message.lower()
-
-        # Verify entity still exists
         assert JawafEntity.objects.filter(id=entity.id).exists()
 
     def test_can_delete_entity_after_removing_all_references(self):
@@ -163,16 +164,16 @@ class TestEntityDeletionProtection:
             description="Test description",
         )
 
-        entity = case.alleged_entities.first()
+        entity = case.entities.filter(
+            case_relationships__type=CaseEntityRelationship.RelationshipType.ALLEGED
+        ).first()
         entity_id = entity.id
 
-        # Remove entity from case
-        case.alleged_entities.remove(entity)
+        # Remove entity from case via through model
+        CaseEntityRelationship.objects.filter(case=case, entity=entity).delete()
 
-        # Now deletion should succeed
         entity.delete()
 
-        # Verify entity was deleted
         assert not JawafEntity.objects.filter(id=entity_id).exists()
 
     def test_can_delete_entity_only_used_in_deleted_source(self):
@@ -185,13 +186,11 @@ class TestEntityDeletionProtection:
         source = DocumentSource.objects.create(
             title="Test Source",
             description="Test description",
-            is_deleted=True,  # Soft deleted
+            is_deleted=True,
         )
         source.related_entities.add(entity)
 
-        # Should be able to delete since source is soft-deleted
         entity_id = entity.id
         entity.delete()
 
-        # Verify entity was deleted
         assert not JawafEntity.objects.filter(id=entity_id).exists()

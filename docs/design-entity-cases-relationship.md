@@ -65,7 +65,7 @@ related_cases = Case.objects.filter(
 ### Permissions
 
 - Respect existing case visibility rules
-- Only include cases with status `published`
+- Only include cases with status `published` or `in_review` (if `EXPOSE_CASES_IN_REVIEW` is enabled)
 - Apply any user-specific permissions via django-rules
 
 ### Performance Considerations
@@ -151,11 +151,12 @@ The Jawafdehi frontend will need updates to:
 2. **Test Coverage** (`tests/api/test_entity_cases_relationship.py`):
    - 22 comprehensive tests covering all scenarios
    - Tests for both detail and list endpoints
+   - Tests for feature flag behavior (EXPOSE_CASES_IN_REVIEW)
    - Tests for edge cases (entity in multiple roles, draft cases, etc.)
 
 3. **Behavior**:
    - Works automatically for both `/api/entities/` (list) and `/api/entities/{id}/` (detail)
-    - Only includes PUBLISHED cases
+   - Only includes PUBLISHED cases (and IN_REVIEW if feature flag enabled)
    - Excludes DRAFT and CLOSED cases
    - Prevents duplicates (if entity is both alleged and related, only shows in alleged_cases)
    - Returns empty lists for entities with no cases

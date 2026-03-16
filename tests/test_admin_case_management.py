@@ -255,9 +255,11 @@ def test_state_transitions_always_update_version_info(case_data, target_state):
         case.save()
         case.publish()
     elif target_state == CaseState.CLOSED:
-        # For CLOSED, we set the state directly (soft delete)
+        # For CLOSED, we just set the state directly
+        # (soft delete functionality will be implemented in task 17)
         case.state = CaseState.CLOSED
         case.versionInfo = {
+            "version_number": case.version,
             "action": "closed",
             "datetime": timezone.now().isoformat(),
         }
@@ -330,3 +332,31 @@ def test_admin_can_publish_case():
     can_publish = can_transition_case_state(admin, case, CaseState.PUBLISHED)
 
     assert can_publish, "Admin should be able to transition case to PUBLISHED state"
+
+
+@pytest.mark.django_db
+def test_version_info_contains_version_number():
+    """
+    Edge case: versionInfo should contain the version number.
+    Validates: Requirements 7.2
+    """
+    # Create a case
+    case = create_case_with_entities(
+        title="Test Case",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Test allegation"],
+        case_type=CaseType.CORRUPTION,
+        description="Test description",
+    )
+
+    # Submit to IN_REVIEW
+    case.submit()
+
+    # Check versionInfo contains version_number
+    assert (
+        "version_number" in case.versionInfo
+    ), "versionInfo should contain version_number field"
+
+    assert (
+        case.versionInfo["version_number"] == case.version
+    ), f"versionInfo version_number should match case version ({case.version})"

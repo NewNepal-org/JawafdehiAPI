@@ -206,7 +206,8 @@ useEffect(() => {
 4. Test with various entity counts
 5. Verify performance with current dataset size (with and without cache)
 6. Test pagination with Load More button
-7. Test stale cache behavior: Publish a case and verify list updates after cache expires
+7. Test with EXPOSE_CASES_IN_REVIEW feature flag
+8. Test stale cache behavior: Publish a case and verify list updates after cache expires
 
 ### Phase 4: Documentation
 1. Update API documentation with queryset filtering logic
@@ -252,6 +253,7 @@ No API changes in initial implementation.
 - **API Behavior Change**: `/api/entities/` now returns only entities associated with published cases
 - Entities must appear in `alleged_entities` or `related_entities` of at least one published case
 - **Location entities are excluded** from the entity list
+- Respects `EXPOSE_CASES_IN_REVIEW` feature flag
 - **Caching**: Entity list is cached for 10 minutes using LocMemCache
 - **Stale Data**: Newly published cases may not appear in entity list for up to 10 minutes (acceptable tradeoff)
 
@@ -338,10 +340,20 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
         related_entities of at least one published case.
         
         Note: Location entities are excluded from this list.
+        
+        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes
+        entities from IN_REVIEW cases.
         """
+        from django.conf import settings
         from .models import CaseState
-
-        published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+        
+        # Get published cases (and IN_REVIEW if feature flag enabled)
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            published_cases = Case.objects.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            )
+        else:
+            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
         
         # Get entity IDs from case relationships (alleged and related only)
         entity_ids = set()
@@ -376,6 +388,7 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
         Return only entities that appear in published cases.
         Uses simple caching to avoid expensive queryset evaluation.
         """
+        from django.conf import settings
         from .models import CaseState
         
         # Try to get entity IDs from cache
@@ -383,7 +396,12 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
         
         if entity_ids is None:
             # Cache miss - compute entity IDs
-            published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+            if settings.EXPOSE_CASES_IN_REVIEW:
+                published_cases = Case.objects.filter(
+                    state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                )
+            else:
+                published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
             
             entity_ids = set()
             for case in published_cases:
@@ -590,3 +608,4 @@ class JawafEntitySerializer(serializers.ModelSerializer):
 
 - [API Documentation](./API_DOCUMENTATION.md)
 - [Entity Migration Summary](./ENTITY_MIGRATION_SUMMARY.md)
+- [Feature Flag Documentation](./FEATURE_FLAG_EXPOSE_CASES_IN_REVIEW.md)

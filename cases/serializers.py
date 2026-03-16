@@ -5,6 +5,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 from rest_framework import serializers
+from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from drf_spectacular.types import OpenApiTypes
 from .models import Case, DocumentSource, JawafEntity, CaseState, Feedback
@@ -13,6 +14,9 @@ from .models import Case, DocumentSource, JawafEntity, CaseState, Feedback
 class JawafEntitySerializer(serializers.ModelSerializer):
     """
     Serializer for JawafEntity model.
+
+    Maintains backward compatibility by returning separate
+    alleged_cases and related_cases arrays.
     """
 
     alleged_cases = serializers.SerializerMethodField(
@@ -26,57 +30,98 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         model = JawafEntity
         fields = ["id", "nes_id", "display_name", "alleged_cases", "related_cases"]
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_alleged_cases(self, obj):
         """
         Get list of case IDs where this entity is alleged.
 
-        Only includes PUBLISHED cases.
+        Uses new CaseEntityRelationship model with type='alleged'.
+        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         """
-        cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
+        from django.conf import settings
+        from .models import CaseEntityRelationship
 
-        return list(cases.values_list("id", flat=True))
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            relationships = obj.case_relationships.filter(
+                type=CaseEntityRelationship.RelationshipType.ALLEGED,
+                case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
+            )
+        else:
+            relationships = obj.case_relationships.filter(
+                type=CaseEntityRelationship.RelationshipType.ALLEGED,
+                case__state=CaseState.PUBLISHED,
+            )
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
+        return sorted(relationships.values_list("case__case_id", flat=True).distinct())
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_related_cases(self, obj):
         """
         Get list of case IDs where this entity is related or a location.
 
-        Only includes PUBLISHED cases.
-        Excludes cases where entity is already alleged (to avoid duplicates).
+        Uses new CaseEntityRelationship model with types: related, witness, opposition, victim.
+        Also includes location relationships (unchanged).
+        Only includes PUBLISHED cases (and IN_REVIEW if feature flag is enabled).
         """
-        # Get alleged case IDs to exclude
-        alleged_case_ids = obj.cases_as_alleged.filter(
-            state=CaseState.PUBLISHED
-        ).values_list("id", flat=True)
+        from django.conf import settings
+        from .models import CaseEntityRelationship
 
-        # Get related and location cases
-        related_cases = obj.cases_as_related.filter(state=CaseState.PUBLISHED).exclude(
-            id__in=alleged_case_ids
-        )
+        # Get all non-alleged relationships (related, witness, opposition, victim)
+        non_alleged_types = [
+            CaseEntityRelationship.RelationshipType.RELATED,
+            CaseEntityRelationship.RelationshipType.WITNESS,
+            CaseEntityRelationship.RelationshipType.OPPOSITION,
+            CaseEntityRelationship.RelationshipType.VICTIM,
+        ]
 
-        location_cases = obj.cases_as_location.filter(
-            state=CaseState.PUBLISHED
-        ).exclude(id__in=alleged_case_ids)
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            related_relationships = obj.case_relationships.filter(
+                type__in=non_alleged_types,
+                case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
+            )
+            location_cases = obj.cases_as_location.filter(
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+            )
+        else:
+            related_relationships = obj.case_relationships.filter(
+                type__in=non_alleged_types,
+                case__state=CaseState.PUBLISHED,
+            )
+            location_cases = obj.cases_as_location.filter(state=CaseState.PUBLISHED)
 
         # Combine and deduplicate
-        case_ids = set(related_cases.values_list("id", flat=True))
-        case_ids.update(location_cases.values_list("id", flat=True))
+        case_ids = set(related_relationships.values_list("case__case_id", flat=True))
+        case_ids.update(location_cases.values_list("case_id", flat=True))
 
-        return list(case_ids)
+        # Exclude cases where this entity is already alleged (alleged takes precedence)
+        # Use same visibility rules as related_relationships
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            alleged_case_ids = set(
+                obj.case_relationships.filter(
+                    type=CaseEntityRelationship.RelationshipType.ALLEGED,
+                    case__state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
+                ).values_list("case__case_id", flat=True)
+            )
+        else:
+            alleged_case_ids = set(
+                obj.case_relationships.filter(
+                    type=CaseEntityRelationship.RelationshipType.ALLEGED,
+                    case__state=CaseState.PUBLISHED,
+                ).values_list("case__case_id", flat=True)
+            )
+        case_ids -= alleged_case_ids
+
+        return sorted(case_ids)
 
 
 class CaseSerializer(serializers.ModelSerializer):
     """
-    Serializer for Case model.
-
-    Exposes all fields except contributors (internal only).
-
-    The state field is always included to indicate case status (PUBLISHED or IN_REVIEW).
+    Serializer for Case model with unified entities array.
     """
 
-    alleged_entities = JawafEntitySerializer(many=True, read_only=True)
-    related_entities = JawafEntitySerializer(many=True, read_only=True)
+    entities = serializers.SerializerMethodField(
+        help_text="List of entities with type indicators"
+    )
     locations = JawafEntitySerializer(many=True, read_only=True)
     tags = serializers.ListField(
         child=serializers.CharField(),
@@ -116,31 +161,95 @@ class CaseSerializer(serializers.ModelSerializer):
             "banner_url",
             "case_start_date",
             "case_end_date",
-            "alleged_entities",
-            "related_entities",
+            "entities",  # NEW: replaces alleged_entities and related_entities
             "locations",
             "tags",
             "description",
             "key_allegations",
             "timeline",
             "evidence",
-            "notes",
             "versionInfo",
             "created_at",
             "updated_at",
         ]
         read_only_fields = fields  # API is read-only
 
+    @extend_schema_field(
+        serializers.ListField(
+            child=serializers.DictField(
+                child=serializers.CharField(),
+                help_text="Entity with type and optional notes",
+            )
+        )
+    )
+    def get_entities(self, obj):
+        """
+        Get unified entities array with type and notes fields.
+
+        Returns a flat list of entity dicts (id, nes_id, display_name, type,
+        optional notes).  Does NOT nest alleged_cases/related_cases — those
+        belong on the /api/entities/ endpoint, not inside a case detail.
+        """
+        relationships = obj.entity_relationships.select_related("entity").all()
+
+        entities_data = []
+        for rel in relationships:
+            entity_data = {
+                "id": rel.entity_id,
+                "nes_id": rel.entity.nes_id,
+                "display_name": rel.entity.display_name,
+                "type": rel.type,
+            }
+            if rel.notes:
+                entity_data["notes"] = rel.notes
+            entities_data.append(entity_data)
+
+        return entities_data
+
 
 class CaseDetailSerializer(CaseSerializer):
     """
-    Serializer for Case detail view.
+    Serializer for Case detail view with audit history.
 
-    Inherits all fields from CaseSerializer including the `notes` field.
+    Includes audit_history field containing versionInfo from all
+    published versions with the same case_id.
     """
 
+    audit_history = serializers.SerializerMethodField(
+        help_text="Complete audit trail showing all published versions of this case"
+    )
+
     class Meta(CaseSerializer.Meta):
-        pass
+        fields = CaseSerializer.Meta.fields + ["audit_history"]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_audit_history(self, obj):
+        """
+        Get versionInfo from all published versions with the same case_id.
+
+        If EXPOSE_CASES_IN_REVIEW feature flag is enabled, also includes IN_REVIEW versions.
+
+        Returns a list of versionInfo objects ordered by version (newest first).
+        """
+        # Get all published versions with the same case_id
+        # (and in-review if feature flag is enabled)
+        if settings.EXPOSE_CASES_IN_REVIEW:
+            all_versions = Case.objects.filter(
+                case_id=obj.case_id,
+                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW],
+            ).order_by("-version")
+        else:
+            all_versions = Case.objects.filter(
+                case_id=obj.case_id, state=CaseState.PUBLISHED
+            ).order_by("-version")
+
+        # Extract versionInfo from each version
+        audit_history = []
+        for version in all_versions:
+            if version.versionInfo:
+                audit_history.append(version.versionInfo)
+
+        return audit_history
 
 
 class DocumentSourceSerializer(serializers.ModelSerializer):
