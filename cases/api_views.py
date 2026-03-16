@@ -365,7 +365,8 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         A source is accessible if it's referenced in the evidence field
         of at least one published case.
         """
-        published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+        allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
+        published_cases = Case.objects.filter(state__in=allowed_states)
 
         # Extract all source_ids from evidence fields
         source_ids = set()
