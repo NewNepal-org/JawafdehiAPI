@@ -104,12 +104,16 @@ class CaseAdminForm(forms.ModelForm):
         widgets = {
             "description": TinyMCE(attrs={"cols": 80, "rows": 30}),
             "notes": TinyMCE(attrs={"cols": 80, "rows": 20}),
+            "audit_notes": forms.Textarea(
+                attrs={"cols": 80, "rows": 15, "class": "markdown-editor"}
+            ),
             "state": forms.RadioSelect(),
             "case_start_date": forms.DateInput(attrs={"type": "date"}),
             "case_end_date": forms.DateInput(attrs={"type": "date"}),
         }
         help_texts = {
             "state": "Current workflow state: DRAFT (editable), IN_REVIEW (pending approval), PUBLISHED (public), CLOSED (archived)",
+            "audit_notes": "Markdown-formatted notes documenting case history, editorial decisions, and source verification. Supports **bold**, *italic*, lists, and links.",
         }
 
     def __init__(self, *args, **kwargs):
@@ -344,6 +348,13 @@ class CaseAdmin(admin.ModelAdmin):
             },
         ),
         ("Evidence", {"fields": ("evidence",)}),
+        (
+            "Audit Trail",
+            {
+                "fields": ("audit_notes",),
+                "description": "Internal notes for case workers and administrators. Supports markdown formatting.",
+            },
+        ),
         ("Assignment", {"fields": ("contributors",)}),
         (
             "Metadata",

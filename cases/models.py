@@ -326,6 +326,12 @@ class Case(models.Model):
         help_text="Internal notes about the case (markdown supported)",
     )
 
+    # Audit trail
+    audit_notes = models.TextField(
+        blank=True,
+        help_text="Markdown-formatted audit trail documenting case history, editorial decisions, and source verification notes",
+    )
+
     class Meta:
         ordering = ["-created_at"]
 
