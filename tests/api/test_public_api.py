@@ -591,7 +591,7 @@ def test_public_api_exposes_case_in_review_under_the_retrieve_mode(case_data):
 
 
 @pytest.mark.django_db
-def test_document_source_api_only_shows_sources_referenced_by_published_cases():
+def test_document_source_api_shows_sources_from_published_and_in_review_cases():
     """
     Edge case: DocumentSource API should show sources referenced in evidence of published or in-review cases.
     Validates: Design document - sources visible if referenced by any published or in-review case
