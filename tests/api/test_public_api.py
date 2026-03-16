@@ -593,8 +593,8 @@ def test_public_api_exposes_case_in_review_under_the_retrieve_mode(case_data):
 @pytest.mark.django_db
 def test_document_source_api_only_shows_sources_referenced_by_published_cases():
     """
-    Edge case: DocumentSource API should only show sources referenced in evidence of published cases.
-    Validates: Design document - sources visible if referenced by any published case
+    Edge case: DocumentSource API should show sources referenced in evidence of published or in-review cases.
+    Validates: Design document - sources visible if referenced by any published or in-review case
     """
 
     # Create a source (not linked to any case via ForeignKey)
@@ -679,7 +679,7 @@ def test_document_source_api_only_shows_sources_referenced_by_published_cases():
         unreferenced_source.source_id not in source_ids
     ), "Source not referenced by any case should NOT appear in API"
 
-    # IN_REVIEW sources should NOT appear
+    # IN_REVIEW sources SHOULD appear (changed behavior)
     assert (
-        in_review_source.source_id not in source_ids
-    ), "Source referenced by in-review case should NOT appear in API"
+        in_review_source.source_id in source_ids
+    ), "Source referenced by in-review case should appear in API"
