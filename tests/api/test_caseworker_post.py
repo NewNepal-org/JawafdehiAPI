@@ -122,3 +122,23 @@ def test_post_rejects_client_supplied_contributors_field():
 
     assert response.status_code == 422
     assert Case.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_post_rejects_array_payload():
+    """Test that POST with array payload returns 422 with clear error message."""
+    user = create_user_with_role("eshwar", "eshwar@example.com", "Contributor")
+
+    response = _authed_client(user).post(
+        URL,
+        data=[
+            {"title": "First case", "case_type": CaseType.CORRUPTION},
+            {"title": "Second case", "case_type": CaseType.CORRUPTION},
+        ],
+        format="json",
+    )
+
+    assert response.status_code == 422
+    assert "detail" in response.data
+    assert response.data["detail"] == "Request body must be a JSON object."
+    assert Case.objects.count() == 0

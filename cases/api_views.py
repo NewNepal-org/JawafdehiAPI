@@ -207,6 +207,13 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         Create a new case by delegating validation to the existing Django admin form
         so API and admin creation semantics stay aligned.
         """
+        # Validate that request body is a JSON object (dict), not array or scalar
+        if not isinstance(request.data, dict):
+            return Response(
+                {"detail": "Request body must be a JSON object."},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
         allowed_fields = set(CaseCreateSerializer().fields.keys())
         unexpected_fields = sorted(set(request.data.keys()) - allowed_fields)
         if unexpected_fields:
