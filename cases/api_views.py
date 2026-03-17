@@ -5,7 +5,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 from django.core.cache import cache
-from django.db import connection
+from django.db import connection, transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -23,7 +23,12 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 import jsonpatch
 
-from .caseworker_serializers import BLOCKED_PATH_PREFIXES, CasePatchSerializer
+from .admin import CaseAdminForm
+from .caseworker_serializers import (
+    BLOCKED_PATH_PREFIXES,
+    CaseCreateSerializer,
+    CasePatchSerializer,
+)
 from .models import Case, CaseState, DocumentSource, JawafEntity
 from .rules.predicates import can_change_case
 from .serializers import (
@@ -36,6 +41,18 @@ from .serializers import (
 
 
 @extend_schema_view(
+    create=extend_schema(
+        summary="Create a draft case",
+        description="""
+        Create a new case through the same validation rules used by the Django admin form.
+
+        Authenticated users create cases in `DRAFT` state only. The request user is
+        automatically added as a contributor on the new case.
+        """,
+        request=CaseCreateSerializer,
+        responses={201: CaseSerializer},
+        tags=["cases"],
+    ),
     list=extend_schema(
         summary="List published cases",
         description="""
@@ -106,6 +123,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     Public read-only API for Cases (with PATCH support for authenticated users).
 
     Provides:
+    - Create endpoint: POST /api/cases/ (authenticated users only)
     - List endpoint: GET /api/cases/
     - Retrieve endpoint: GET /api/cases/{id}/
     - Patch endpoint: PATCH /api/cases/{id}/ (authenticated users only)
@@ -129,13 +147,15 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_permissions(self):
         """
-        Allow PATCH for authenticated users, read-only for everyone else.
+        Allow POST/PATCH for authenticated users, read-only for everyone else.
         """
-        if self.action == "partial_update":
+        if self.action in {"create", "partial_update"}:
             return [IsAuthenticated()]
         return super().get_permissions()
 
     def get_serializer_class(self):
+        if self.action == "create":
+            return CaseCreateSerializer
         if self.action == "retrieve":
             return CaseDetailSerializer
         return CaseSerializer
@@ -179,6 +199,38 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 queryset = queryset.filter(id__in=case_ids_with_tag)
 
         return queryset.order_by("-created_at")
+
+    def create(self, request, *args, **kwargs):
+        """
+        POST /api/cases/
+
+        Create a new case by delegating validation to the existing Django admin form
+        so API and admin creation semantics stay aligned.
+        """
+        allowed_fields = set(CaseCreateSerializer().fields.keys())
+        unexpected_fields = sorted(set(request.data.keys()) - allowed_fields)
+        if unexpected_fields:
+            return Response(
+                {field: ["This field is not allowed."] for field in unexpected_fields},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        serializer = CaseCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors, status=status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
+
+        form = CaseAdminForm(data=serializer.validated_data, request=request)
+        form.fields["case_id"].required = False
+        if not form.is_valid():
+            return Response(form.errors, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        with transaction.atomic():
+            case = form.save()
+            case.contributors.add(request.user)
+
+        return Response(CaseSerializer(case).data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, pk=None):
         """

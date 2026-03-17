@@ -55,12 +55,19 @@ class TestOpenAPIDocumentation:
         # Verify case endpoints are documented
         assert "/api/cases/" in schema["paths"]
         assert "/api/cases/{id}/" in schema["paths"]
+        assert "post" in schema["paths"]["/api/cases/"]
 
         # Verify list endpoint has proper documentation
         cases_list = schema["paths"]["/api/cases/"]["get"]
         assert "summary" in cases_list
         assert "description" in cases_list
         assert "parameters" in cases_list
+
+        # Verify create endpoint has proper documentation
+        cases_create = schema["paths"]["/api/cases/"]["post"]
+        assert "summary" in cases_create
+        assert "description" in cases_create
+        assert "requestBody" in cases_create
 
         # Verify parameters are documented
         param_names = [p["name"] for p in cases_list["parameters"]]
