@@ -70,7 +70,7 @@ class SubmitNESChangeView(APIView):
     queue item is created with status=APPROVED (skipping manual review).
     Contributors who attempt ``auto_approve=True`` receive a 403 response.
 
-    Supported actions: ADD_NAME, CREATE_ENTITY.
+    Supported actions: ADD_NAME, CREATE_ENTITY, UPDATE_ENTITY.
     """
 
     authentication_classes = [TokenAuthentication]
@@ -97,12 +97,19 @@ class SubmitNESChangeView(APIView):
         auto_approve = serializer.validated_data.get("auto_approve", False)
 
         # ------------------------------------------------------------------
-        # Step 2: Reject unsupported actions (MVP: ADD_NAME and CREATE_ENTITY)
+        # Step 2: Reject unsupported actions
         # ------------------------------------------------------------------
-        if action not in [QueueAction.ADD_NAME, QueueAction.CREATE_ENTITY]:
+        if action not in [
+            QueueAction.ADD_NAME,
+            QueueAction.CREATE_ENTITY,
+            QueueAction.UPDATE_ENTITY,
+        ]:
             return Response(
                 {
-                    "action": "Only ADD_NAME and CREATE_ENTITY actions are supported in this version."
+                    "action": (
+                        "Only ADD_NAME, CREATE_ENTITY, and UPDATE_ENTITY actions "
+                        "are supported in this version."
+                    )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
