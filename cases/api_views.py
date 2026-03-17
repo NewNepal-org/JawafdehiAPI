@@ -371,7 +371,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         description="""
         Retrieve a paginated list of document sources.
         
-        Only sources associated with published cases are accessible.
+        Only sources associated with published or in-review cases are accessible.
         Soft-deleted sources (is_deleted=True) are excluded.
         
         **Pagination:**
@@ -397,7 +397,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         The endpoint accepts either the database id (numeric) or the source_id 
         (e.g., 'source:20240115:abc123').
         
-        Only sources associated with at least one published case are accessible.
+        Only sources associated with at least one published or in-review case are accessible.
         """,
         tags=["sources"],
     ),
@@ -411,7 +411,7 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
     - Retrieve endpoint: GET /api/sources/{id_or_source_id}/
 
     The retrieve endpoint accepts either the database id or the source_id.
-    Only sources associated with published cases are accessible.
+    Only sources associated with published or in-review cases are accessible.
     """
 
     serializer_class = DocumentSourceSerializer
@@ -419,16 +419,17 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         """
-        Return only sources referenced in evidence of published cases.
+        Return only sources referenced in evidence of published or in-review cases.
 
         A source is accessible if it's referenced in the evidence field
-        of at least one published case.
+        of at least one published or in-review case.
         """
-        published_cases = Case.objects.filter(state=CaseState.PUBLISHED)
+        allowed_states = [CaseState.PUBLISHED, CaseState.IN_REVIEW]
+        visible_cases = Case.objects.filter(state__in=allowed_states)
 
         # Extract all source_ids from evidence fields
         source_ids = set()
-        for case in published_cases:
+        for case in visible_cases:
             if case.evidence:
                 for evidence_item in case.evidence:
                     if isinstance(evidence_item, dict) and "source_id" in evidence_item:
