@@ -171,6 +171,95 @@ class JawafEntity(models.Model):
         return super().delete(using=using, keep_parents=keep_parents)
 
 
+class RelationshipType(models.TextChoices):
+    """Enum for entity-case relationship types."""
+
+    ALLEGED = "alleged", "Alleged"
+    RELATED = "related", "Related"
+    WITNESS = "witness", "Witness"
+    OPPOSITION = "opposition", "Opposition"
+    VICTIM = "victim", "Victim"
+
+
+class CaseEntityRelationship(models.Model):
+    """
+    Through-model for Case-Entity relationships with relationship types.
+    
+    This model replaces the direct ManyToMany relationships (alleged_entities, 
+    related_entities) with a flexible system that supports multiple relationship 
+    types and additional metadata.
+    """
+
+    case = models.ForeignKey(
+        "Case",
+        on_delete=models.CASCADE,
+        related_name="entity_relationships",
+        help_text="The case this relationship belongs to",
+    )
+    entity = models.ForeignKey(
+        JawafEntity,
+        on_delete=models.CASCADE,
+        related_name="case_relationships",
+        help_text="The entity involved in this relationship",
+    )
+    relationship_type = models.CharField(
+        max_length=20,
+        choices=RelationshipType.choices,
+        help_text="Type of relationship between case and entity",
+    )
+    notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional notes about this relationship",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        help_text="When this relationship was created",
+    )
+
+    class Meta:
+        verbose_name = "Case Entity Relationship"
+        verbose_name_plural = "Case Entity Relationships"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["case", "entity", "relationship_type"],
+                name="unique_case_entity_relationship_type",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["case", "relationship_type"],
+                name="case_relationship_type_idx",
+            ),
+            models.Index(
+                fields=["entity", "relationship_type"],
+                name="entity_relationship_type_idx",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.case.case_id} - {self.entity} ({self.relationship_type})"
+
+    def clean(self):
+        """Validate relationship data."""
+        errors = {}
+
+        # Ensure case and entity are provided
+        if not self.case_id:
+            errors["case"] = "Case is required"
+        if not self.entity_id:
+            errors["entity"] = "Entity is required"
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        """Override save to validate before saving."""
+        self.clean()
+        super().save(*args, **kwargs)
+
+
 class CaseType(models.TextChoices):
     """Enum for case types."""
 
@@ -268,6 +357,15 @@ class Case(models.Model):
     )
 
     # Entity relationships (many-to-many)
+    # New unified entities field using CaseEntityRelationship through model
+    unified_entities = models.ManyToManyField(
+        JawafEntity,
+        through="CaseEntityRelationship",
+        related_name="unified_cases",
+        help_text="All entities related to this case through the unified relationship system",
+    )
+    
+    # Existing fields maintained for backward compatibility during migration
     alleged_entities = models.ManyToManyField(
         JawafEntity,
         blank=True,
@@ -331,6 +429,45 @@ class Case(models.Model):
 
     def __str__(self):
         return f"{self.case_id} - {self.title} ({self.state})"
+
+    def get_entities_by_type(self, relationship_type):
+        """
+        Get entities filtered by relationship type from the unified system.
+        
+        Args:
+            relationship_type: RelationshipType enum value or string
+            
+        Returns:
+            QuerySet of JawafEntity objects with the specified relationship type
+        """
+        return self.unified_entities.filter(
+            case_relationships__relationship_type=relationship_type
+        )
+
+    @property
+    def alleged_entities_unified(self):
+        """Get alleged entities via unified system for backward compatibility."""
+        return self.get_entities_by_type(RelationshipType.ALLEGED)
+
+    @property
+    def related_entities_unified(self):
+        """Get related entities via unified system for backward compatibility."""
+        return self.get_entities_by_type(RelationshipType.RELATED)
+
+    @property
+    def witness_entities(self):
+        """Get witness entities via unified system."""
+        return self.get_entities_by_type(RelationshipType.WITNESS)
+
+    @property
+    def opposition_entities(self):
+        """Get opposition entities via unified system."""
+        return self.get_entities_by_type(RelationshipType.OPPOSITION)
+
+    @property
+    def victim_entities(self):
+        """Get victim entities via unified system."""
+        return self.get_entities_by_type(RelationshipType.VICTIM)
 
     def save(self, *args, **kwargs):
         """Override save to generate case_id for new cases."""
