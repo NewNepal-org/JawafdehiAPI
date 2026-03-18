@@ -12,6 +12,8 @@ from .models import (
     JawafEntity,
     CaseState,
     Feedback,
+    CaseEntityRelationship,
+    RelationshipType,
 )
 from .widgets import (
     MultiTextField,
@@ -101,6 +103,7 @@ class CaseAdminForm(forms.ModelForm):
     class Meta:
         model = Case
         fields = "__all__"
+        exclude = ["unified_entities"]  # Exclude unified_entities as it's managed through the inline
         widgets = {
             "description": TinyMCE(attrs={"cols": 80, "rows": 30}),
             "notes": TinyMCE(attrs={"cols": 80, "rows": 20}),
@@ -216,12 +219,16 @@ class CaseAdminForm(forms.ModelForm):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Check alleged_entities (m2m field - check form data)
-            alleged_entities = cleaned_data.get("alleged_entities")
-            if not alleged_entities or alleged_entities.count() == 0:
-                errors["alleged_entities"] = (
-                    "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
-                )
+            # Check if case has any alleged entities through the unified system
+            if self.instance.pk:
+                alleged_count = self.instance.entity_relationships.filter(
+                    relationship_type=RelationshipType.ALLEGED
+                ).count()
+                if alleged_count == 0:
+                    errors["__all__"] = (
+                        "At least one alleged entity relationship is required for IN_REVIEW or PUBLISHED state. "
+                        "Please add alleged entities using the 'Case Entity Relationships' section below."
+                    )
 
             # Check key_allegations
             key_allegations = cleaned_data.get("key_allegations")
@@ -244,6 +251,52 @@ class CaseAdminForm(forms.ModelForm):
 
 
 # ============================================================================
+# Case Entity Relationship Inline
+# ============================================================================
+
+
+class CaseEntityRelationshipInline(admin.TabularInline):
+    """
+    Inline admin for managing Case-Entity relationships.
+    
+    Features:
+    - TabularInline for efficient bulk operations
+    - Relationship type dropdown with all available choices
+    - Editable notes field for additional context
+    - Created timestamp display for relationship tracking
+    - Autocomplete for entity selection
+    - Support for bulk operations
+    """
+    
+    model = CaseEntityRelationship
+    extra = 1
+    fields = ['entity', 'relationship_type', 'notes', 'created_at']
+    readonly_fields = ['created_at']
+    autocomplete_fields = ['entity']
+    
+    # Enable bulk operations
+    can_delete = True
+    show_change_link = False
+    
+    # Customize the form widget for relationship_type to show all choices
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        """Customize the relationship_type field to show all available choices."""
+        if db_field.name == "relationship_type":
+            kwargs['widget'] = forms.Select(choices=RelationshipType.choices)
+        return super().formfield_for_choice_field(db_field, request, **kwargs)
+    
+    def get_queryset(self, request):
+        """Optimize queryset with select_related for better performance."""
+        return super().get_queryset(request).select_related('entity')
+    
+    def get_extra(self, request, obj=None, **kwargs):
+        """Show extra forms for new cases, fewer for existing cases with relationships."""
+        if obj and obj.entity_relationships.exists():
+            return 0  # Don't show extra forms if relationships already exist
+        return 1  # Show 1 extra form for new cases or cases without relationships
+
+
+# ============================================================================
 # Case Admin
 # ============================================================================
 
@@ -259,9 +312,11 @@ class CaseAdmin(admin.ModelAdmin):
     - Version history display
     - Contributor assignment
     - Role-based permissions
+    - CaseEntityRelationship inline for unified entity management
     """
 
     form = CaseAdminForm
+    inlines = [CaseEntityRelationshipInline]
 
     class Media:
         js = ("admin/js/case_admin.js",)
@@ -307,7 +362,6 @@ class CaseAdmin(admin.ModelAdmin):
                     "banner_url",
                     "case_type",
                     "state",
-                    "alleged_entities",
                 )
             },
         ),
@@ -326,7 +380,6 @@ class CaseAdmin(admin.ModelAdmin):
             "Entities",
             {
                 "fields": (
-                    "related_entities",
                     "locations",
                 )
             },
@@ -360,8 +413,6 @@ class CaseAdmin(admin.ModelAdmin):
 
     filter_horizontal = [
         "contributors",
-        "alleged_entities",
-        "related_entities",
         "locations",
     ]
 
