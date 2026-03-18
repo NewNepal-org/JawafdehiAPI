@@ -862,10 +862,8 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
 
             entity_ids = set()
             for case in published_cases:
-                # Add alleged entities
-                entity_ids.update(case.alleged_entities.values_list("id", flat=True))
-                # Add related entities
-                entity_ids.update(case.related_entities.values_list("id", flat=True))
+                # Add all entities from unified entities format
+                entity_ids.update(case.unified_entities.values_list("id", flat=True))
 
             # Cache for 10 minutes - stale cache is acceptable
             cache.set("public_entities_list", entity_ids, timeout=600)
