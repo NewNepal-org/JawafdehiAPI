@@ -273,10 +273,17 @@ class CaseEntityRelationshipInline(admin.TabularInline):
     fields = ['entity', 'relationship_type', 'notes', 'created_at']
     readonly_fields = ['created_at']
     autocomplete_fields = ['entity']
+    verbose_name = "Entity"
+    verbose_name_plural = "Entities"
     
     # Enable bulk operations
     can_delete = True
     show_change_link = False
+    
+    class Media:
+        css = {
+            'all': ('admin/css/entity_view_link_hide.css',)
+        }
     
     # Customize the form widget for relationship_type to show all choices
     def formfield_for_choice_field(self, db_field, request, **kwargs):
@@ -377,7 +384,7 @@ class CaseAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Entities",
+            "Location",
             {
                 "fields": (
                     "locations",
