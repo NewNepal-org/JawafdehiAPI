@@ -12,6 +12,7 @@ from .api_views import (
     JawafEntityViewSet,
     StatisticsView,
     FeedbackView,
+    EntityRelationshipQueryView,
 )
 
 # Create a router and register our viewsets
@@ -23,5 +24,6 @@ router.register(r"entities", JawafEntityViewSet, basename="jawafentity")
 urlpatterns = [
     path("statistics/", StatisticsView.as_view(), name="statistics"),
     path("feedback/", FeedbackView.as_view(), name="feedback"),
+    path("entity-relationships/query/", EntityRelationshipQueryView.as_view(), name="entity-relationship-query"),
     path("", include(router.urls)),
 ]
