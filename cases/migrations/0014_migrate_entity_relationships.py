@@ -87,37 +87,27 @@ def reverse_migration(apps, schema_editor):
     
     This only removes relationships with type 'alleged' or 'related' to avoid
     removing any manually created relationships with other types.
-    
-    Note: This function uses raw SQL to handle column name differences
-    during migration rollback.
     """
     CaseEntityRelationship = apps.get_model('cases', 'CaseEntityRelationship')
     
-    # Use raw SQL to handle potential column name differences
-    with schema_editor.connection.cursor() as cursor:
-        # Count relationships before deletion
-        cursor.execute(
-            "SELECT COUNT(*) FROM cases_caseentityrelationship WHERE "
-            "(relationship_type = 'alleged' OR type = 'alleged')"
-        )
-        alleged_count = cursor.fetchone()[0]
-        
-        cursor.execute(
-            "SELECT COUNT(*) FROM cases_caseentityrelationship WHERE "
-            "(relationship_type = 'related' OR type = 'related')"
-        )
-        related_count = cursor.fetchone()[0]
-        
-        # Delete migrated relationships
-        cursor.execute(
-            "DELETE FROM cases_caseentityrelationship WHERE "
-            "(relationship_type IN ('alleged', 'related') OR type IN ('alleged', 'related'))"
-        )
+    # Count relationships before deletion
+    alleged_count = CaseEntityRelationship.objects.filter(
+        relationship_type='alleged'
+    ).count()
+    
+    related_count = CaseEntityRelationship.objects.filter(
+        relationship_type='related'
+    ).count()
+    
+    # Delete migrated relationships
+    deleted_count = CaseEntityRelationship.objects.filter(
+        relationship_type__in=['alleged', 'related']
+    ).delete()[0]
     
     print(f"Reverse migration completed:")
     print(f"  - Alleged relationships removed: {alleged_count}")
     print(f"  - Related relationships removed: {related_count}")
-    print(f"  - Total relationships removed: {alleged_count + related_count}")
+    print(f"  - Total relationships removed: {deleted_count}")
 
 
 class Migration(migrations.Migration):
