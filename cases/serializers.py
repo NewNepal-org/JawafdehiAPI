@@ -7,12 +7,15 @@ See: .kiro/specs/accountability-platform-core/design.md
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from drf_spectacular.types import OpenApiTypes
-from .models import Case, DocumentSource, JawafEntity, CaseState, Feedback
+from .models import Case, DocumentSource, JawafEntity, CaseState, Feedback, CaseEntityRelationship
 
 
 class JawafEntitySerializer(serializers.ModelSerializer):
     """
     Serializer for JawafEntity model.
+    
+    Updated for the completed unified entity-case relationships migration.
+    Uses the unified system to get case relationships.
     """
 
     alleged_cases = serializers.SerializerMethodField(
@@ -31,9 +34,16 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is alleged.
 
-        Only includes PUBLISHED cases.
+        Only includes PUBLISHED cases. Uses the unified relationship system.
         """
-        cases = obj.cases_as_alleged.filter(state=CaseState.PUBLISHED)
+        from .models import RelationshipType, CaseState
+        
+        # Get cases where this entity has an 'alleged' relationship
+        cases = Case.objects.filter(
+            entity_relationships__entity=obj,
+            entity_relationships__relationship_type=RelationshipType.ALLEGED,
+            state=CaseState.PUBLISHED
+        )
 
         return list(cases.values_list("id", flat=True))
 
@@ -42,19 +52,26 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         """
         Get list of case IDs where this entity is related or a location.
 
-        Only includes PUBLISHED cases.
+        Only includes PUBLISHED cases. Uses both unified system and direct location relationships.
         Excludes cases where entity is already alleged (to avoid duplicates).
         """
+        from .models import RelationshipType, CaseState
+        
         # Get alleged case IDs to exclude
-        alleged_case_ids = obj.cases_as_alleged.filter(
+        alleged_case_ids = Case.objects.filter(
+            entity_relationships__entity=obj,
+            entity_relationships__relationship_type=RelationshipType.ALLEGED,
             state=CaseState.PUBLISHED
         ).values_list("id", flat=True)
 
-        # Get related and location cases
-        related_cases = obj.cases_as_related.filter(state=CaseState.PUBLISHED).exclude(
-            id__in=alleged_case_ids
-        )
+        # Get related cases from unified system
+        related_cases = Case.objects.filter(
+            entity_relationships__entity=obj,
+            entity_relationships__relationship_type=RelationshipType.RELATED,
+            state=CaseState.PUBLISHED
+        ).exclude(id__in=alleged_case_ids)
 
+        # Get location cases (still using direct ManyToMany)
         location_cases = obj.cases_as_location.filter(
             state=CaseState.PUBLISHED
         ).exclude(id__in=alleged_case_ids)
@@ -66,6 +83,88 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         return list(case_ids)
 
 
+class CaseEntityRelationshipSerializer(serializers.ModelSerializer):
+    """
+    Serializer for CaseEntityRelationship through-model.
+    
+    Provides entity display information as read-only fields and validates
+    relationship_type choices. Used for the unified entity relationship system.
+    """
+    
+    entity_display_name = serializers.CharField(
+        source='entity.display_name', 
+        read_only=True,
+        help_text="Display name of the related entity"
+    )
+    entity_nes_id = serializers.CharField(
+        source='entity.nes_id', 
+        read_only=True,
+        help_text="NES ID of the related entity (if available)"
+    )
+    
+    class Meta:
+        model = CaseEntityRelationship
+        fields = [
+            'id', 
+            'entity', 
+            'entity_display_name', 
+            'entity_nes_id',
+            'relationship_type', 
+            'notes', 
+            'created_at'
+        ]
+        read_only_fields = ['id', 'entity_display_name', 'entity_nes_id', 'created_at']
+    
+    def validate_relationship_type(self, value):
+        """
+        Validate that relationship_type is one of the allowed choices.
+        """
+        from .models import RelationshipType
+        
+        valid_types = [choice[0] for choice in RelationshipType.choices]
+        if value not in valid_types:
+            raise serializers.ValidationError(
+                f"Invalid relationship type '{value}'. Must be one of: {', '.join(valid_types)}"
+            )
+        return value
+
+
+class SimplifiedEntitySerializer(serializers.ModelSerializer):
+    """
+    Simplified serializer for entities in case responses.
+    
+    Returns only id, nes_id, display_name, type (relationship_type), and notes.
+    Used for the new unified entities format.
+    """
+    
+    nes_id = serializers.CharField(
+        source='entity.nes_id', 
+        read_only=True,
+        help_text="NES ID of the related entity (if available)"
+    )
+    display_name = serializers.CharField(
+        source='entity.display_name', 
+        read_only=True,
+        help_text="Display name of the related entity"
+    )
+    type = serializers.CharField(
+        source='relationship_type', 
+        read_only=True,
+        help_text="Type of relationship (alleged, related, witness, etc.)"
+    )
+    
+    class Meta:
+        model = CaseEntityRelationship
+        fields = [
+            'id', 
+            'nes_id', 
+            'display_name', 
+            'type', 
+            'notes'
+        ]
+        read_only_fields = fields
+
+
 class CaseSerializer(serializers.ModelSerializer):
     """
     Serializer for Case model.
@@ -73,11 +172,35 @@ class CaseSerializer(serializers.ModelSerializer):
     Exposes all fields except contributors (internal only).
 
     The state field is always included to indicate case status (PUBLISHED or IN_REVIEW).
+    
+    Uses the unified entities field for non-location entities and a separate locations field
+    for location entities, both using the unified relationship system for consistency.
     """
 
-    alleged_entities = JawafEntitySerializer(many=True, read_only=True)
-    related_entities = JawafEntitySerializer(many=True, read_only=True)
-    locations = JawafEntitySerializer(many=True, read_only=True)
+    # Non-location entities using unified system
+    entities = serializers.SerializerMethodField(
+        help_text="Non-location entity relationships using the unified relationship system"
+    )
+    
+    # Location entities using unified system but separate field for UI semantics
+    locations = serializers.SerializerMethodField(
+        help_text="Location entity relationships using the unified relationship system"
+    )
+    
+    def get_entities(self, obj):
+        """Get non-location entities from unified relationship system."""
+        non_location_relationships = obj.entity_relationships.exclude(
+            entity__nes_id__startswith='entity:location/'
+        ).select_related('entity')
+        return SimplifiedEntitySerializer(non_location_relationships, many=True).data
+    
+    def get_locations(self, obj):
+        """Get location entities from unified relationship system."""
+        location_relationships = obj.entity_relationships.filter(
+            entity__nes_id__startswith='entity:location/'
+        ).select_related('entity')
+        return SimplifiedEntitySerializer(location_relationships, many=True).data
+    
     tags = serializers.ListField(
         child=serializers.CharField(),
         help_text="List of tags for categorization (e.g., 'land-encroachment', 'national-interest')",
@@ -116,9 +239,8 @@ class CaseSerializer(serializers.ModelSerializer):
             "banner_url",
             "case_start_date",
             "case_end_date",
-            "alleged_entities",
-            "related_entities",
-            "locations",
+            "entities",  # Non-location entities using unified system
+            "locations", # Location entities using unified system (separate for UI semantics)
             "tags",
             "description",
             "key_allegations",
