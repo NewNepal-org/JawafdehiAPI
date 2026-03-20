@@ -162,7 +162,10 @@ class TestSubmitSuccess:
         assert item.status == QueueStatus.PENDING
         assert item.submitted_by == contributor
         assert item.reviewed_by is None
-        assert item.payload == VALID_ADD_NAME_PAYLOAD
+        assert item.payload == {
+            **VALID_ADD_NAME_PAYLOAD,
+            "is_misspelling": False,
+        }
 
     def test_response_fields(self, contributor_client):
         """Response contains exactly the expected set of fields."""
@@ -317,6 +320,28 @@ class TestUnsupportedActions:
         item = NESQueueItem.objects.get(pk=resp_data["id"])
         assert item.action == QueueAction.UPDATE_ENTITY
         assert item.payload == VALID_UPDATE_ENTITY_PAYLOAD
+
+    def test_update_entity_payload_is_canonicalized(self, contributor_client):
+        """UPDATE_ENTITY payload is stored in canonical form after validation."""
+        data = {
+            "action": "UPDATE_ENTITY",
+            "payload": {
+                "entity_id": "entity:person/sher-bahadur-deuba",
+                "patch_ops": [
+                    {
+                        "op": "ADD",
+                        "path": "/tags/-",
+                        "value": "tested-via-api",
+                    }
+                ],
+            },
+            "change_description": "Updating entity with uppercase patch op",
+        }
+        response = contributor_client.post(SUBMIT_URL, data=data, format="json")
+        assert response.status_code == 201
+
+        item = NESQueueItem.objects.get(pk=response.json()["id"])
+        assert item.payload["patch_ops"][0]["op"] == "add"
 
 
 # ============================================================================
