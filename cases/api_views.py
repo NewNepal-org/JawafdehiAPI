@@ -30,7 +30,7 @@ from .caseworker_serializers import (
     CasePatchSerializer,
 )
 from .models import Case, CaseState, DocumentSource, JawafEntity
-from .rules.predicates import can_change_case
+from .rules.predicates import can_change_case, can_view_case
 from .serializers import (
     CaseDetailSerializer,
     CaseSerializer,
@@ -164,8 +164,10 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return cases filtered by state.
 
-        List endpoint: PUBLISHED cases only.
-        Retrieve endpoint: PUBLISHED and IN_REVIEW cases.
+        List endpoint: PUBLISHED cases only (regardless of authentication).
+        Retrieve endpoint:
+          - Unauthenticated: PUBLISHED and IN_REVIEW cases
+          - Authenticated: PUBLISHED, IN_REVIEW, and DRAFT cases (if user has permission)
         Partial update endpoint: all cases (permission check happens in partial_update).
         """
         if self.action == "partial_update":
@@ -173,11 +175,16 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             return Case.objects.all()
 
         if self.action == "retrieve":
-            queryset = Case.objects.filter(
-                state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
-            )
+            # Authenticated users can potentially access DRAFT cases (permission check in retrieve)
+            if self.request.user and self.request.user.is_authenticated:
+                queryset = Case.objects.all()
+            else:
+                # Unauthenticated users: only PUBLISHED and IN_REVIEW
+                queryset = Case.objects.filter(
+                    state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
+                )
         else:
-            # List endpoint: only published cases
+            # List endpoint: only published cases (regardless of authentication)
             queryset = Case.objects.filter(state=CaseState.PUBLISHED)
 
         # Apply tag filtering if provided
@@ -238,6 +245,34 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             case.contributors.add(request.user)
 
         return Response(CaseSerializer(case).data, status=status.HTTP_201_CREATED)
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        GET /api/cases/{id}/
+
+        Retrieve a case with permission-based access control:
+        - PUBLISHED and IN_REVIEW cases: accessible to everyone
+        - DRAFT and CLOSED cases: only accessible to authenticated users with permission
+        """
+        case = self.get_object()
+
+        # Check if case requires authentication
+        if case.state in [CaseState.DRAFT, CaseState.CLOSED]:
+            # DRAFT/CLOSED cases require authentication and permission
+            if not request.user or not request.user.is_authenticated:
+                return Response(
+                    {"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Check if user has permission to view this case
+            if not can_view_case(request.user, case):
+                return Response(
+                    {"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND
+                )
+
+        # Case is accessible - return serialized data
+        serializer = self.get_serializer(case)
+        return Response(serializer.data)
 
     def partial_update(self, request, pk=None):
         """
