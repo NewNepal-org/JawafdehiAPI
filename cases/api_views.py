@@ -58,7 +58,7 @@ from .serializers import (
         description="""
         Retrieve a paginated list of published accountability cases.
         
-        Only cases with state=PUBLISHED are returned.
+        Only cases with state=PUBLISHED are returned (regardless of authorization).
         Results are ordered by creation date (newest first).
         
         **Filtering:**
@@ -108,12 +108,17 @@ from .serializers import (
     retrieve=extend_schema(
         summary="Retrieve a case",
         description="""
-        Retrieve detailed information about a specific published case.
+        Retrieve detailed information about a specific case.
         
         This endpoint includes complete case data (title, description, allegations,
         evidence, timeline) and any internal notes.
         
-        Published and IN_REVIEW cases are accessible through this endpoint.
+        **Access control:**
+        - PUBLISHED and IN_REVIEW cases: accessible to everyone
+        - DRAFT cases: require authorization (admins, moderators, or assigned contributors)
+        - CLOSED cases: not accessible via public API
+        
+        Returns 404 if the case doesn't exist or if the user is not authorized to view it.
         """,
         tags=["cases"],
     ),
@@ -164,27 +169,29 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Return cases filtered by state.
 
-        List endpoint: PUBLISHED cases only (regardless of authentication).
+        List endpoint: PUBLISHED cases only (regardless of authorization).
         Retrieve endpoint:
           - Unauthenticated: PUBLISHED and IN_REVIEW cases
-          - Authenticated: PUBLISHED, IN_REVIEW, and DRAFT cases (if user has permission)
-        Partial update endpoint: all cases (permission check happens in partial_update).
+          - Authenticated: PUBLISHED, IN_REVIEW, and DRAFT cases (authorization check in retrieve)
+          - CLOSED cases are never exposed via public API
+        Partial update endpoint: all cases except CLOSED (authorization check happens in partial_update).
         """
         if self.action == "partial_update":
-            # PATCH endpoint: return all cases, permission check happens in partial_update method
-            return Case.objects.all()
+            # PATCH endpoint: return all cases except CLOSED, authorization check happens in partial_update method
+            return Case.objects.exclude(state=CaseState.CLOSED)
 
         if self.action == "retrieve":
-            # Authenticated users can potentially access DRAFT cases (permission check in retrieve)
+            # Authenticated users can potentially access DRAFT cases (authorization check in retrieve)
             if self.request.user and self.request.user.is_authenticated:
-                queryset = Case.objects.all()
+                # Exclude CLOSED cases from public API
+                queryset = Case.objects.exclude(state=CaseState.CLOSED)
             else:
                 # Unauthenticated users: only PUBLISHED and IN_REVIEW
                 queryset = Case.objects.filter(
                     state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
                 )
         else:
-            # List endpoint: only published cases (regardless of authentication)
+            # List endpoint: only published cases (regardless of authorization)
             queryset = Case.objects.filter(state=CaseState.PUBLISHED)
 
         # Apply tag filtering if provided
@@ -252,19 +259,20 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
         Retrieve a case with permission-based access control:
         - PUBLISHED and IN_REVIEW cases: accessible to everyone
-        - DRAFT and CLOSED cases: only accessible to authenticated users with permission
+        - DRAFT cases: require authorization (user must have permission to view)
+        - CLOSED cases: not accessible via public API (returns 404)
         """
         case = self.get_object()
 
-        # Check if case requires authentication
-        if case.state in [CaseState.DRAFT, CaseState.CLOSED]:
-            # DRAFT/CLOSED cases require authentication and permission
-            if not request.user or not request.user.is_authenticated:
+        # Check if case requires authorization
+        if case.state == CaseState.DRAFT:
+            # DRAFT cases require authorization
+            if not request.user.is_authenticated:
                 return Response(
                     {"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND
                 )
 
-            # Check if user has permission to view this case
+            # Check if user is authorized to view this case
             if not can_view_case(request.user, case):
                 return Response(
                     {"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND

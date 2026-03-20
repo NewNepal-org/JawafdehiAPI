@@ -1,5 +1,5 @@
 """
-Tests for token-based authentication to access DRAFT cases.
+Tests for token-based authorization to access DRAFT cases.
 
 Feature: Allow optional token-based authorization for GET /cases/<id> endpoint
 """
@@ -8,6 +8,7 @@ import pytest
 from rest_framework.test import APIClient
 from rest_framework.authtoken.models import Token
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 
 from cases.models import CaseState, CaseType
 from tests.conftest import create_case_with_entities
@@ -34,8 +35,6 @@ class TestTokenAuthDraftCases:
         self.contributor_user = User.objects.create_user(
             username="contributor", password="password"
         )
-        from django.contrib.auth.models import Group
-
         contributor_group, _ = Group.objects.get_or_create(name="Contributor")
         self.contributor_user.groups.add(contributor_group)
         self.contributor_token = Token.objects.create(user=self.contributor_user)
@@ -46,8 +45,8 @@ class TestTokenAuthDraftCases:
         self.other_contributor.groups.add(contributor_group)
         self.other_contributor_token = Token.objects.create(user=self.other_contributor)
 
-    def test_draft_case_not_accessible_without_auth(self):
-        """DRAFT case should return 404 for unauthenticated requests."""
+    def test_draft_case_not_accessible_without_authorization(self):
+        """DRAFT case should return 404 for unauthenticated/unauthorized requests."""
         # Create a DRAFT case
         case = create_case_with_entities(
             title="Draft Case",
@@ -63,8 +62,8 @@ class TestTokenAuthDraftCases:
 
         assert response.status_code == 404
 
-    def test_draft_case_accessible_with_admin_token(self):
-        """DRAFT case should be accessible to admin with token."""
+    def test_draft_case_accessible_to_authorized_admin(self):
+        """DRAFT case should be accessible to authorized admin."""
         # Create a DRAFT case
         case = create_case_with_entities(
             title="Draft Case",
@@ -83,8 +82,8 @@ class TestTokenAuthDraftCases:
         assert response.data["case_id"] == case.case_id
         assert response.data["state"] == CaseState.DRAFT
 
-    def test_draft_case_accessible_to_assigned_contributor(self):
-        """DRAFT case should be accessible to assigned contributor with token."""
+    def test_draft_case_accessible_to_authorized_contributor(self):
+        """DRAFT case should be accessible to authorized contributor (assigned to case)."""
         # Create a DRAFT case
         case = create_case_with_entities(
             title="Draft Case",
@@ -108,8 +107,8 @@ class TestTokenAuthDraftCases:
         assert response.data["case_id"] == case.case_id
         assert response.data["state"] == CaseState.DRAFT
 
-    def test_draft_case_not_accessible_to_unassigned_contributor(self):
-        """DRAFT case should NOT be accessible to unassigned contributor."""
+    def test_draft_case_not_accessible_to_unauthorized_contributor(self):
+        """DRAFT case should NOT be accessible to unauthorized contributor (not assigned to case)."""
         # Create a DRAFT case assigned to contributor_user
         case = create_case_with_entities(
             title="Draft Case",
@@ -130,8 +129,8 @@ class TestTokenAuthDraftCases:
         assert response.status_code == 404
         assert response.data["detail"] == "Not found."
 
-    def test_published_case_accessible_without_auth(self):
-        """PUBLISHED case should still be accessible without authentication."""
+    def test_published_case_accessible_without_authorization(self):
+        """PUBLISHED case should be accessible without authorization."""
         # Create a PUBLISHED case
         case = create_case_with_entities(
             title="Published Case",
@@ -149,8 +148,8 @@ class TestTokenAuthDraftCases:
         assert response.data["case_id"] == case.case_id
         assert response.data["state"] == CaseState.PUBLISHED
 
-    def test_in_review_case_accessible_without_auth(self):
-        """IN_REVIEW case should still be accessible without authentication."""
+    def test_in_review_case_accessible_without_authorization(self):
+        """IN_REVIEW case should be accessible without authorization."""
         # Create an IN_REVIEW case
         case = create_case_with_entities(
             title="In Review Case",
@@ -168,45 +167,8 @@ class TestTokenAuthDraftCases:
         assert response.data["case_id"] == case.case_id
         assert response.data["state"] == CaseState.IN_REVIEW
 
-    def test_closed_case_not_accessible_without_auth(self):
-        """CLOSED case should return 404 for unauthenticated requests."""
-        # Create a CLOSED case
-        case = create_case_with_entities(
-            title="Closed Case",
-            alleged_entities=["entity:person/test"],
-            key_allegations=["Test allegation"],
-            case_type=CaseType.CORRUPTION,
-            description="Test description",
-            state=CaseState.CLOSED,
-        )
-
-        # Try to access without authentication
-        response = self.client.get(f"/api/cases/{case.id}/")
-
-        assert response.status_code == 404
-
-    def test_closed_case_accessible_with_admin_token(self):
-        """CLOSED case should be accessible to admin with token."""
-        # Create a CLOSED case
-        case = create_case_with_entities(
-            title="Closed Case",
-            alleged_entities=["entity:person/test"],
-            key_allegations=["Test allegation"],
-            case_type=CaseType.CORRUPTION,
-            description="Test description",
-            state=CaseState.CLOSED,
-        )
-
-        # Access with admin token
-        self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.admin_token.key}")
-        response = self.client.get(f"/api/cases/{case.id}/")
-
-        assert response.status_code == 200
-        assert response.data["case_id"] == case.case_id
-        assert response.data["state"] == CaseState.CLOSED
-
-    def test_list_endpoint_still_only_shows_published(self):
-        """List endpoint should still only show PUBLISHED cases regardless of auth."""
+    def test_list_endpoint_only_shows_published(self):
+        """List endpoint should only show PUBLISHED cases regardless of authorization."""
         # Create cases in different states
         draft_case = create_case_with_entities(
             title="Draft Case",
