@@ -440,9 +440,11 @@ class Case(models.Model):
         Returns:
             QuerySet of JawafEntity objects with the specified relationship type
         """
-        return self.unified_entities.filter(
-            case_relationships__relationship_type=relationship_type
-        )
+        entity_ids = CaseEntityRelationship.objects.filter(
+            case=self,
+            relationship_type=relationship_type,
+        ).values_list("entity_id", flat=True)
+        return JawafEntity.objects.filter(pk__in=entity_ids)
 
     @property
     def alleged_entities_unified(self):
@@ -496,8 +498,8 @@ class Case(models.Model):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Require at least one alleged entity for published cases
-            if self.alleged_entities.count() == 0:
+            # Require at least one alleged entity for published cases using unified system
+            if self.entity_relationships.filter(relationship_type=RelationshipType.ALLEGED).count() == 0:
                 errors["alleged_entities"] = (
                     "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
                 )
