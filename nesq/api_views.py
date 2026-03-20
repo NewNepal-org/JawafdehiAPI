@@ -119,7 +119,9 @@ class SubmitNESChangeView(APIView):
         # ------------------------------------------------------------------
         try:
             validated_payload = validate_action_payload(action, payload)
-            payload = validated_payload.model_dump(mode="json", by_alias=True)
+            payload = validated_payload.model_dump(
+                mode="json", by_alias=True, exclude_none=True
+            )
         except PydanticValidationError as exc:
             # Use include_context=False to strip non-JSON-serializable
             # objects (e.g., raw ValueError instances) from the ctx field.
