@@ -137,7 +137,8 @@ class JawafEntity(models.Model):
         Override delete to prevent deletion if entity is in use.
 
         Checks if entity is referenced by:
-        - Cases (as alleged_entities, related_entities, or locations)
+        - Cases (as alleged_entities, related_entities, or locations via legacy M2M)
+        - Cases (via unified entity_relationships through CaseEntityRelationship)
         - DocumentSources (as related_entities, excluding soft-deleted sources)
 
         Raises ValidationError if entity is in use.
@@ -156,6 +157,11 @@ class JawafEntity(models.Model):
         location_count = self.cases_as_location.count()
         if location_count > 0:
             usage.append(f"location in {location_count} case(s)")
+
+        # Check if used in unified relationship system
+        case_relationship_count = self.case_relationships.count()
+        if case_relationship_count > 0:
+            usage.append(f"entity relationship in {case_relationship_count} case(s)")
 
         # Check if used in active document sources (exclude soft-deleted)
         source_count = self.document_sources.filter(is_deleted=False).count()
@@ -184,9 +190,9 @@ class RelationshipType(models.TextChoices):
 class CaseEntityRelationship(models.Model):
     """
     Through-model for Case-Entity relationships with relationship types.
-    
-    This model replaces the direct ManyToMany relationships (alleged_entities, 
-    related_entities) with a flexible system that supports multiple relationship 
+
+    This model replaces the direct ManyToMany relationships (alleged_entities,
+    related_entities) with a flexible system that supports multiple relationship
     types and additional metadata.
     """
 
@@ -256,7 +262,7 @@ class CaseEntityRelationship(models.Model):
 
     def save(self, *args, **kwargs):
         """Override save to validate before saving."""
-        self.clean()
+        self.full_clean()
         super().save(*args, **kwargs)
 
 
@@ -364,7 +370,7 @@ class Case(models.Model):
         related_name="unified_cases",
         help_text="All entities related to this case through the unified relationship system",
     )
-    
+
     # Existing fields maintained for backward compatibility during migration
     alleged_entities = models.ManyToManyField(
         JawafEntity,
@@ -433,10 +439,10 @@ class Case(models.Model):
     def get_entities_by_type(self, relationship_type):
         """
         Get entities filtered by relationship type from the unified system.
-        
+
         Args:
             relationship_type: RelationshipType enum value or string
-            
+
         Returns:
             QuerySet of JawafEntity objects with the specified relationship type
         """
@@ -499,7 +505,12 @@ class Case(models.Model):
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
             # Require at least one alleged entity for published cases using unified system
-            if self.entity_relationships.filter(relationship_type=RelationshipType.ALLEGED).count() == 0:
+            if (
+                self.entity_relationships.filter(
+                    relationship_type=RelationshipType.ALLEGED
+                ).count()
+                == 0
+            ):
                 errors["alleged_entities"] = (
                     "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
                 )

@@ -16,14 +16,14 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--dry-run',
-            action='store_true',
-            help='Show what would be migrated without making changes',
+            "--dry-run",
+            action="store_true",
+            help="Show what would be migrated without making changes",
         )
 
     def handle(self, *args, **options):
-        dry_run = options['dry_run']
-        
+        dry_run = options["dry_run"]
+
         if dry_run:
             self.stdout.write(
                 self.style.WARNING("DRY RUN MODE - No changes will be made")
@@ -34,14 +34,19 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             # Get all cases with location relationships
-            cases_with_locations = Case.objects.prefetch_related('locations').filter(
-                locations__isnull=False
-            ).distinct()
+            cases_with_locations = (
+                Case.objects.prefetch_related("locations")
+                .filter(locations__isnull=False)
+                .distinct()
+            )
 
             for case in cases_with_locations:
                 for location in case.locations.all():
                     # Verify this is actually a location entity
-                    if not (location.nes_id and location.nes_id.startswith('entity:location/')):
+                    if not (
+                        location.nes_id
+                        and location.nes_id.startswith("entity:location/")
+                    ):
                         self.stdout.write(
                             self.style.WARNING(
                                 f"Skipping {case.case_id} -> {location.display_name} "
@@ -54,7 +59,7 @@ class Command(BaseCommand):
                     existing_relationship = CaseEntityRelationship.objects.filter(
                         case=case,
                         entity=location,
-                        relationship_type=RelationshipType.RELATED
+                        relationship_type=RelationshipType.RELATED,
                     ).first()
 
                     if existing_relationship:
@@ -71,7 +76,7 @@ class Command(BaseCommand):
                             case=case,
                             entity=location,
                             relationship_type=RelationshipType.RELATED,
-                            notes=""
+                            notes="",
                         )
 
                     self.stdout.write(
@@ -93,10 +98,8 @@ class Command(BaseCommand):
             )
         )
         self.stdout.write(f"Skipped {skipped_count} existing relationships")
-        
+
         if dry_run:
             self.stdout.write(
-                self.style.WARNING(
-                    "\nRun without --dry-run to apply these changes"
-                )
+                self.style.WARNING("\nRun without --dry-run to apply these changes")
             )

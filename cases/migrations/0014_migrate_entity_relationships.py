@@ -5,9 +5,9 @@ from django.db import migrations
 
 def migrate_existing_relationships(apps, schema_editor):
     """
-    Copy existing alleged_entities and related_entities relationships 
+    Copy existing alleged_entities and related_entities relationships
     to the new CaseEntityRelationship through-model.
-    
+
     This migration preserves all existing data by:
     1. Copying alleged_entities with relationship_type="alleged"
     2. Copying related_entities with relationship_type="related"
@@ -15,34 +15,36 @@ def migrate_existing_relationships(apps, schema_editor):
     4. Gracefully handling cases where old ManyToMany tables don't exist
     """
     from django.db import connection
-    
-    Case = apps.get_model('cases', 'Case')
-    CaseEntityRelationship = apps.get_model('cases', 'CaseEntityRelationship')
-    
+
+    Case = apps.get_model("cases", "Case")
+    CaseEntityRelationship = apps.get_model("cases", "CaseEntityRelationship")
+
     # Track migration statistics
     alleged_migrated = 0
     related_migrated = 0
     duplicates_skipped = 0
-    
+
     # Check if the old ManyToMany tables exist
     table_names = connection.introspection.table_names()
-    alleged_table_exists = 'cases_case_alleged_entities' in table_names
-    related_table_exists = 'cases_case_related_entities' in table_names
-    
-    print(f"Checking for existing data to migrate:")
+    alleged_table_exists = "cases_case_alleged_entities" in table_names
+    related_table_exists = "cases_case_related_entities" in table_names
+
+    print("Checking for existing data to migrate:")
     print(f"  - alleged_entities table exists: {alleged_table_exists}")
     print(f"  - related_entities table exists: {related_table_exists}")
-    
+
     # Migrate alleged entities if table exists
     if alleged_table_exists:
         try:
-            for case in Case.objects.prefetch_related('alleged_entities').all():
+            for case in Case.objects.prefetch_related("alleged_entities").all():
                 for entity in case.alleged_entities.all():
-                    relationship, created = CaseEntityRelationship.objects.get_or_create(
-                        case=case,
-                        entity=entity,
-                        relationship_type='alleged',
-                        defaults={'notes': ''}
+                    relationship, created = (
+                        CaseEntityRelationship.objects.get_or_create(
+                            case=case,
+                            entity=entity,
+                            relationship_type="alleged",
+                            defaults={"notes": ""},
+                        )
                     )
                     if created:
                         alleged_migrated += 1
@@ -50,17 +52,19 @@ def migrate_existing_relationships(apps, schema_editor):
                         duplicates_skipped += 1
         except Exception as e:
             print(f"Warning: Could not migrate alleged_entities: {e}")
-    
+
     # Migrate related entities if table exists
     if related_table_exists:
         try:
-            for case in Case.objects.prefetch_related('related_entities').all():
+            for case in Case.objects.prefetch_related("related_entities").all():
                 for entity in case.related_entities.all():
-                    relationship, created = CaseEntityRelationship.objects.get_or_create(
-                        case=case,
-                        entity=entity,
-                        relationship_type='related',
-                        defaults={'notes': ''}
+                    relationship, created = (
+                        CaseEntityRelationship.objects.get_or_create(
+                            case=case,
+                            entity=entity,
+                            relationship_type="related",
+                            defaults={"notes": ""},
+                        )
                     )
                     if created:
                         related_migrated += 1
@@ -68,43 +72,45 @@ def migrate_existing_relationships(apps, schema_editor):
                         duplicates_skipped += 1
         except Exception as e:
             print(f"Warning: Could not migrate related_entities: {e}")
-    
+
     # Log migration results (will appear in migration output)
-    print(f"Migration completed successfully:")
+    print("Migration completed successfully:")
     print(f"  - Alleged entities migrated: {alleged_migrated}")
     print(f"  - Related entities migrated: {related_migrated}")
     print(f"  - Duplicates skipped: {duplicates_skipped}")
     print(f"  - Total relationships created: {alleged_migrated + related_migrated}")
-    
+
     if not alleged_table_exists and not related_table_exists:
-        print("  - No existing data found to migrate (this is normal for new installations)")
+        print(
+            "  - No existing data found to migrate (this is normal for new installations)"
+        )
 
 
 def reverse_migration(apps, schema_editor):
     """
-    Reverse migration: Remove all CaseEntityRelationship records that were 
+    Reverse migration: Remove all CaseEntityRelationship records that were
     created from the original alleged_entities and related_entities fields.
-    
+
     This only removes relationships with type 'alleged' or 'related' to avoid
     removing any manually created relationships with other types.
     """
-    CaseEntityRelationship = apps.get_model('cases', 'CaseEntityRelationship')
-    
+    CaseEntityRelationship = apps.get_model("cases", "CaseEntityRelationship")
+
     # Count relationships before deletion
     alleged_count = CaseEntityRelationship.objects.filter(
-        relationship_type='alleged'
+        relationship_type="alleged"
     ).count()
-    
+
     related_count = CaseEntityRelationship.objects.filter(
-        relationship_type='related'
+        relationship_type="related"
     ).count()
-    
+
     # Delete migrated relationships
     deleted_count = CaseEntityRelationship.objects.filter(
-        relationship_type__in=['alleged', 'related']
+        relationship_type__in=["alleged", "related"]
     ).delete()[0]
-    
-    print(f"Reverse migration completed:")
+
+    print("Reverse migration completed:")
     print(f"  - Alleged relationships removed: {alleged_count}")
     print(f"  - Related relationships removed: {related_count}")
     print(f"  - Total relationships removed: {deleted_count}")
@@ -113,7 +119,7 @@ def reverse_migration(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('cases', '0013_add_case_entity_relationship'),
+        ("cases", "0013_add_case_entity_relationship"),
     ]
 
     operations = [

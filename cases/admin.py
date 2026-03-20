@@ -103,7 +103,9 @@ class CaseAdminForm(forms.ModelForm):
     class Meta:
         model = Case
         fields = "__all__"
-        exclude = ["unified_entities"]  # Exclude unified_entities as it's managed through the inline
+        exclude = [
+            "unified_entities"
+        ]  # Exclude unified_entities as it's managed through the inline
         widgets = {
             "description": TinyMCE(attrs={"cols": 80, "rows": 30}),
             "notes": TinyMCE(attrs={"cols": 80, "rows": 20}),
@@ -189,13 +191,53 @@ class CaseAdminForm(forms.ModelForm):
         cleaned_data = super().clean()
         errors = {}
 
-        # For new cases, enforce DRAFT state
+        # For new cases, check if they can be created in non-DRAFT states
+        # Allow IN_REVIEW/PUBLISHED if inline alleged relationships are present
         if not self.instance.pk:
             new_state = cleaned_data.get("state")
-            if new_state != CaseState.DRAFT:
+            if new_state not in [
+                CaseState.DRAFT,
+                CaseState.IN_REVIEW,
+                CaseState.PUBLISHED,
+            ]:
                 errors["state"] = (
-                    f"New cases must be created in DRAFT state. Cannot create a new case with state {new_state}."
+                    f"New cases can only be created in DRAFT, IN_REVIEW, or PUBLISHED state. Cannot create with state {new_state}."
                 )
+            elif new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
+                # For new cases in IN_REVIEW/PUBLISHED, check if inline formset has alleged relationships
+                # This is a preliminary check - the full validation happens later
+                formset_prefix = "entity_relationships"
+                has_inline_alleged = False
+
+                if self.data:
+                    total_forms_key = f"{formset_prefix}-TOTAL_FORMS"
+                    total_forms = int(self.data.get(total_forms_key, 0))
+
+                    for i in range(total_forms):
+                        relationship_type_key = (
+                            f"{formset_prefix}-{i}-relationship_type"
+                        )
+                        entity_key = f"{formset_prefix}-{i}-entity"
+                        delete_key = f"{formset_prefix}-{i}-DELETE"
+
+                        relationship_type = self.data.get(relationship_type_key)
+                        has_entity = bool(self.data.get(entity_key))
+                        is_deleted = self.data.get(delete_key) == "on"
+
+                        if (
+                            relationship_type == RelationshipType.ALLEGED
+                            and has_entity
+                            and not is_deleted
+                        ):
+                            has_inline_alleged = True
+                            break
+
+                # If creating new case in IN_REVIEW/PUBLISHED without inline alleged relationships
+                if not has_inline_alleged:
+                    errors["state"] = (
+                        f"New cases cannot be created directly in {new_state} state without alleged entity relationships. "
+                        "Either create the case in DRAFT state first, or add alleged entities in the 'Case Entity Relationships' section below."
+                    )
 
         # Check state transitions for existing cases
         if self.instance.pk:
@@ -220,26 +262,57 @@ class CaseAdminForm(forms.ModelForm):
         # Strict validation for IN_REVIEW and PUBLISHED states
         if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
             # Check if case has any alleged entities through the unified system
+            alleged_count = 0
+
             if self.instance.pk:
-                # For existing cases, check current relationships plus any pending inline changes
+                # For existing cases, check persisted relationships
                 alleged_count = self.instance.entity_relationships.filter(
                     relationship_type=RelationshipType.ALLEGED
                 ).count()
-                
-                # If we have formsets (inline changes), account for them
-                # This is a simplified check - in practice, Django handles this through formset validation
-                if alleged_count == 0:
+
+            # For new cases or cases without persisted alleged relationships,
+            # check if inline formset contains alleged relationships
+            # Note: This is a best-effort check - the formset data may not be fully
+            # validated yet, but we can check if the user is attempting to add relationships
+            if alleged_count == 0:
+                # Try to access inline formset data from the form's data
+                # Django admin passes formset data with prefixes like 'entity_relationships-0-relationship_type'
+                formset_prefix = "entity_relationships"
+                has_inline_alleged = False
+
+                # Check if any inline forms have ALLEGED relationship_type
+                if self.data:
+                    # Get the total number of inline forms
+                    total_forms_key = f"{formset_prefix}-TOTAL_FORMS"
+                    total_forms = int(self.data.get(total_forms_key, 0))
+
+                    # Check each inline form for ALLEGED relationship type
+                    for i in range(total_forms):
+                        relationship_type_key = (
+                            f"{formset_prefix}-{i}-relationship_type"
+                        )
+                        entity_key = f"{formset_prefix}-{i}-entity"
+                        delete_key = f"{formset_prefix}-{i}-DELETE"
+
+                        # Check if this form has an ALLEGED relationship and is not marked for deletion
+                        relationship_type = self.data.get(relationship_type_key)
+                        has_entity = bool(self.data.get(entity_key))
+                        is_deleted = self.data.get(delete_key) == "on"
+
+                        if (
+                            relationship_type == RelationshipType.ALLEGED
+                            and has_entity
+                            and not is_deleted
+                        ):
+                            has_inline_alleged = True
+                            break
+
+                # If no alleged relationships found (neither persisted nor in inline formset)
+                if not has_inline_alleged:
                     errors["__all__"] = (
                         "At least one alleged entity relationship is required for IN_REVIEW or PUBLISHED state. "
                         "Please add alleged entities using the 'Case Entity Relationships' section below."
                     )
-            else:
-                # For new cases, we can't have relationships yet, so this validation will fail
-                # New cases should be created in DRAFT state first
-                errors["__all__"] = (
-                    "New cases cannot be created directly in IN_REVIEW or PUBLISHED state. "
-                    "Create the case in DRAFT state first, then add entity relationships."
-                )
 
             # Check key_allegations
             key_allegations = cleaned_data.get("key_allegations")
@@ -269,7 +342,7 @@ class CaseAdminForm(forms.ModelForm):
 class CaseEntityRelationshipInline(admin.TabularInline):
     """
     Inline admin for managing Case-Entity relationships.
-    
+
     Features:
     - TabularInline for efficient bulk operations
     - Relationship type dropdown with all available choices
@@ -278,35 +351,33 @@ class CaseEntityRelationshipInline(admin.TabularInline):
     - Autocomplete for entity selection
     - Support for bulk operations
     """
-    
+
     model = CaseEntityRelationship
     extra = 1
-    fields = ['entity', 'relationship_type', 'notes', 'created_at']
-    readonly_fields = ['created_at']
-    autocomplete_fields = ['entity']
+    fields = ["entity", "relationship_type", "notes", "created_at"]
+    readonly_fields = ["created_at"]
+    autocomplete_fields = ["entity"]
     verbose_name = "Entity"
     verbose_name_plural = "Entities"
-    
+
     # Enable bulk operations
     can_delete = True
     show_change_link = False
-    
+
     class Media:
-        css = {
-            'all': ('admin/css/entity_view_link_hide.css',)
-        }
-    
+        css = {"all": ("admin/css/entity_view_link_hide.css",)}
+
     # Customize the form widget for relationship_type to show all choices
     def formfield_for_choice_field(self, db_field, request, **kwargs):
         """Customize the relationship_type field to show all available choices."""
         if db_field.name == "relationship_type":
-            kwargs['widget'] = forms.Select(choices=RelationshipType.choices)
+            kwargs["widget"] = forms.Select(choices=RelationshipType.choices)
         return super().formfield_for_choice_field(db_field, request, **kwargs)
-    
+
     def get_queryset(self, request):
         """Optimize queryset with select_related for better performance."""
-        return super().get_queryset(request).select_related('entity')
-    
+        return super().get_queryset(request).select_related("entity")
+
     def get_extra(self, request, obj=None, **kwargs):
         """Show extra forms for new cases, fewer for existing cases with relationships."""
         if obj and obj.entity_relationships.exists():
@@ -396,11 +467,7 @@ class CaseAdmin(admin.ModelAdmin):
         ),
         (
             "Location",
-            {
-                "fields": (
-                    "locations",
-                )
-            },
+            {"fields": ("locations",)},
         ),
         (
             "Content",

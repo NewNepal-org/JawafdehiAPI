@@ -30,7 +30,14 @@ from .caseworker_serializers import (
     CaseCreateSerializer,
     CasePatchSerializer,
 )
-from .models import Case, CaseState, DocumentSource, JawafEntity, CaseEntityRelationship, RelationshipType
+from .models import (
+    Case,
+    CaseState,
+    DocumentSource,
+    JawafEntity,
+    CaseEntityRelationship,
+    RelationshipType,
+)
 from .rules.predicates import can_change_case
 from .serializers import (
     CaseDetailSerializer,
@@ -362,7 +369,9 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 examples=[
                     OpenApiExample("Single type", value="alleged"),
                     OpenApiExample("Multiple types", value="alleged,related"),
-                    OpenApiExample("All types", value="alleged,related,witness,opposition,victim"),
+                    OpenApiExample(
+                        "All types", value="alleged,related,witness,opposition,victim"
+                    ),
                 ],
             ),
         ],
@@ -372,7 +381,9 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 "properties": {
                     "relationships": {
                         "type": "array",
-                        "items": {"$ref": "#/components/schemas/CaseEntityRelationship"}
+                        "items": {
+                            "$ref": "#/components/schemas/CaseEntityRelationship"
+                        },
                     },
                     "counts": {
                         "type": "object",
@@ -383,32 +394,32 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                             "opposition": {"type": "integer"},
                             "victim": {"type": "integer"},
                             "total": {"type": "integer"},
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             }
         },
         tags=["cases"],
     )
-    @action(detail=True, methods=['get'], url_path='entities')
+    @action(detail=True, methods=["get"], url_path="entities")
     def get_entities(self, request, pk=None):
         """
         GET /api/cases/{id}/entities/
-        
+
         Get all entity relationships for a case with optional filtering by relationship type.
         Includes aggregated counts by relationship type.
         """
         case = self.get_object()
-        
+
         # Get base queryset of relationships for this case
-        relationships_qs = case.entity_relationships.select_related('entity').all()
-        
+        relationships_qs = case.entity_relationships.select_related("entity").all()
+
         # Apply relationship_type filtering if provided
-        relationship_type_param = request.query_params.get('relationship_type')
+        relationship_type_param = request.query_params.get("relationship_type")
         if relationship_type_param:
             # Support comma-separated multiple types
-            requested_types = [t.strip() for t in relationship_type_param.split(',')]
-            
+            requested_types = [t.strip() for t in relationship_type_param.split(",")]
+
             # Validate relationship types
             valid_types = [choice[0] for choice in RelationshipType.choices]
             invalid_types = [t for t in requested_types if t not in valid_types]
@@ -416,32 +427,43 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 return Response(
                     {
                         "error": f"Invalid relationship type(s): {', '.join(invalid_types)}",
-                        "valid_types": valid_types
+                        "valid_types": valid_types,
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-            
-            relationships_qs = relationships_qs.filter(relationship_type__in=requested_types)
-        
+
+            relationships_qs = relationships_qs.filter(
+                relationship_type__in=requested_types
+            )
+
         # Serialize the filtered relationships
-        relationships_data = CaseEntityRelationshipSerializer(relationships_qs, many=True).data
-        
+        relationships_data = CaseEntityRelationshipSerializer(
+            relationships_qs, many=True
+        ).data
+
         # Calculate aggregated counts by relationship type for the entire case
         # (not just filtered results - this gives full context)
         all_relationships = case.entity_relationships.all()
         counts = {
-            'alleged': all_relationships.filter(relationship_type=RelationshipType.ALLEGED).count(),
-            'related': all_relationships.filter(relationship_type=RelationshipType.RELATED).count(),
-            'witness': all_relationships.filter(relationship_type=RelationshipType.WITNESS).count(),
-            'opposition': all_relationships.filter(relationship_type=RelationshipType.OPPOSITION).count(),
-            'victim': all_relationships.filter(relationship_type=RelationshipType.VICTIM).count(),
+            "alleged": all_relationships.filter(
+                relationship_type=RelationshipType.ALLEGED
+            ).count(),
+            "related": all_relationships.filter(
+                relationship_type=RelationshipType.RELATED
+            ).count(),
+            "witness": all_relationships.filter(
+                relationship_type=RelationshipType.WITNESS
+            ).count(),
+            "opposition": all_relationships.filter(
+                relationship_type=RelationshipType.OPPOSITION
+            ).count(),
+            "victim": all_relationships.filter(
+                relationship_type=RelationshipType.VICTIM
+            ).count(),
         }
-        counts['total'] = sum(counts.values())
-        
-        return Response({
-            'relationships': relationships_data,
-            'counts': counts
-        })
+        counts["total"] = sum(counts.values())
+
+        return Response({"relationships": relationships_data, "counts": counts})
 
     @extend_schema(
         summary="Add entity relationship to case",
@@ -466,54 +488,55 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         },
         tags=["cases"],
     )
-    @action(detail=True, methods=['post'], url_path='entities', permission_classes=[IsAuthenticated])
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="entities",
+        permission_classes=[IsAuthenticated],
+    )
     def add_entity(self, request, pk=None):
         """
         POST /api/cases/{id}/entities/
-        
+
         Add a new entity relationship to a case.
         Requires authentication and case edit permissions.
         """
         case = self.get_object()
-        
+
         # Check permissions
         if not can_change_case(request.user, case):
             return Response(
-                {"detail": "Permission denied."}, 
-                status=status.HTTP_403_FORBIDDEN
+                {"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN
             )
-        
+
         # Validate request data
         serializer = CaseEntityRelationshipSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response(
-                serializer.errors, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             # Create the relationship
             relationship = CaseEntityRelationship.objects.create(
                 case=case,
-                entity_id=serializer.validated_data['entity'].id,
-                relationship_type=serializer.validated_data['relationship_type'],
-                notes=serializer.validated_data.get('notes', '')
+                entity_id=serializer.validated_data["entity"].id,
+                relationship_type=serializer.validated_data["relationship_type"],
+                notes=serializer.validated_data.get("notes", ""),
             )
-            
+
             return Response(
                 CaseEntityRelationshipSerializer(relationship).data,
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_201_CREATED,
             )
-            
+
         except IntegrityError as e:
             # Handle unique constraint violations
-            if 'unique_case_entity_relationship_type' in str(e):
+            if "unique_case_entity_relationship_type" in str(e):
                 return Response(
                     {
                         "detail": "This entity already has this relationship type with the case.",
-                        "error_code": "duplicate_relationship"
+                        "error_code": "duplicate_relationship",
                     },
-                    status=status.HTTP_409_CONFLICT
+                    status=status.HTTP_409_CONFLICT,
                 )
             raise
 
@@ -537,57 +560,55 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         },
         tags=["cases"],
     )
-    @action(detail=True, methods=['put'], url_path='entities/(?P<relationship_id>[^/.]+)', permission_classes=[IsAuthenticated])
+    @action(
+        detail=True,
+        methods=["put"],
+        url_path="entities/(?P<relationship_id>[^/.]+)",
+        permission_classes=[IsAuthenticated],
+    )
     def update_entity_relationship(self, request, pk=None, relationship_id=None):
         """
         PUT /api/cases/{id}/entities/{relationship_id}/
-        
+
         Update an existing entity relationship.
         Requires authentication and case edit permissions.
         """
         case = self.get_object()
-        
+
         # Check permissions
         if not can_change_case(request.user, case):
             return Response(
-                {"detail": "Permission denied."}, 
-                status=status.HTTP_403_FORBIDDEN
+                {"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN
             )
-        
+
         # Get the relationship
         try:
             relationship = case.entity_relationships.get(id=relationship_id)
         except CaseEntityRelationship.DoesNotExist:
             return Response(
-                {"detail": "Relationship not found."}, 
-                status=status.HTTP_404_NOT_FOUND
+                {"detail": "Relationship not found."}, status=status.HTTP_404_NOT_FOUND
             )
-        
+
         # Validate and update
         serializer = CaseEntityRelationshipSerializer(
-            relationship, 
-            data=request.data, 
-            partial=True
+            relationship, data=request.data, partial=True
         )
         if not serializer.is_valid():
-            return Response(
-                serializer.errors, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             serializer.save()
             return Response(serializer.data)
-            
+
         except IntegrityError as e:
             # Handle unique constraint violations
-            if 'unique_case_entity_relationship_type' in str(e):
+            if "unique_case_entity_relationship_type" in str(e):
                 return Response(
                     {
                         "detail": "This entity already has this relationship type with the case.",
-                        "error_code": "duplicate_relationship"
+                        "error_code": "duplicate_relationship",
                     },
-                    status=status.HTTP_409_CONFLICT
+                    status=status.HTTP_409_CONFLICT,
                 )
             raise
 
@@ -605,33 +626,36 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         },
         tags=["cases"],
     )
-    @action(detail=True, methods=['delete'], url_path='entities/(?P<relationship_id>[^/.]+)', permission_classes=[IsAuthenticated])
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path="entities/(?P<relationship_id>[^/.]+)",
+        permission_classes=[IsAuthenticated],
+    )
     def remove_entity_relationship(self, request, pk=None, relationship_id=None):
         """
         DELETE /api/cases/{id}/entities/{relationship_id}/
-        
+
         Remove an entity relationship from a case.
         Requires authentication and case edit permissions.
         """
         case = self.get_object()
-        
+
         # Check permissions
         if not can_change_case(request.user, case):
             return Response(
-                {"detail": "Permission denied."}, 
-                status=status.HTTP_403_FORBIDDEN
+                {"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN
             )
-        
+
         # Get and delete the relationship
         try:
             relationship = case.entity_relationships.get(id=relationship_id)
             relationship.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
-            
+
         except CaseEntityRelationship.DoesNotExist:
             return Response(
-                {"detail": "Relationship not found."}, 
-                status=status.HTTP_404_NOT_FOUND
+                {"detail": "Relationship not found."}, status=status.HTTP_404_NOT_FOUND
             )
 
     def _build_snapshot(self, case: Case) -> dict:
@@ -905,7 +929,9 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
                 required=False,
                 examples=[
                     OpenApiExample("Published only", value="PUBLISHED"),
-                    OpenApiExample("Published and In Review", value="PUBLISHED,IN_REVIEW"),
+                    OpenApiExample(
+                        "Published and In Review", value="PUBLISHED,IN_REVIEW"
+                    ),
                 ],
             ),
         ],
@@ -927,13 +953,13 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
                                         "case_id": {"type": "string"},
                                         "title": {"type": "string"},
                                         "state": {"type": "string"},
-                                    }
+                                    },
                                 },
                                 "relationship_type": {"type": "string"},
                                 "notes": {"type": "string"},
                                 "created_at": {"type": "string", "format": "date-time"},
-                            }
-                        }
+                            },
+                        },
                     },
                     "counts": {
                         "type": "object",
@@ -944,32 +970,32 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
                             "opposition": {"type": "integer"},
                             "victim": {"type": "integer"},
                             "total": {"type": "integer"},
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             }
         },
         tags=["entities"],
     )
-    @action(detail=True, methods=['get'], url_path='relationships')
+    @action(detail=True, methods=["get"], url_path="relationships")
     def get_relationships(self, request, pk=None):
         """
         GET /api/entities/{id}/relationships/
-        
+
         Get all case relationships for an entity with optional filtering.
         Includes aggregated counts by relationship type.
         """
         entity = self.get_object()
-        
+
         # Get base queryset of relationships for this entity
-        relationships_qs = entity.case_relationships.select_related('case').all()
-        
+        relationships_qs = entity.case_relationships.select_related("case").all()
+
         # Apply case_state filtering if provided (default to published cases only for public API)
-        case_state_param = request.query_params.get('case_state', 'PUBLISHED')
+        case_state_param = request.query_params.get("case_state", "PUBLISHED")
         if case_state_param:
             # Support comma-separated multiple states
-            requested_states = [s.strip() for s in case_state_param.split(',')]
-            
+            requested_states = [s.strip() for s in case_state_param.split(",")]
+
             # Validate case states
             valid_states = [choice[0] for choice in CaseState.choices]
             invalid_states = [s for s in requested_states if s not in valid_states]
@@ -977,19 +1003,19 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
                 return Response(
                     {
                         "error": f"Invalid case state(s): {', '.join(invalid_states)}",
-                        "valid_states": valid_states
+                        "valid_states": valid_states,
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-            
+
             relationships_qs = relationships_qs.filter(case__state__in=requested_states)
-        
+
         # Apply relationship_type filtering if provided
-        relationship_type_param = request.query_params.get('relationship_type')
+        relationship_type_param = request.query_params.get("relationship_type")
         if relationship_type_param:
             # Support comma-separated multiple types
-            requested_types = [t.strip() for t in relationship_type_param.split(',')]
-            
+            requested_types = [t.strip() for t in relationship_type_param.split(",")]
+
             # Validate relationship types
             valid_types = [choice[0] for choice in RelationshipType.choices]
             invalid_types = [t for t in requested_types if t not in valid_types]
@@ -997,46 +1023,64 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
                 return Response(
                     {
                         "error": f"Invalid relationship type(s): {', '.join(invalid_types)}",
-                        "valid_types": valid_types
+                        "valid_types": valid_types,
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-            
-            relationships_qs = relationships_qs.filter(relationship_type__in=requested_types)
-        
+
+            relationships_qs = relationships_qs.filter(
+                relationship_type__in=requested_types
+            )
+
         # Serialize the filtered relationships with case details
         relationships_data = []
         for rel in relationships_qs:
-            relationships_data.append({
-                'id': rel.id,
-                'case': {
-                    'id': rel.case.id,
-                    'case_id': rel.case.case_id,
-                    'title': rel.case.title,
-                    'state': rel.case.state,
-                },
-                'relationship_type': rel.relationship_type,
-                'notes': rel.notes,
-                'created_at': rel.created_at,
-            })
-        
+            relationships_data.append(
+                {
+                    "id": rel.id,
+                    "case": {
+                        "id": rel.case.id,
+                        "case_id": rel.case.case_id,
+                        "title": rel.case.title,
+                        "state": rel.case.state,
+                    },
+                    "relationship_type": rel.relationship_type,
+                    "notes": rel.notes,
+                    "created_at": rel.created_at,
+                }
+            )
+
         # Calculate aggregated counts by relationship type for the entire entity
         # (not just filtered results - this gives full context)
-        all_relationships = entity.case_relationships.filter(case__state__in=['PUBLISHED', 'IN_REVIEW'])
+        all_relationships = entity.case_relationships.filter(
+            case__state__in=["PUBLISHED", "IN_REVIEW"]
+        )
         counts = {
-            'alleged': all_relationships.filter(relationship_type=RelationshipType.ALLEGED).count(),
-            'related': all_relationships.filter(relationship_type=RelationshipType.RELATED).count(),
-            'witness': all_relationships.filter(relationship_type=RelationshipType.WITNESS).count(),
-            'opposition': all_relationships.filter(relationship_type=RelationshipType.OPPOSITION).count(),
-            'victim': all_relationships.filter(relationship_type=RelationshipType.VICTIM).count(),
+            "alleged": all_relationships.filter(
+                relationship_type=RelationshipType.ALLEGED
+            ).count(),
+            "related": all_relationships.filter(
+                relationship_type=RelationshipType.RELATED
+            ).count(),
+            "witness": all_relationships.filter(
+                relationship_type=RelationshipType.WITNESS
+            ).count(),
+            "opposition": all_relationships.filter(
+                relationship_type=RelationshipType.OPPOSITION
+            ).count(),
+            "victim": all_relationships.filter(
+                relationship_type=RelationshipType.VICTIM
+            ).count(),
         }
-        counts['total'] = sum(counts.values())
-        
-        return Response({
-            'entity': JawafEntitySerializer(entity).data,
-            'relationships': relationships_data,
-            'counts': counts
-        })
+        counts["total"] = sum(counts.values())
+
+        return Response(
+            {
+                "entity": JawafEntitySerializer(entity).data,
+                "relationships": relationships_data,
+                "counts": counts,
+            }
+        )
 
 
 @extend_schema(
@@ -1201,7 +1245,7 @@ class StatisticsView(APIView):
                                         "opposition": {"type": "integer"},
                                         "victim": {"type": "integer"},
                                         "total_cases": {"type": "integer"},
-                                    }
+                                    },
                                 },
                                 "recent_cases": {
                                     "type": "array",
@@ -1210,12 +1254,15 @@ class StatisticsView(APIView):
                                         "properties": {
                                             "case_id": {"type": "string"},
                                             "title": {"type": "string"},
-                                            "relationship_types": {"type": "array", "items": {"type": "string"}},
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                                            "relationship_types": {
+                                                "type": "array",
+                                                "items": {"type": "string"},
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
                     },
                     "summary": {
                         "type": "object",
@@ -1230,11 +1277,11 @@ class StatisticsView(APIView):
                                     "witness": {"type": "integer"},
                                     "opposition": {"type": "integer"},
                                     "victim": {"type": "integer"},
-                                }
-                            }
-                        }
-                    }
-                }
+                                },
+                            },
+                        },
+                    },
+                },
             }
         },
         tags=["relationships"],
@@ -1243,7 +1290,7 @@ class StatisticsView(APIView):
 class EntityRelationshipQueryView(APIView):
     """
     Advanced API endpoint for complex entity relationship queries.
-    
+
     Supports complex filtering and aggregation across entity relationships
     to enable sophisticated analysis of the accountability data.
     """
@@ -1251,67 +1298,79 @@ class EntityRelationshipQueryView(APIView):
     def get(self, request):
         """
         GET /api/entity-relationships/query/
-        
+
         Perform advanced queries across entity relationships.
         """
         from django.db.models import Count, Q
         from datetime import datetime
-        
+
         # Parse query parameters
-        has_relationship_types = request.query_params.get('has_relationship_types')
-        case_states = request.query_params.get('case_states', 'PUBLISHED,IN_REVIEW')
-        case_start_date_after = request.query_params.get('case_start_date_after')
-        case_start_date_before = request.query_params.get('case_start_date_before')
-        min_case_count = request.query_params.get('min_case_count')
-        include_counts = request.query_params.get('include_counts', 'true').lower() == 'true'
-        
+        has_relationship_types = request.query_params.get("has_relationship_types")
+        case_states = request.query_params.get("case_states", "PUBLISHED,IN_REVIEW")
+        case_start_date_after = request.query_params.get("case_start_date_after")
+        case_start_date_before = request.query_params.get("case_start_date_before")
+        min_case_count = request.query_params.get("min_case_count")
+        include_counts = (
+            request.query_params.get("include_counts", "true").lower() == "true"
+        )
+
         # Validate case states
-        case_states_list = [s.strip() for s in case_states.split(',')]
+        case_states_list = [s.strip() for s in case_states.split(",")]
         valid_states = [choice[0] for choice in CaseState.choices]
         invalid_states = [s for s in case_states_list if s not in valid_states]
         if invalid_states:
             return Response(
                 {
                     "error": f"Invalid case state(s): {', '.join(invalid_states)}",
-                    "valid_states": valid_states
+                    "valid_states": valid_states,
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        
+
         # Build base queryset
         entities_qs = JawafEntity.objects.all()
-        
+
         # Filter by case states
         case_filter = Q(case_relationships__case__state__in=case_states_list)
-        
+
         # Add date filters if provided
         if case_start_date_after:
             try:
-                date_after = datetime.strptime(case_start_date_after, '%Y-%m-%d').date()
-                case_filter &= Q(case_relationships__case__case_start_date__gte=date_after)
+                date_after = datetime.strptime(case_start_date_after, "%Y-%m-%d").date()
+                case_filter &= Q(
+                    case_relationships__case__case_start_date__gte=date_after
+                )
             except ValueError:
                 return Response(
-                    {"error": "Invalid date format for case_start_date_after. Use YYYY-MM-DD."},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {
+                        "error": "Invalid date format for case_start_date_after. Use YYYY-MM-DD."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-        
+
         if case_start_date_before:
             try:
-                date_before = datetime.strptime(case_start_date_before, '%Y-%m-%d').date()
-                case_filter &= Q(case_relationships__case__case_start_date__lte=date_before)
+                date_before = datetime.strptime(
+                    case_start_date_before, "%Y-%m-%d"
+                ).date()
+                case_filter &= Q(
+                    case_relationships__case__case_start_date__lte=date_before
+                )
             except ValueError:
                 return Response(
-                    {"error": "Invalid date format for case_start_date_before. Use YYYY-MM-DD."},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {
+                        "error": "Invalid date format for case_start_date_before. Use YYYY-MM-DD."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-        
+
         # Apply case filters
         entities_qs = entities_qs.filter(case_filter).distinct()
-        
+
         # Filter by required relationship types
         if has_relationship_types:
-            required_types = [t.strip() for t in has_relationship_types.split(',')]
-            
+            required_types = [t.strip() for t in has_relationship_types.split(",")]
+
             # Validate relationship types
             valid_types = [choice[0] for choice in RelationshipType.choices]
             invalid_types = [t for t in required_types if t not in valid_types]
@@ -1319,105 +1378,126 @@ class EntityRelationshipQueryView(APIView):
                 return Response(
                     {
                         "error": f"Invalid relationship type(s): {', '.join(invalid_types)}",
-                        "valid_types": valid_types
+                        "valid_types": valid_types,
                     },
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-            
+
             # Entity must have ALL required relationship types
             for rel_type in required_types:
                 entities_qs = entities_qs.filter(
                     case_relationships__relationship_type=rel_type,
-                    case_relationships__case__state__in=case_states_list
+                    case_relationships__case__state__in=case_states_list,
                 ).distinct()
-        
+
         # Filter by minimum case count
         if min_case_count:
             try:
                 min_count = int(min_case_count)
                 entities_qs = entities_qs.annotate(
-                    case_count=Count('case_relationships__case', distinct=True)
+                    case_count=Count("case_relationships__case", distinct=True)
                 ).filter(case_count__gte=min_count)
             except ValueError:
                 return Response(
                     {"error": "min_case_count must be an integer."},
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-        
+
         # Limit results for performance
         entities_qs = entities_qs[:100]  # Limit to 100 entities
-        
+
         # Build response data
         entities_data = []
         total_relationships = 0
         relationship_type_distribution = {
-            'alleged': 0,
-            'related': 0,
-            'witness': 0,
-            'opposition': 0,
-            'victim': 0,
+            "alleged": 0,
+            "related": 0,
+            "witness": 0,
+            "opposition": 0,
+            "victim": 0,
         }
-        
+
         for entity in entities_qs:
             entity_data = {
-                'entity': JawafEntitySerializer(entity).data,
+                "entity": JawafEntitySerializer(entity).data,
             }
-            
+
             if include_counts:
                 # Get relationship counts for this entity
                 relationships = entity.case_relationships.filter(
                     case__state__in=case_states_list
                 )
-                
+
                 counts = {
-                    'alleged': relationships.filter(relationship_type=RelationshipType.ALLEGED).count(),
-                    'related': relationships.filter(relationship_type=RelationshipType.RELATED).count(),
-                    'witness': relationships.filter(relationship_type=RelationshipType.WITNESS).count(),
-                    'opposition': relationships.filter(relationship_type=RelationshipType.OPPOSITION).count(),
-                    'victim': relationships.filter(relationship_type=RelationshipType.VICTIM).count(),
+                    "alleged": relationships.filter(
+                        relationship_type=RelationshipType.ALLEGED
+                    ).count(),
+                    "related": relationships.filter(
+                        relationship_type=RelationshipType.RELATED
+                    ).count(),
+                    "witness": relationships.filter(
+                        relationship_type=RelationshipType.WITNESS
+                    ).count(),
+                    "opposition": relationships.filter(
+                        relationship_type=RelationshipType.OPPOSITION
+                    ).count(),
+                    "victim": relationships.filter(
+                        relationship_type=RelationshipType.VICTIM
+                    ).count(),
                 }
-                counts['total_cases'] = relationships.values('case').distinct().count()
-                
-                entity_data['relationship_counts'] = counts
-                
+                counts["total_cases"] = relationships.values("case").distinct().count()
+
+                entity_data["relationship_counts"] = counts
+
                 # Update global distribution
                 for rel_type, count in counts.items():
-                    if rel_type != 'total_cases':
+                    if rel_type != "total_cases":
                         relationship_type_distribution[rel_type] += count
                         total_relationships += count
-                
+
                 # Get recent cases for this entity
                 recent_cases = []
-                for case_rel in relationships.select_related('case').order_by('-case__created_at')[:5]:
+                for case_rel in relationships.select_related("case").order_by(
+                    "-case__created_at"
+                )[:5]:
                     case_data = {
-                        'case_id': case_rel.case.case_id,
-                        'title': case_rel.case.title,
-                        'relationship_types': [case_rel.relationship_type]
+                        "case_id": case_rel.case.case_id,
+                        "title": case_rel.case.title,
+                        "relationship_types": [case_rel.relationship_type],
                     }
-                    
+
                     # Check if this case is already in recent_cases and add relationship type
-                    existing_case = next((c for c in recent_cases if c['case_id'] == case_data['case_id']), None)
+                    existing_case = next(
+                        (
+                            c
+                            for c in recent_cases
+                            if c["case_id"] == case_data["case_id"]
+                        ),
+                        None,
+                    )
                     if existing_case:
-                        if case_rel.relationship_type not in existing_case['relationship_types']:
-                            existing_case['relationship_types'].append(case_rel.relationship_type)
+                        if (
+                            case_rel.relationship_type
+                            not in existing_case["relationship_types"]
+                        ):
+                            existing_case["relationship_types"].append(
+                                case_rel.relationship_type
+                            )
                     else:
                         recent_cases.append(case_data)
-                
-                entity_data['recent_cases'] = recent_cases
-            
+
+                entity_data["recent_cases"] = recent_cases
+
             entities_data.append(entity_data)
-        
+
         # Build summary
         summary = {
-            'total_entities': len(entities_data),
-            'total_relationships': total_relationships,
-            'relationship_type_distribution': relationship_type_distribution,
+            "total_entities": len(entities_data),
+            "total_relationships": total_relationships,
+            "relationship_type_distribution": relationship_type_distribution,
         }
-        
-        return Response({
-            'entities': entities_data,
-            'summary': summary
-        })
+
+        return Response({"entities": entities_data, "summary": summary})
 
 
 class FeedbackRateThrottle(AnonRateThrottle):
