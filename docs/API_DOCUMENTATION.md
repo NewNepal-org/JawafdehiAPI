@@ -88,7 +88,7 @@ GET /api/cases/{id}/entities/
 Returns all entities related to a case with their relationship types.
 
 **Query Parameters:**
-- `type`: Filter by relationship type (`alleged`, `related`, `witness`, `opposition`, `victim`)
+- `relationship_type`: Filter by relationship type (`alleged`, `related`, `witness`, `opposition`, `victim`)
 - `page`: Page number for pagination
 
 **Examples:**
@@ -97,10 +97,10 @@ Returns all entities related to a case with their relationship types.
 curl "http://localhost:8000/api/cases/1/entities/"
 
 # Get only alleged entities
-curl "http://localhost:8000/api/cases/1/entities/?type=alleged"
+curl "http://localhost:8000/api/cases/1/entities/?relationship_type=alleged"
 
 # Get witnesses and victims
-curl "http://localhost:8000/api/cases/1/entities/?type=witness,victim"
+curl "http://localhost:8000/api/cases/1/entities/?relationship_type=witness,victim"
 ```
 
 #### Manage Entity Relationships (New)
@@ -462,10 +462,10 @@ fetch('http://localhost:8000/api/cases/')
   });
 
 // Get specific case entities by type
-fetch('http://localhost:8000/api/cases/1/entities/?type=alleged')
+fetch('http://localhost:8000/api/cases/1/entities/?relationship_type=alleged')
   .then(response => response.json())
   .then(data => {
-    console.log('Alleged entities:', data.results);
+    console.log('Alleged entities:', data.relationships);
   });
 
 // Create new entity relationship

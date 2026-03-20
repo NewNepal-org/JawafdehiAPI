@@ -261,59 +261,9 @@ class CaseAdminForm(forms.ModelForm):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Check if case has any alleged entities through the unified system
-            alleged_count = 0
-
-            if self.instance.pk:
-                # For existing cases, check persisted relationships
-                alleged_count = self.instance.entity_relationships.filter(
-                    relationship_type=RelationshipType.ALLEGED
-                ).count()
-
-            # For new cases or cases without persisted alleged relationships,
-            # check if inline formset contains alleged relationships
-            # Note: This is a best-effort check - the formset data may not be fully
-            # validated yet, but we can check if the user is attempting to add relationships
-            if alleged_count == 0:
-                # Try to access inline formset data from the form's data
-                # Django admin passes formset data with prefixes like 'entity_relationships-0-relationship_type'
-                formset_prefix = "entity_relationships"
-                has_inline_alleged = False
-
-                # Check if any inline forms have ALLEGED relationship_type
-                if self.data:
-                    # Get the total number of inline forms
-                    total_forms_key = f"{formset_prefix}-TOTAL_FORMS"
-                    total_forms = int(self.data.get(total_forms_key, 0))
-
-                    # Check each inline form for ALLEGED relationship type
-                    for i in range(total_forms):
-                        relationship_type_key = (
-                            f"{formset_prefix}-{i}-relationship_type"
-                        )
-                        entity_key = f"{formset_prefix}-{i}-entity"
-                        delete_key = f"{formset_prefix}-{i}-DELETE"
-
-                        # Check if this form has an ALLEGED relationship and is not marked for deletion
-                        relationship_type = self.data.get(relationship_type_key)
-                        has_entity = bool(self.data.get(entity_key))
-                        is_deleted = self.data.get(delete_key) == "on"
-
-                        if (
-                            relationship_type == RelationshipType.ALLEGED
-                            and has_entity
-                            and not is_deleted
-                        ):
-                            has_inline_alleged = True
-                            break
-
-                # If no alleged relationships found (neither persisted nor in inline formset)
-                if not has_inline_alleged:
-                    errors["__all__"] = (
-                        "At least one alleged entity relationship is required for IN_REVIEW or PUBLISHED state. "
-                        "Please add alleged entities using the 'Case Entity Relationships' section below."
-                    )
-
+            # Note: Alleged entity validation is performed in CaseAdmin.save_related()
+            # after inline formsets are saved, not here in clean()
+            
             # Check key_allegations
             key_allegations = cleaned_data.get("key_allegations")
             if not key_allegations or len(key_allegations) == 0:
@@ -618,13 +568,28 @@ class CaseAdmin(admin.ModelAdmin):
         """
         Save related objects (including many-to-many relationships).
         Automatically adds the creator to contributors when creating a new case.
+        Validates alleged entity requirement after inline formsets are saved.
         """
-        # First save the form's many-to-many data
+        # First save the form's many-to-many data and inline formsets
         super().save_related(request, form, formsets, change)
 
         # Then add creator to contributors for new cases
         if not change:
             form.instance.contributors.add(request.user)
+
+        # Validate alleged entity requirement for IN_REVIEW and PUBLISHED states
+        # This must happen after inline formsets are saved
+        case = form.instance
+        if case.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
+            alleged_count = case.entity_relationships.filter(
+                relationship_type=RelationshipType.ALLEGED
+            ).count()
+
+            if alleged_count == 0:
+                raise ValidationError(
+                    "At least one alleged entity relationship is required for IN_REVIEW or PUBLISHED state. "
+                    "Please add alleged entities using the 'Case Entity Relationships' section below."
+                )
 
     def get_actions(self, request):
         """

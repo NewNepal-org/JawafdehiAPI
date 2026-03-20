@@ -216,6 +216,7 @@ class CaseEntityRelationship(models.Model):
     notes = models.TextField(
         blank=True,
         default="",
+        max_length=500,
         help_text="Optional notes about this relationship",
     )
     created_at = models.DateTimeField(

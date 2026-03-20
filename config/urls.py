@@ -32,5 +32,5 @@ urlpatterns = [
         name="swagger-ui",
     ),
     path("api/", include("cases.urls")),
-    # path("api/", include("nesq.urls")),  # Temporarily disabled due to import issues
+    path("api/", include("nesq.urls")),
 ]
