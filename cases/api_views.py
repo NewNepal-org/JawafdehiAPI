@@ -5,7 +5,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 from django.core.cache import cache
-from django.db import connection, transaction
+from django.db import connection, transaction, IntegrityError
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -466,7 +466,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         },
         tags=["cases"],
     )
-    @action(detail=True, methods=['post'], url_path='entities')
+    @action(detail=True, methods=['post'], url_path='entities', permission_classes=[IsAuthenticated])
     def add_entity(self, request, pk=None):
         """
         POST /api/cases/{id}/entities/
@@ -505,7 +505,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_201_CREATED
             )
             
-        except Exception as e:
+        except IntegrityError as e:
             # Handle unique constraint violations
             if 'unique_case_entity_relationship_type' in str(e):
                 return Response(
@@ -537,7 +537,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         },
         tags=["cases"],
     )
-    @action(detail=True, methods=['put'], url_path='entities/(?P<relationship_id>[^/.]+)')
+    @action(detail=True, methods=['put'], url_path='entities/(?P<relationship_id>[^/.]+)', permission_classes=[IsAuthenticated])
     def update_entity_relationship(self, request, pk=None, relationship_id=None):
         """
         PUT /api/cases/{id}/entities/{relationship_id}/
@@ -579,7 +579,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             serializer.save()
             return Response(serializer.data)
             
-        except Exception as e:
+        except IntegrityError as e:
             # Handle unique constraint violations
             if 'unique_case_entity_relationship_type' in str(e):
                 return Response(
@@ -605,7 +605,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         },
         tags=["cases"],
     )
-    @action(detail=True, methods=['delete'], url_path='entities/(?P<relationship_id>[^/.]+)')
+    @action(detail=True, methods=['delete'], url_path='entities/(?P<relationship_id>[^/.]+)', permission_classes=[IsAuthenticated])
     def remove_entity_relationship(self, request, pk=None, relationship_id=None):
         """
         DELETE /api/cases/{id}/entities/{relationship_id}/
