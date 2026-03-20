@@ -4,6 +4,7 @@ Serializers for the Jawafdehi accountability platform API.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
+import logging
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_field
 from drf_spectacular.types import OpenApiTypes
@@ -15,6 +16,8 @@ from .models import (
     Feedback,
     CaseEntityRelationship,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class JawafEntitySerializer(serializers.ModelSerializer):
@@ -224,21 +227,14 @@ class CaseSerializer(serializers.ModelSerializer):
             return SimplifiedEntitySerializer(
                 non_location_relationships, many=True
             ).data
-        except Exception as e:
-            # Add logging for debugging serialization issues
-            import logging
-            from django.conf import settings
-
-            logger = logging.getLogger(__name__)
+        except (ValueError, TypeError, AttributeError) as e:
+            # Log serialization errors and re-raise to surface to callers
             logger.error(
                 f"Error serializing entities for case {obj.case_id}: {e}",
                 exc_info=True,
                 extra={"case_id": obj.case_id},
             )
-            # Re-raise in DEBUG mode for development debugging
-            if settings.DEBUG:
-                raise
-            return []
+            raise
 
     @extend_schema_field(LocationSerializer(many=True))
     def get_locations(self, obj):
@@ -258,20 +254,14 @@ class CaseSerializer(serializers.ModelSerializer):
             }
 
             return LocationSerializer(list(unified_locations), many=True).data
-        except Exception as e:
-            import logging
-            from django.conf import settings
-
-            logger = logging.getLogger(__name__)
+        except (ValueError, TypeError, AttributeError) as e:
+            # Log serialization errors and re-raise to surface to callers
             logger.error(
                 f"Error serializing locations for case {obj.case_id}: {e}",
                 exc_info=True,
                 extra={"case_id": obj.case_id},
             )
-            # Re-raise in DEBUG mode for development debugging
-            if settings.DEBUG:
-                raise
-            return []
+            raise
 
     tags = serializers.ListField(
         child=serializers.CharField(),
