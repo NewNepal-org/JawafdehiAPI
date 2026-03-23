@@ -109,13 +109,17 @@ def reverse_migration(apps, schema_editor):
     ).count()
 
     # Count manually created relationships that will be preserved
-    alleged_manual = CaseEntityRelationship.objects.filter(
-        relationship_type="alleged"
-    ).exclude(notes="").count()
+    alleged_manual = (
+        CaseEntityRelationship.objects.filter(relationship_type="alleged")
+        .exclude(notes="")
+        .count()
+    )
 
-    related_manual = CaseEntityRelationship.objects.filter(
-        relationship_type="related"
-    ).exclude(notes="").count()
+    related_manual = (
+        CaseEntityRelationship.objects.filter(relationship_type="related")
+        .exclude(notes="")
+        .count()
+    )
 
     other_types = CaseEntityRelationship.objects.exclude(
         relationship_type__in=["alleged", "related"]
@@ -133,7 +137,9 @@ def reverse_migration(apps, schema_editor):
     print(f"  - Alleged relationships preserved (manual): {alleged_manual}")
     print(f"  - Related relationships preserved (manual): {related_manual}")
     print(f"  - Other relationship types preserved: {other_types}")
-    print(f"  - Total relationships preserved: {alleged_manual + related_manual + other_types}")
+    print(
+        f"  - Total relationships preserved: {alleged_manual + related_manual + other_types}"
+    )
 
 
 class Migration(migrations.Migration):

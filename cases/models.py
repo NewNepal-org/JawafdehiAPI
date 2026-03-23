@@ -506,7 +506,7 @@ class Case(models.Model):
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
             # Require at least one alleged entity for published cases using unified system
-            if self.alleged_entities.count()== 0:
+            if self.alleged_entities.count() == 0:
                 errors["alleged_entities"] = (
                     "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
                 )
