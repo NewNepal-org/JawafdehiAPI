@@ -100,7 +100,7 @@ class CaseAdminForm(forms.ModelForm):
 
     class Meta:
         model = Case
-        fields = "__all__"
+        exclude = ['unified_entities']
         widgets = {
             "description": TinyMCE(attrs={"cols": 80, "rows": 30}),
             "notes": TinyMCE(attrs={"cols": 80, "rows": 20}),
