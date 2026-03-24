@@ -9,6 +9,7 @@ from tinymce.widgets import TinyMCE
 from .models import (
     Case,
     DocumentSource,
+    DocumentSourceUpload,
     JawafEntity,
     CaseState,
     Feedback,
@@ -592,6 +593,17 @@ class DocumentSourceAdminForm(forms.ModelForm):
         return cleaned_data
 
 
+class DocumentSourceUploadInline(admin.TabularInline):
+    """Inline form for managing multiple uploaded files on a source."""
+
+    model = DocumentSourceUpload
+    extra = 1
+    fields = ("file", "filename", "content_type", "file_size", "created_at")
+    readonly_fields = ("filename", "content_type", "file_size", "created_at")
+    verbose_name = "Uploaded file"
+    verbose_name_plural = "Uploaded files"
+
+
 @admin.register(DocumentSource)
 class DocumentSourceAdmin(admin.ModelAdmin):
     """
@@ -604,6 +616,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     """
 
     form = DocumentSourceAdminForm
+    inlines = [DocumentSourceUploadInline]
 
     list_display = [
         "source_id",
@@ -659,6 +672,16 @@ class DocumentSourceAdmin(admin.ModelAdmin):
     )
 
     filter_horizontal = ["related_entities", "contributors"]
+
+    def uploaded_file_url(self, obj):
+        """Return clickable URL for uploaded file in admin detail view."""
+        if not obj.uploaded_file:
+            return "-"
+
+        url = obj.uploaded_file.url
+        return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>', url, url)
+
+    uploaded_file_url.short_description = "Uploaded File URL"
 
     def deletion_status(self, obj):
         """Display deletion status as a colored badge."""

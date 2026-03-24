@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.utils import timezone
+import mimetypes
 import uuid
 
 from .fields import (
@@ -634,6 +635,65 @@ class DocumentSource(models.Model):
         # Run full model and field validation (includes validate_url_list)
         # This calls clean() which normalizes data, then validates
         self.full_clean()
+
+        super().save(*args, **kwargs)
+
+
+class DocumentSourceUpload(models.Model):
+    """Represents one uploaded file attached to a DocumentSource."""
+
+    source = models.ForeignKey(
+        DocumentSource,
+        on_delete=models.CASCADE,
+        related_name="uploaded_files",
+        help_text="Document source this uploaded file belongs to",
+    )
+    file = models.FileField(
+        upload_to="jawafdehi/sources/%Y/%m/%d/",
+        validators=[validate_upload_file_extension, validate_upload_file_size],
+        help_text="Uploaded file",
+    )
+    filename = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Original filename (auto-populated)",
+    )
+    content_type = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="MIME type (auto-populated best-effort)",
+    )
+    file_size = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="File size in bytes (auto-populated)",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.source.source_id} - {self.filename or self.file.name}"
+
+    def save(self, *args, **kwargs):
+        """Auto-populate metadata fields from uploaded file before saving."""
+        if self.file:
+            if not self.filename:
+                self.filename = (self.file.name or "").split("/")[-1]
+
+            if self.file_size in (None, 0):
+                self.file_size = getattr(self.file, "size", None)
+
+            if not self.content_type:
+                uploaded_content_type = getattr(getattr(self.file, "file", None), "content_type", None)
+                if uploaded_content_type:
+                    self.content_type = uploaded_content_type
+                else:
+                    guessed_content_type, _ = mimetypes.guess_type(self.file.name)
+                    if guessed_content_type:
+                        self.content_type = guessed_content_type
 
         super().save(*args, **kwargs)
 

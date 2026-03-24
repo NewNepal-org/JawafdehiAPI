@@ -94,6 +94,21 @@ class TestDocumentSourceAdmin:
         assert "Basic Information" in fieldset_names
         assert "Metadata" in fieldset_names
 
+    def test_fieldsets_hide_legacy_upload_metadata_inputs(self, db):
+        """Legacy upload metadata fields should not be directly editable in admin form."""
+        admin_instance = admin.site._registry[DocumentSource]
+        basic_fieldset_fields = admin_instance.fieldsets[0][1]["fields"]
+
+        assert "uploaded_filename" not in basic_fieldset_fields
+        assert "uploaded_content_type" not in basic_fieldset_fields
+        assert "uploaded_file_size" not in basic_fieldset_fields
+
+    def test_upload_inline_is_configured(self, db):
+        """DocumentSource admin should expose inline uploads for multi-file support."""
+        admin_instance = admin.site._registry[DocumentSource]
+        inline_models = [inline.model.__name__ for inline in admin_instance.inlines]
+        assert "DocumentSourceUpload" in inline_models
+
     def test_list_display_configured(self, db):
         """Test that list display is properly configured."""
         admin_instance = admin.site._registry[DocumentSource]
