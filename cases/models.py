@@ -49,6 +49,61 @@ def validate_url_list(value):
         validator(stripped)
 
 
+# File upload configuration
+ALLOWED_UPLOAD_EXTENSIONS = ["pdf", "doc", "docx", "jpg", "jpeg", "png"]
+ALLOWED_UPLOAD_MIMETYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/jpeg",
+    "image/png",
+]
+MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024  # 10 MB in bytes
+
+
+def validate_upload_file_extension(file):
+    """
+    Validate that the uploaded file has an allowed extension.
+
+    Args:
+        file: The uploaded file object
+
+    Raises:
+        ValidationError: If file extension is not allowed
+    """
+    if not file:
+        return
+
+    import os
+
+    ext = os.path.splitext(file.name)[1].lstrip(".").lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        allowed = ", ".join(ALLOWED_UPLOAD_EXTENSIONS)
+        raise ValidationError(
+            f"File extension '.{ext}' is not allowed. Allowed extensions: {allowed}"
+        )
+
+
+def validate_upload_file_size(file):
+    """
+    Validate that the uploaded file is within size limits.
+
+    Args:
+        file: The uploaded file object
+
+    Raises:
+        ValidationError: If file exceeds max size
+    """
+    if not file:
+        return
+
+    if file.size > MAX_UPLOAD_FILE_SIZE:
+        max_mb = MAX_UPLOAD_FILE_SIZE / (1024 * 1024)
+        raise ValidationError(
+            f"File size is {file.size / (1024 * 1024):.2f} MB, which exceeds the maximum allowed size of {max_mb} MB"
+        )
+
+
 class JawafEntity(models.Model):
     """
     Represents an entity (person, organization, location, etc.) in the system.
@@ -480,6 +535,33 @@ class DocumentSource(models.Model):
         blank=True,
         validators=[validate_url_list],
         help_text="List of URLs for this source",
+    )
+
+    # Uploaded file fields (for native file uploads)
+    # If uploaded_file is set, this source is considered an uploaded-file source
+    uploaded_file = models.FileField(
+        upload_to="jawafdehi/sources/%Y/%m/%d/",
+        null=True,
+        blank=True,
+        validators=[validate_upload_file_extension, validate_upload_file_size],
+        help_text="Uploaded file (if source is from file upload)",
+    )
+    uploaded_filename = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="Original filename for uploaded file",
+    )
+    uploaded_content_type = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        help_text="MIME type of uploaded file (e.g., application/pdf)",
+    )
+    uploaded_file_size = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="File size in bytes",
     )
 
     # Entity relationships
