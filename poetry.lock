@@ -1717,7 +1717,7 @@ scraping = ["google-auth (>=2.23.0,<3.0.0)", "google-cloud-aiplatform (>=1.38.0,
 type = "git"
 url = "https://github.com/NewNepal-org/NepalEntityService.git"
 reference = "HEAD"
-resolved_reference = "50bc9d026a8c63636d07a041f964fb8e295b32da"
+resolved_reference = "3dc8633c6d44d3db37c1a36064dbdd5a26bc62a5"
 
 [[package]]
 name = "nepali-date-utils"
