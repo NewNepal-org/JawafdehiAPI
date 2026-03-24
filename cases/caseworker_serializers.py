@@ -12,7 +12,6 @@ from rest_framework import serializers
 from .models import (
     CaseState,
     CaseType,
-    DcoumentSource,
     JawafEntity,
     validate_upload_file_extension,
     validate_upload_file_size,
