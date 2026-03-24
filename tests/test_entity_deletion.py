@@ -37,13 +37,15 @@ class TestEntityDeletionProtection:
             description="Test description",
         )
 
-        entity = case.alleged_entities.first()
+        entity = (
+            case.entity_relationships.filter(relationship_type="alleged").first().entity
+        )
 
         with pytest.raises(ValidationError) as exc_info:
             entity.delete()
 
         assert "Cannot delete entity" in str(exc_info.value)
-        assert "alleged entity" in str(exc_info.value).lower()
+        assert "entity relationship" in str(exc_info.value).lower()
 
         # Verify entity still exists
         assert JawafEntity.objects.filter(id=entity.id).exists()
@@ -163,11 +165,14 @@ class TestEntityDeletionProtection:
             description="Test description",
         )
 
-        entity = case.alleged_entities.first()
+        relationship = case.entity_relationships.filter(
+            relationship_type="alleged"
+        ).first()
+        entity = relationship.entity
         entity_id = entity.id
 
         # Remove entity from case
-        case.alleged_entities.remove(entity)
+        relationship.delete()
 
         # Now deletion should succeed
         entity.delete()

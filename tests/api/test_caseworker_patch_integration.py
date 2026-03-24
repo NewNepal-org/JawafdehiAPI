@@ -10,7 +10,14 @@ import pytest
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
-from cases.models import Case, CaseState, CaseType, JawafEntity
+from cases.models import (
+    Case,
+    CaseEntityRelationship,
+    CaseState,
+    CaseType,
+    JawafEntity,
+    RelationshipType,
+)
 from tests.conftest import create_user_with_role
 
 URL = "/api/cases/{}/"
@@ -91,11 +98,21 @@ def test_patch_multi_operation_end_to_end_persists_all_changes():
     assert case.title == "Updated accountability case"
     assert case.tags == ["public-fund", "audit"]
     assert case.timeline[-1]["title"] == "Hearing scheduled"
-    assert set(case.alleged_entities.values_list("id", flat=True)) == {
+    assert set(
+        CaseEntityRelationship.objects.filter(
+            case=case,
+            relationship_type=RelationshipType.ALLEGED,
+        ).values_list("entity_id", flat=True)
+    ) == {
         alleged_1.id,
         alleged_2.id,
     }
-    assert set(case.related_entities.values_list("id", flat=True)) == {related.id}
+    assert set(
+        CaseEntityRelationship.objects.filter(
+            case=case,
+            relationship_type=RelationshipType.RELATED,
+        ).values_list("entity_id", flat=True)
+    ) == {related.id}
     assert set(case.locations.values_list("id", flat=True)) == {location.id}
 
 

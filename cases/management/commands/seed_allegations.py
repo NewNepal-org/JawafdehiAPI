@@ -10,10 +10,12 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from cases.models import (
             Case,
+            CaseEntityRelationship,
             CaseType,
             CaseState,
             DocumentSource,
             JawafEntity,
+            RelationshipType,
         )
 
         db_settings = connection.settings_dict
@@ -504,6 +506,25 @@ class Command(BaseCommand):
             ]
         )
         media.locations.set([get_entity("entity:location/district/kathmandu")])
+
+        # Keep unified relationship table in sync with legacy seeded M2M fields.
+        for case in Case.objects.prefetch_related(
+            "alleged_entities", "related_entities"
+        ):
+            for entity in case.alleged_entities.all():
+                CaseEntityRelationship.objects.get_or_create(
+                    case=case,
+                    entity=entity,
+                    relationship_type=RelationshipType.ALLEGED,
+                    defaults={"notes": ""},
+                )
+            for entity in case.related_entities.all():
+                CaseEntityRelationship.objects.get_or_create(
+                    case=case,
+                    entity=entity,
+                    relationship_type=RelationshipType.RELATED,
+                    defaults={"notes": ""},
+                )
 
         self.stdout.write(self.style.SUCCESS("Successfully created:"))
         self.stdout.write(f"  - {JawafEntity.objects.count()} entities")

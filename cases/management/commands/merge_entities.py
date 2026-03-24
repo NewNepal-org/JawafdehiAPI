@@ -14,7 +14,7 @@ This command will:
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from cases.models import JawafEntity
+from cases.models import CaseEntityRelationship, JawafEntity
 
 
 class Command(BaseCommand):
@@ -160,6 +160,18 @@ class Command(BaseCommand):
                     for case in source_entity.cases_as_related.all():
                         case.related_entities.remove(source_entity)
                         case.related_entities.add(target_entity)
+
+                    # Update unified entity relationships
+                    for relationship in CaseEntityRelationship.objects.filter(
+                        entity=source_entity
+                    ):
+                        CaseEntityRelationship.objects.get_or_create(
+                            case=relationship.case,
+                            entity=target_entity,
+                            relationship_type=relationship.relationship_type,
+                            defaults={"notes": relationship.notes},
+                        )
+                    CaseEntityRelationship.objects.filter(entity=source_entity).delete()
 
                     # Update Case locations
                     for case in source_entity.cases_as_location.all():

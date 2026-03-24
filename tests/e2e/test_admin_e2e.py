@@ -1045,7 +1045,7 @@ class TestDjangoAdminWorkflows:
             not form.is_valid()
         ), "Form should not be valid for IN_REVIEW state on new case"
         assert "state" in form.errors, "Should have state error"
-        assert "New cases must be created in DRAFT state" in str(
+        assert "cannot be created directly in IN_REVIEW" in str(
             form.errors["state"]
         ), "Should not allow creating new case with IN_REVIEW state"
 
@@ -1057,7 +1057,7 @@ class TestDjangoAdminWorkflows:
             not form.is_valid()
         ), "Form should not be valid for CLOSED state on new case"
         assert "state" in form.errors, "Should have state error"
-        assert "New cases must be created in DRAFT state" in str(
+        assert "Cannot create with state CLOSED" in str(
             form.errors["state"]
         ), "Should not allow creating new case with CLOSED state"
 
@@ -1329,8 +1329,10 @@ class TestDjangoAdminWorkflows:
         case.save()
 
         # Step 3: Add alleged_entities and required fields for submission
-        case.alleged_entities.set(
-            create_entities_from_ids(["entity:person/corrupt-official"])
+        alleged_entity = create_entities_from_ids(["entity:person/corrupt-official"])[0]
+        case.entity_relationships.create(
+            entity=alleged_entity,
+            relationship_type="alleged",
         )
         case.key_allegations = ["Test allegation"]
         case.description = "Test description"
@@ -1344,7 +1346,9 @@ class TestDjangoAdminWorkflows:
         assert (
             case.state == CaseState.IN_REVIEW
         ), "Case should transition to IN_REVIEW with alleged_entities"
-        assert case.alleged_entities.count() == 1
+        assert (
+            case.entity_relationships.filter(relationship_type="alleged").count() == 1
+        )
         assert case.versionInfo.get("action") == "submitted"
 
     def test_alleged_entities_required_for_published(self):
@@ -1371,7 +1375,7 @@ class TestDjangoAdminWorkflows:
         case.save()
 
         # Step 2: Remove alleged_entities and attempt to publish
-        case.alleged_entities.clear()
+        case.entity_relationships.filter(relationship_type="alleged").delete()
         case.state = CaseState.PUBLISHED
 
         with pytest.raises(ValidationError) as exc_info:
@@ -1387,8 +1391,10 @@ class TestDjangoAdminWorkflows:
         case.save()
 
         # Step 3: Add alleged_entities back and publish
-        case.alleged_entities.set(
-            create_entities_from_ids(["entity:person/test-official"])
+        alleged_entity = create_entities_from_ids(["entity:person/test-official"])[0]
+        case.entity_relationships.create(
+            entity=alleged_entity,
+            relationship_type="alleged",
         )
         case.save()
 
@@ -1398,4 +1404,6 @@ class TestDjangoAdminWorkflows:
         assert (
             case.state == CaseState.PUBLISHED
         ), "Case should be published with alleged_entities"
-        assert case.alleged_entities.count() == 1
+        assert (
+            case.entity_relationships.filter(relationship_type="alleged").count() == 1
+        )

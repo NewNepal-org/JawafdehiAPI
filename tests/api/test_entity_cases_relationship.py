@@ -8,7 +8,13 @@ Tests that entity detail endpoint returns alleged_cases and related_cases lists.
 import pytest
 from rest_framework.test import APIClient
 
-from cases.models import Case, CaseState, JawafEntity
+from cases.models import (
+    Case,
+    CaseEntityRelationship,
+    CaseState,
+    JawafEntity,
+    RelationshipType,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -79,7 +85,9 @@ def test_entity_alleged_in_published_case():
         title="Test Case",
         description="Test description",
     )
-    case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -100,7 +108,9 @@ def test_entity_alleged_in_multiple_published_cases():
         title="Case 1",
         description="Test",
     )
-    case1.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case1, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     case2 = Case.objects.create(
         case_id="case-002",
@@ -108,7 +118,9 @@ def test_entity_alleged_in_multiple_published_cases():
         title="Case 2",
         description="Test",
     )
-    case2.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case2, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -130,7 +142,9 @@ def test_entity_alleged_in_draft_case_not_included():
         title="Draft Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -150,7 +164,9 @@ def test_entity_alleged_in_closed_case_not_included():
         title="Closed Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -175,7 +191,9 @@ def test_entity_related_in_published_case():
         title="Test Case",
         description="Test",
     )
-    case.related_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -217,7 +235,9 @@ def test_entity_related_and_location_in_same_case():
         title="Test Case",
         description="Test",
     )
-    case.related_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
     case.locations.add(entity)
 
     client = APIClient()
@@ -239,7 +259,9 @@ def test_entity_related_in_draft_case_not_included():
         title="Draft Case",
         description="Test",
     )
-    case.related_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -264,7 +286,9 @@ def test_entity_alleged_not_in_related_cases():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -285,8 +309,12 @@ def test_entity_both_alleged_and_related_in_same_case():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
-    case.related_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -307,7 +335,9 @@ def test_entity_both_alleged_and_location_in_same_case():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
     case.locations.add(entity)
 
     client = APIClient()
@@ -335,7 +365,9 @@ def test_entity_in_multiple_cases_with_different_roles():
         title="Case 1",
         description="Test",
     )
-    case1.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case1, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     # Case 2: Entity is related
     case2 = Case.objects.create(
@@ -344,7 +376,9 @@ def test_entity_in_multiple_cases_with_different_roles():
         title="Case 2",
         description="Test",
     )
-    case2.related_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case2, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     # Case 3: Entity is location
     case3 = Case.objects.create(
@@ -378,7 +412,9 @@ def test_entity_with_mix_of_published_and_draft_cases():
         title="Published Case",
         description="Test",
     )
-    published_case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=published_case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     # Draft case
     draft_case = Case.objects.create(
@@ -387,7 +423,9 @@ def test_entity_with_mix_of_published_and_draft_cases():
         title="Draft Case",
         description="Test",
     )
-    draft_case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=draft_case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     # Closed case
     closed_case = Case.objects.create(
@@ -396,7 +434,9 @@ def test_entity_with_mix_of_published_and_draft_cases():
         title="Closed Case",
         description="Test",
     )
-    closed_case.related_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=closed_case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -421,7 +461,9 @@ def test_in_review_cases_excluded_from_entity_detail_case_lists():
         title="In Review Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -447,7 +489,9 @@ def test_alleged_cases_is_list_of_integers():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -468,7 +512,9 @@ def test_related_cases_is_list_of_integers():
         title="Test Case",
         description="Test",
     )
-    case.related_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -494,7 +540,9 @@ def test_entity_list_includes_case_fields():
         title="Test Case",
         description="Test",
     )
-    case.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     client = APIClient()
     response = client.get("/api/entities/")
@@ -519,7 +567,9 @@ def test_entity_list_shows_correct_case_ids():
         title="Alleged Case",
         description="Test",
     )
-    case1.alleged_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case1, entity=entity, relationship_type=RelationshipType.ALLEGED
+    )
 
     # Related case
     case2 = Case.objects.create(
@@ -528,7 +578,9 @@ def test_entity_list_shows_correct_case_ids():
         title="Related Case",
         description="Test",
     )
-    case2.related_entities.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case2, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get("/api/entities/")

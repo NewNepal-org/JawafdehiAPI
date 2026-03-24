@@ -76,12 +76,10 @@ def test_post_creates_case_with_entity_relationships():
     )
 
     assert response.status_code == 201
-    assert [entity["id"] for entity in response.data["alleged_entities"]] == [
-        alleged.pk
-    ]
-    assert [entity["id"] for entity in response.data["related_entities"]] == [
-        related.pk
-    ]
+    alleged_ids = [e["id"] for e in response.data["entities"] if e["type"] == "alleged"]
+    related_ids = [e["id"] for e in response.data["entities"] if e["type"] == "related"]
+    assert alleged_ids == [alleged.pk]
+    assert related_ids == [related.pk]
     assert [entity["id"] for entity in response.data["locations"]] == [location.pk]
 
 

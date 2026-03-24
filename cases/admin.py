@@ -5,6 +5,7 @@ from django import forms
 from django.db import models
 from django.utils.html import format_html
 from django.core.exceptions import ValidationError
+from django.forms.models import BaseInlineFormSet
 from tinymce.widgets import TinyMCE
 from .models import (
     Case,
@@ -12,6 +13,8 @@ from .models import (
     JawafEntity,
     CaseState,
     Feedback,
+    CaseEntityRelationship,
+    RelationshipType,
 )
 from .widgets import (
     MultiTextField,
@@ -101,6 +104,9 @@ class CaseAdminForm(forms.ModelForm):
     class Meta:
         model = Case
         fields = "__all__"
+        exclude = [
+            "unified_entities"
+        ]  # Exclude unified_entities as it's managed through the inline
         widgets = {
             "description": TinyMCE(attrs={"cols": 80, "rows": 30}),
             "notes": TinyMCE(attrs={"cols": 80, "rows": 20}),
@@ -186,13 +192,66 @@ class CaseAdminForm(forms.ModelForm):
         cleaned_data = super().clean()
         errors = {}
 
-        # For new cases, enforce DRAFT state
+        # For new cases, check if they can be created in non-DRAFT states
+        # Allow IN_REVIEW/PUBLISHED if inline alleged relationships are present
         if not self.instance.pk:
             new_state = cleaned_data.get("state")
-            if new_state != CaseState.DRAFT:
+            if new_state not in [
+                CaseState.DRAFT,
+                CaseState.IN_REVIEW,
+                CaseState.PUBLISHED,
+            ]:
                 errors["state"] = (
-                    f"New cases must be created in DRAFT state. Cannot create a new case with state {new_state}."
+                    f"New cases can only be created in DRAFT, IN_REVIEW, or PUBLISHED state. Cannot create with state {new_state}."
                 )
+            elif new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
+                # Only Admins/Moderators can create cases directly in PUBLISHED state.
+                if (
+                    new_state == CaseState.PUBLISHED
+                    and self.request
+                    and not is_admin_or_moderator(self.request.user)
+                ):
+                    errors["state"] = (
+                        "New cases must be created in DRAFT state. Only Admins and Moderators can create cases directly in PUBLISHED state."
+                    )
+                else:
+                    # For new cases in IN_REVIEW/PUBLISHED, check if inline formset has alleged relationships
+                    # This is a preliminary check - the full validation happens later
+                    formset_prefix = "entity_relationships"
+                    has_inline_alleged = False
+
+                    if self.data:
+                        total_forms_key = f"{formset_prefix}-TOTAL_FORMS"
+                        try:
+                            total_forms = int(self.data.get(total_forms_key, 0))
+                        except (TypeError, ValueError):
+                            total_forms = 0
+
+                        for i in range(total_forms):
+                            relationship_type_key = (
+                                f"{formset_prefix}-{i}-relationship_type"
+                            )
+                            entity_key = f"{formset_prefix}-{i}-entity"
+                            delete_key = f"{formset_prefix}-{i}-DELETE"
+
+                            relationship_type = self.data.get(relationship_type_key)
+                            has_entity = bool(self.data.get(entity_key))
+                            is_deleted = self.data.get(delete_key) == "on"
+
+                            if (
+                                relationship_type == RelationshipType.ALLEGED
+                                and has_entity
+                                and not is_deleted
+                            ):
+                                has_inline_alleged = True
+                                break
+
+                    # If creating new case in IN_REVIEW/PUBLISHED without inline alleged relationships
+                    if not has_inline_alleged:
+                        errors["state"] = (
+                            f"New cases cannot be created directly in {new_state} state without alleged entity relationships. "
+                            "Either create the case in DRAFT state first, or add alleged entities in the 'Case Entity Relationships' section below."
+                        )
 
         # Check state transitions for existing cases
         if self.instance.pk:
@@ -216,12 +275,8 @@ class CaseAdminForm(forms.ModelForm):
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-            # Check alleged_entities (m2m field - check form data)
-            alleged_entities = cleaned_data.get("alleged_entities")
-            if not alleged_entities or alleged_entities.count() == 0:
-                errors["alleged_entities"] = (
-                    "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
-                )
+            # Note: Alleged entity validation is performed in CaseAdmin.save_related()
+            # after inline formsets are saved, not here in clean()
 
             # Check key_allegations
             key_allegations = cleaned_data.get("key_allegations")
@@ -244,6 +299,85 @@ class CaseAdminForm(forms.ModelForm):
 
 
 # ============================================================================
+# Case Entity Relationship Inline
+# ============================================================================
+
+
+class CaseEntityRelationshipInlineFormSet(BaseInlineFormSet):
+    """
+    Custom formset for CaseEntityRelationshipInline that validates alleged
+    entity presence at form-validation time (instead of save_related),
+    so errors are surfaced cleanly in the admin UI.
+    """
+
+    def clean(self):
+        super().clean()
+        if not hasattr(self, "instance") or self.instance is None:
+            return
+        if self.instance.state not in {CaseState.IN_REVIEW, CaseState.PUBLISHED}:
+            return
+        has_alleged = any(
+            form.cleaned_data
+            and not form.cleaned_data.get("DELETE")
+            and form.cleaned_data.get("entity")
+            and form.cleaned_data.get("relationship_type") == RelationshipType.ALLEGED
+            for form in self.forms
+        )
+        if not has_alleged:
+            raise ValidationError(
+                "At least one alleged entity relationship is required for IN_REVIEW or PUBLISHED state. "
+                "Please add alleged entities using the 'Case Entity Relationships' section below."
+            )
+
+
+class CaseEntityRelationshipInline(admin.TabularInline):
+    """
+    Inline admin for managing Case-Entity relationships.
+
+    Features:
+    - TabularInline for efficient bulk operations
+    - Relationship type dropdown with all available choices
+    - Editable notes field for additional context
+    - Created timestamp display for relationship tracking
+    - Autocomplete for entity selection
+    - Support for bulk operations
+    """
+
+    model = CaseEntityRelationship
+    formset = CaseEntityRelationshipInlineFormSet
+    extra = 1
+    fields = ["entity", "relationship_type", "notes", "created_at"]
+    readonly_fields = ["created_at"]
+    autocomplete_fields = ["entity"]
+    verbose_name = "Entity"
+    verbose_name_plural = "Entities"
+
+    # Enable bulk operations
+    can_delete = True
+    show_change_link = False
+
+    class Media:
+        css = {"all": ("admin/css/entity_view_link_hide.css",)}
+
+    # Customize the form widget for relationship_type to show all choices
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        """Customize the relationship_type field to show all available choices."""
+        if db_field.name == "relationship_type":
+            kwargs["widget"] = forms.Select(choices=RelationshipType.choices)
+        return super().formfield_for_choice_field(db_field, request, **kwargs)
+
+    def get_queryset(self, request):
+        """Optimize queryset with select_related for better performance."""
+        return super().get_queryset(request).select_related("entity")
+
+    def get_extra(self, request, obj=None, **kwargs):
+        """Show extra forms for new cases, fewer for existing cases with relationships."""
+        if obj and obj.entity_relationships.exists():
+            return 0  # Don't show extra forms if relationships already exist
+        return 1  # Show 1 extra form for new cases or cases without relationships
+
+
+# ============================================================================
 # Case Admin
 # ============================================================================
 
@@ -259,9 +393,11 @@ class CaseAdmin(admin.ModelAdmin):
     - Version history display
     - Contributor assignment
     - Role-based permissions
+    - CaseEntityRelationship inline for unified entity management
     """
 
     form = CaseAdminForm
+    inlines = [CaseEntityRelationshipInline]
 
     class Media:
         js = ("admin/js/case_admin.js",)
@@ -307,7 +443,6 @@ class CaseAdmin(admin.ModelAdmin):
                     "banner_url",
                     "case_type",
                     "state",
-                    "alleged_entities",
                 )
             },
         ),
@@ -323,13 +458,8 @@ class CaseAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Entities",
-            {
-                "fields": (
-                    "related_entities",
-                    "locations",
-                )
-            },
+            "Location",
+            {"fields": ("locations",)},
         ),
         (
             "Content",
@@ -360,8 +490,6 @@ class CaseAdmin(admin.ModelAdmin):
 
     filter_horizontal = [
         "contributors",
-        "alleged_entities",
-        "related_entities",
         "locations",
     ]
 
@@ -482,8 +610,9 @@ class CaseAdmin(admin.ModelAdmin):
         """
         Save related objects (including many-to-many relationships).
         Automatically adds the creator to contributors when creating a new case.
+        Validates alleged entity requirement after inline formsets are saved.
         """
-        # First save the form's many-to-many data
+        # First save the form's many-to-many data and inline formsets
         super().save_related(request, form, formsets, change)
 
         # Then add creator to contributors for new cases
