@@ -105,6 +105,31 @@ def validate_upload_file_size(file):
         )
 
 
+def validate_upload_file_mimetype(file):
+    """
+    Validate that the uploaded file's MIME type is allowed.
+
+    Uses the content_type attribute set by Django's file upload handler.
+    This provides a defence-in-depth check against renamed files that pass
+    the extension validator.
+
+    Args:
+        file: The uploaded file object
+
+    Raises:
+        ValidationError: If MIME type is not in ALLOWED_UPLOAD_MIMETYPES
+    """
+    if not file:
+        return
+
+    content_type = getattr(file, "content_type", None)
+    if content_type and content_type not in ALLOWED_UPLOAD_MIMETYPES:
+        allowed = ", ".join(ALLOWED_UPLOAD_MIMETYPES)
+        raise ValidationError(
+            f"File MIME type '{content_type}' is not allowed. Allowed types: {allowed}"
+        )
+
+
 class JawafEntity(models.Model):
     """
     Represents an entity (person, organization, location, etc.) in the system.
@@ -544,7 +569,11 @@ class DocumentSource(models.Model):
         upload_to="jawafdehi/sources/%Y/%m/%d/",
         null=True,
         blank=True,
-        validators=[validate_upload_file_extension, validate_upload_file_size],
+        validators=[
+            validate_upload_file_extension,
+            validate_upload_file_size,
+            validate_upload_file_mimetype,
+        ],
         help_text="Uploaded file (if source is from file upload)",
     )
     uploaded_filename = models.CharField(
@@ -650,7 +679,11 @@ class DocumentSourceUpload(models.Model):
     )
     file = models.FileField(
         upload_to="jawafdehi/sources/%Y/%m/%d/",
-        validators=[validate_upload_file_extension, validate_upload_file_size],
+        validators=[
+            validate_upload_file_extension,
+            validate_upload_file_size,
+            validate_upload_file_mimetype,
+        ],
         help_text="Uploaded file",
     )
     filename = models.CharField(
