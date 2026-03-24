@@ -13,8 +13,6 @@ from .models import (
     CaseState,
     CaseType,
     JawafEntity,
-    validate_upload_file_extension,
-    validate_upload_file_size,
 )
 
 # Paths that callers are not permitted to target in a patch operation.

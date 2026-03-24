@@ -687,7 +687,9 @@ class DocumentSourceUpload(models.Model):
                 self.file_size = getattr(self.file, "size", None)
 
             if not self.content_type:
-                uploaded_content_type = getattr(getattr(self.file, "file", None), "content_type", None)
+                uploaded_content_type = getattr(
+                    getattr(self.file, "file", None), "content_type", None
+                )
                 if uploaded_content_type:
                     self.content_type = uploaded_content_type
                 else:

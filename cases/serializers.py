@@ -181,7 +181,11 @@ class DocumentSourceSerializer(serializers.ModelSerializer):
 
         uploaded_files = getattr(obj, "uploaded_files", None)
         if uploaded_files is not None:
-            uploads_iterable = uploaded_files.all() if hasattr(uploaded_files, "all") else uploaded_files
+            uploads_iterable = (
+                uploaded_files.all()
+                if hasattr(uploaded_files, "all")
+                else uploaded_files
+            )
             for uploaded_file in uploads_iterable:
                 try:
                     add_url(uploaded_file.file.url)

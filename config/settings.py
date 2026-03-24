@@ -165,7 +165,9 @@ if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
             "OPTIONS": {
                 "access_key": os.getenv("AWS_ACCESS_KEY_ID"),
                 "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
-                "storage_bucket_name": os.getenv("AWS_STORAGE_BUCKET_NAME", "jawafdehi"),
+                "storage_bucket_name": os.getenv(
+                    "AWS_STORAGE_BUCKET_NAME", "jawafdehi"
+                ),
                 "s3_region_name": os.getenv("AWS_S3_REGION_NAME", "auto"),
                 "s3_endpoint_url": os.getenv("AWS_S3_ENDPOINT_URL"),
                 "s3_use_ssl": os.getenv("AWS_S3_USE_SSL", "True") == "True",

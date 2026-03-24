@@ -701,11 +701,15 @@ def test_document_source_api_merges_url_with_legacy_and_multiple_uploads():
 
     upload_one = DocumentSourceUpload.objects.create(
         source=source,
-        file=SimpleUploadedFile("attachment-1.pdf", b"one", content_type="application/pdf"),
+        file=SimpleUploadedFile(
+            "attachment-1.pdf", b"one", content_type="application/pdf"
+        ),
     )
     upload_two = DocumentSourceUpload.objects.create(
         source=source,
-        file=SimpleUploadedFile("attachment-2.pdf", b"two", content_type="application/pdf"),
+        file=SimpleUploadedFile(
+            "attachment-2.pdf", b"two", content_type="application/pdf"
+        ),
     )
 
     create_case_with_entities(

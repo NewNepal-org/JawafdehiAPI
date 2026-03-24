@@ -679,7 +679,9 @@ class DocumentSourceAdmin(admin.ModelAdmin):
             return "-"
 
         url = obj.uploaded_file.url
-        return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>', url, url)
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>', url, url
+        )
 
     uploaded_file_url.short_description = "Uploaded File URL"
 
