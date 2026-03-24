@@ -94,7 +94,6 @@ class TestAPIDocumentationIntegration:
             "case_type",
             "title",
             "entities",
-            "locations",
             "tags",
             "description",
             "key_allegations",

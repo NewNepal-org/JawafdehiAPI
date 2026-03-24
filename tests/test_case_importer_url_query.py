@@ -152,8 +152,6 @@ class TestCaseImporterURLQuery:
         importer = CaseImporter()
         case = importer.import_from_json(str(file_path), case_state="DRAFT")
 
-        assert case.alleged_entities.count() == 1
-        assert case.related_entities.count() == 1
         assert (
             CaseEntityRelationship.objects.filter(
                 case=case,

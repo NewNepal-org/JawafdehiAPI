@@ -140,7 +140,9 @@ def test_entity_in_locations_is_not_returned():
         title="Test Case",
         description="Test",
     )
-    case.locations.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get("/api/entities/")

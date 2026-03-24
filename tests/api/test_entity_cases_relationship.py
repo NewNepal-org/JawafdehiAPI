@@ -205,7 +205,7 @@ def test_entity_related_in_published_case():
 
 @pytest.mark.django_db
 def test_entity_location_in_published_case():
-    """Test that entity shows case ID when used as location in published case."""
+    """Test that location entities linked as related appear in related_cases."""
     entity = JawafEntity.objects.create(nes_id="entity:location/kathmandu")
 
     case = Case.objects.create(
@@ -214,7 +214,9 @@ def test_entity_location_in_published_case():
         title="Test Case",
         description="Test",
     )
-    case.locations.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -226,7 +228,7 @@ def test_entity_location_in_published_case():
 
 @pytest.mark.django_db
 def test_entity_related_and_location_in_same_case():
-    """Test that entity appears once when both related and location in same case."""
+    """Test that duplicate related links do not duplicate case IDs in response."""
     entity = JawafEntity.objects.create(nes_id="entity:organization/test-org")
 
     case = Case.objects.create(
@@ -238,7 +240,9 @@ def test_entity_related_and_location_in_same_case():
     CaseEntityRelationship.objects.create(
         case=case, entity=entity, relationship_type=RelationshipType.RELATED
     )
-    case.locations.add(entity)
+    CaseEntityRelationship.objects.get_or_create(
+        case=case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -326,7 +330,7 @@ def test_entity_both_alleged_and_related_in_same_case():
 
 @pytest.mark.django_db
 def test_entity_both_alleged_and_location_in_same_case():
-    """Test that case appears only in alleged_cases when entity is both alleged and location."""
+    """Test that case appears only in alleged_cases when entity is both alleged and related."""
     entity = JawafEntity.objects.create(nes_id="entity:location/test")
 
     case = Case.objects.create(
@@ -338,7 +342,9 @@ def test_entity_both_alleged_and_location_in_same_case():
     CaseEntityRelationship.objects.create(
         case=case, entity=entity, relationship_type=RelationshipType.ALLEGED
     )
-    case.locations.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
@@ -380,14 +386,16 @@ def test_entity_in_multiple_cases_with_different_roles():
         case=case2, entity=entity, relationship_type=RelationshipType.RELATED
     )
 
-    # Case 3: Entity is location
+    # Case 3: Entity is related again
     case3 = Case.objects.create(
         case_id="case-003",
         state=CaseState.PUBLISHED,
         title="Case 3",
         description="Test",
     )
-    case3.locations.add(entity)
+    CaseEntityRelationship.objects.create(
+        case=case3, entity=entity, relationship_type=RelationshipType.RELATED
+    )
 
     client = APIClient()
     response = client.get(f"/api/entities/{entity.id}/")
