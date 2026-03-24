@@ -159,18 +159,24 @@ STATICFILES_DIRS = [
 # Configure storage backend - use S3/R2 if AWS credentials are available, otherwise use FileSystemStorage
 if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
     # Use django-storages with S3 backend for both local (Minio) and cloud (R2/AWS S3)
+    storage_options = {
+        "access_key": os.getenv("AWS_ACCESS_KEY_ID"),
+        "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "bucket_name": os.getenv("AWS_STORAGE_BUCKET_NAME", "jawafdehi"),
+        "region_name": os.getenv("AWS_S3_REGION_NAME", "auto"),
+        "endpoint_url": os.getenv("AWS_S3_ENDPOINT_URL"),
+        "use_ssl": os.getenv("AWS_S3_USE_SSL", "True") == "True",
+        "querystring_auth": False,  # Generate public URLs (no auth required)
+    }
+
+    # Add custom domain for public URLs if specified (separate from endpoint_url for operations)
+    if os.getenv("AWS_S3_CUSTOM_DOMAIN"):
+        storage_options["custom_domain"] = os.getenv("AWS_S3_CUSTOM_DOMAIN")
+
     STORAGES = {
         "default": {
-            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-            "OPTIONS": {
-                "access_key": os.getenv("AWS_ACCESS_KEY_ID"),
-                "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
-                "bucket_name": os.getenv("AWS_STORAGE_BUCKET_NAME", "jawafdehi"),
-                "region_name": os.getenv("AWS_S3_REGION_NAME", "auto"),
-                "endpoint_url": os.getenv("AWS_S3_ENDPOINT_URL"),
-                "use_ssl": os.getenv("AWS_S3_USE_SSL", "True") == "True",
-                "querystring_auth": False,  # Generate public URLs (no auth required)
-            },
+            "BACKEND": "cases.storage.HashedFilenameS3Boto3Storage",
+            "OPTIONS": storage_options,
         },
         "staticfiles": {
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
