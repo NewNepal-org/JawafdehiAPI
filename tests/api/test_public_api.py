@@ -409,8 +409,7 @@ def test_published_cases_include_all_entity_fields(case_data):
     """
     Feature: accountability-platform-core, Property 16: Published cases display complete data
 
-    For any published case, all entity-related fields (alleged_entities,
-    related_entities, locations) should be included in the API response.
+    For any published case, entity relationships should be included in the API response.
     Validates: Requirements 6.3
     """
     # Create and publish a case
@@ -426,19 +425,16 @@ def test_published_cases_include_all_entity_fields(case_data):
 
     returned_case = response.data
 
-    # Verify all entity fields are present
+    # Verify unified entity field is present
     assert "entities" in returned_case, "Response should include entities"
-    assert "locations" in returned_case, "Response should include locations"
 
     # Verify entity lists are present and have correct structure
     alleged_in_response = [
         e for e in returned_case["entities"] if e["type"] == "alleged"
     ]
-    alleged_in_db = (
-        case.entity_relationships.filter(relationship_type="alleged")
-        .exclude(entity__nes_id__startswith="entity:location/")
-        .count()
-    )
+    alleged_in_db = case.entity_relationships.filter(
+        relationship_type="alleged"
+    ).count()
 
     # Verify entity objects have required fields
     assert (
@@ -454,24 +450,13 @@ def test_published_cases_include_all_entity_fields(case_data):
     related_in_response = [
         e for e in returned_case["entities"] if e["type"] == "related"
     ]
-    related_in_db = (
-        case.entity_relationships.filter(relationship_type="related")
-        .exclude(entity__nes_id__startswith="entity:location/")
-        .count()
-    )
+    related_in_db = case.entity_relationships.filter(
+        relationship_type="related"
+    ).count()
     if related_in_db > 0:
         assert (
             len(related_in_response) == related_in_db
         ), "related entities count should match"
-
-    response_location_ids = {location["id"] for location in returned_case["locations"]}
-    db_location_ids = set(case.locations.values_list("id", flat=True))
-    db_location_ids.update(
-        case.entity_relationships.filter(
-            entity__nes_id__startswith="entity:location/"
-        ).values_list("entity_id", flat=True)
-    )
-    assert response_location_ids == db_location_ids, "locations set should match"
 
 
 # ============================================================================

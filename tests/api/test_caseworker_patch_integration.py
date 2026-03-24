@@ -58,7 +58,7 @@ def test_patch_multi_operation_end_to_end_persists_all_changes():
     alleged_1 = JawafEntity.objects.create(display_name="Sushil Adhikari")
     alleged_2 = JawafEntity.objects.create(display_name="Maya Gurung")
     related = JawafEntity.objects.create(display_name="Kathmandu Metropolitan City")
-    location = JawafEntity.objects.create(display_name="Kathmandu")
+    location = JawafEntity.objects.create(nes_id="entity:location/district/kathmandu")
 
     patch_ops = [
         {"op": "replace", "path": "/title", "value": "Updated accountability case"},
@@ -78,8 +78,11 @@ def test_patch_multi_operation_end_to_end_persists_all_changes():
             "path": "/alleged_entity_ids",
             "value": [alleged_1.id, alleged_2.id],
         },
-        {"op": "replace", "path": "/related_entity_ids", "value": [related.id]},
-        {"op": "replace", "path": "/location_ids", "value": [location.id]},
+        {
+            "op": "replace",
+            "path": "/related_entity_ids",
+            "value": [related.id, location.id],
+        },
     ]
 
     response = _authed_client(user).patch(
@@ -112,8 +115,7 @@ def test_patch_multi_operation_end_to_end_persists_all_changes():
             case=case,
             relationship_type=RelationshipType.RELATED,
         ).values_list("entity_id", flat=True)
-    ) == {related.id}
-    assert set(case.locations.values_list("id", flat=True)) == {location.id}
+    ) == {related.id, location.id}
 
 
 @pytest.mark.django_db

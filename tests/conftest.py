@@ -104,7 +104,7 @@ def create_case_with_entities(**kwargs):
         **kwargs: Case fields, including:
             - alleged_entities: List of entity ID strings
             - related_entities: List of entity ID strings
-            - locations: List of entity ID strings
+            - locations: List of entity ID strings (stored as related relationships)
 
     Returns:
         Case object
@@ -128,8 +128,11 @@ def create_case_with_entities(**kwargs):
         CaseEntityRelationship.objects.get_or_create(
             case=case, entity=entity, relationship_type=RelationshipType.RELATED
         )
-    if location_ids:
-        case.locations.set(create_entities_from_ids(location_ids))
+    for nes_id in location_ids:
+        entity, _ = JawafEntity.objects.get_or_create(nes_id=nes_id)
+        CaseEntityRelationship.objects.get_or_create(
+            case=case, entity=entity, relationship_type=RelationshipType.RELATED
+        )
 
     return case
 

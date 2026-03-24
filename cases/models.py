@@ -137,26 +137,12 @@ class JawafEntity(models.Model):
         Override delete to prevent deletion if entity is in use.
 
         Checks if entity is referenced by:
-        - Cases (as alleged_entities, related_entities, or locations via legacy M2M)
         - Cases (via unified entity_relationships through CaseEntityRelationship)
         - DocumentSources (as related_entities, excluding soft-deleted sources)
 
         Raises ValidationError if entity is in use.
         """
         usage = []
-
-        # Check if used in cases
-        alleged_count = self.cases_as_alleged.count()
-        if alleged_count > 0:
-            usage.append(f"alleged entity in {alleged_count} case(s)")
-
-        related_count = self.cases_as_related.count()
-        if related_count > 0:
-            usage.append(f"related entity in {related_count} case(s)")
-
-        location_count = self.cases_as_location.count()
-        if location_count > 0:
-            usage.append(f"location in {location_count} case(s)")
 
         # Check if used in unified relationship system
         case_relationship_count = self.case_relationships.count()
@@ -191,9 +177,7 @@ class CaseEntityRelationship(models.Model):
     """
     Through-model for Case-Entity relationships with relationship types.
 
-    This model replaces the direct ManyToMany relationships (alleged_entities,
-    related_entities) with a flexible system that supports multiple relationship
-    types and additional metadata.
+    This model stores typed case/entity links and relationship metadata.
     """
 
     case = models.ForeignKey(
@@ -372,26 +356,6 @@ class Case(models.Model):
         help_text="All entities related to this case through the unified relationship system",
     )
 
-    # Existing fields maintained for backward compatibility during migration
-    alleged_entities = models.ManyToManyField(
-        JawafEntity,
-        blank=True,
-        related_name="cases_as_alleged",
-        help_text="Entities being accused",
-    )
-    related_entities = models.ManyToManyField(
-        JawafEntity,
-        blank=True,
-        related_name="cases_as_related",
-        help_text="Related entities",
-    )
-    locations = models.ManyToManyField(
-        JawafEntity,
-        blank=True,
-        related_name="cases_as_location",
-        help_text="Location entities",
-    )
-
     # Content fields
     tags = TextListField(blank=True, help_text="List of tags for categorization")
     description = models.TextField(
@@ -453,31 +417,6 @@ class Case(models.Model):
         ).values_list("entity_id", flat=True)
         return JawafEntity.objects.filter(pk__in=entity_ids)
 
-    @property
-    def alleged_entities_unified(self):
-        """Get alleged entities via unified system for backward compatibility."""
-        return self.get_entities_by_type(RelationshipType.ALLEGED)
-
-    @property
-    def related_entities_unified(self):
-        """Get related entities via unified system for backward compatibility."""
-        return self.get_entities_by_type(RelationshipType.RELATED)
-
-    @property
-    def witness_entities(self):
-        """Get witness entities via unified system."""
-        return self.get_entities_by_type(RelationshipType.WITNESS)
-
-    @property
-    def opposition_entities(self):
-        """Get opposition entities via unified system."""
-        return self.get_entities_by_type(RelationshipType.OPPOSITION)
-
-    @property
-    def victim_entities(self):
-        """Get victim entities via unified system."""
-        return self.get_entities_by_type(RelationshipType.VICTIM)
-
     def save(self, *args, **kwargs):
         """Override save to generate case_id for new cases."""
         if not self.case_id:
@@ -509,9 +448,8 @@ class Case(models.Model):
             has_unified_alleged = self.entity_relationships.filter(
                 relationship_type=RelationshipType.ALLEGED
             ).exists()
-            has_legacy_alleged = self.alleged_entities.exists()
-            if not (has_unified_alleged or has_legacy_alleged):
-                errors["alleged_entities"] = (
+            if not has_unified_alleged:
+                errors["entities"] = (
                     "At least one alleged entity is required for IN_REVIEW or PUBLISHED state"
                 )
 

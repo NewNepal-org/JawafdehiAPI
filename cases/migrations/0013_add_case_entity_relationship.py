@@ -4,6 +4,56 @@ import django.db.models.deletion
 from django.db import migrations, models
 
 
+def backfill_case_entity_relationships(apps, schema_editor):
+    """
+    Backfill legacy Case M2M relationships into CaseEntityRelationship.
+
+    Mappings:
+    - alleged_entities -> relationship_type="alleged"
+    - related_entities -> relationship_type="related"
+    - locations -> relationship_type="related"
+    """
+    from django.db import connection
+
+    Case = apps.get_model("cases", "Case")
+    CaseEntityRelationship = apps.get_model("cases", "CaseEntityRelationship")
+
+    table_names = set(connection.introspection.table_names())
+    alleged_table_exists = "cases_case_alleged_entities" in table_names
+    related_table_exists = "cases_case_related_entities" in table_names
+    locations_table_exists = "cases_case_locations" in table_names
+
+    if alleged_table_exists:
+        for case in Case.objects.prefetch_related("alleged_entities"):
+            for entity in case.alleged_entities.all():
+                CaseEntityRelationship.objects.get_or_create(
+                    case=case,
+                    entity=entity,
+                    relationship_type="alleged",
+                    defaults={"notes": ""},
+                )
+
+    if related_table_exists:
+        for case in Case.objects.prefetch_related("related_entities"):
+            for entity in case.related_entities.all():
+                CaseEntityRelationship.objects.get_or_create(
+                    case=case,
+                    entity=entity,
+                    relationship_type="related",
+                    defaults={"notes": ""},
+                )
+
+    if locations_table_exists:
+        for case in Case.objects.prefetch_related("locations"):
+            for entity in case.locations.all():
+                CaseEntityRelationship.objects.get_or_create(
+                    case=case,
+                    entity=entity,
+                    relationship_type="related",
+                    defaults={"notes": ""},
+                )
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -11,48 +61,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AlterField(
-            model_name="case",
-            name="case_id",
-            field=models.CharField(
-                db_index=True,
-                help_text="Stable unique identifier for this case",
-                max_length=100,
-                unique=True,
-            ),
-        ),
-        migrations.AlterField(
-            model_name="case",
-            name="notes",
-            field=models.TextField(
-                blank=True,
-                default="",
-                help_text="Internal notes about the case (markdown supported)",
-            ),
-        ),
-        migrations.AlterField(
-            model_name="documentsource",
-            name="source_type",
-            field=models.CharField(
-                blank=True,
-                choices=[
-                    ("LEGAL_COURT_ORDER", "Legal: Court Order/Verdict"),
-                    ("LEGAL_PROCEDURAL", "Legal: Procedural/Law Enforcement"),
-                    ("OFFICIAL_GOVERNMENT", "Official (Government)"),
-                    ("FINANCIAL_FORENSIC", "Financial/Forensic Record"),
-                    ("INTERNAL_CORPORATE", "Internal Corporate Doc"),
-                    ("MEDIA_NEWS", "Media/News"),
-                    ("INVESTIGATIVE_REPORT", "Investigative Report"),
-                    ("PUBLIC_COMPLAINT", "Public Complaint/Whistleblower"),
-                    ("LEGISLATIVE_DOC", "Legislative/Policy Doc"),
-                    ("SOCIAL_MEDIA", "Social Media"),
-                    ("OTHER_VISUAL", "Other / Visual Assets"),
-                ],
-                help_text="Type of source",
-                max_length=50,
-                null=True,
-            ),
-        ),
         migrations.CreateModel(
             name="CaseEntityRelationship",
             fields=[
@@ -149,5 +157,22 @@ class Migration(migrations.Migration):
                 fields=("case", "entity", "relationship_type"),
                 name="unique_case_entity_relationship_type",
             ),
+        ),
+        migrations.RunPython(
+            backfill_case_entity_relationships,
+            reverse_code=migrations.RunPython.noop,
+            elidable=True,
+        ),
+        migrations.RemoveField(
+            model_name="case",
+            name="alleged_entities",
+        ),
+        migrations.RemoveField(
+            model_name="case",
+            name="related_entities",
+        ),
+        migrations.RemoveField(
+            model_name="case",
+            name="locations",
         ),
     ]

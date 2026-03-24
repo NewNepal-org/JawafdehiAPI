@@ -221,7 +221,6 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
         return queryset.prefetch_related(
             "entity_relationships__entity",
-            "locations",
         ).order_by("-created_at")
 
     def create(self, request, *args, **kwargs):
@@ -274,8 +273,6 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                     entity_id=entity_id,
                     relationship_type=RelationshipType.RELATED,
                 )
-            for location_id in serializer.validated_data.get("locations", []):
-                case.locations.add(location_id)
 
         return Response(CaseSerializer(case).data, status=status.HTTP_201_CREATED)
 
@@ -411,8 +408,6 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                     entity_id=entity_id,
                     relationship_type=RelationshipType.RELATED,
                 )
-        if "location_ids" in validated:
-            case.locations.set(validated["location_ids"])
 
         case.refresh_from_db()
         return Response(CaseSerializer(case).data, status=status.HTTP_200_OK)
@@ -446,7 +441,6 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                     relationship_type=RelationshipType.RELATED
                 ).values_list("entity_id", flat=True)
             ),
-            "location_ids": list(case.locations.values_list("id", flat=True)),
         }
 
 

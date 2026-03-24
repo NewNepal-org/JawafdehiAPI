@@ -458,10 +458,6 @@ class CaseAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Location",
-            {"fields": ("locations",)},
-        ),
-        (
             "Content",
             {
                 "fields": (
@@ -490,7 +486,6 @@ class CaseAdmin(admin.ModelAdmin):
 
     filter_horizontal = [
         "contributors",
-        "locations",
     ]
 
     def state_badge(self, obj):

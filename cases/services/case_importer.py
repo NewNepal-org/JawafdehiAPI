@@ -246,7 +246,6 @@ class CaseImporter:
             for entity_name in data.get("alleged_entities", []):
                 entity = self.get_or_create_entity(entity_name)
                 if entity:
-                    case.alleged_entities.add(entity)
                     CaseEntityRelationship.objects.get_or_create(
                         case=case,
                         entity=entity,
@@ -259,7 +258,6 @@ class CaseImporter:
             for entity_name in data.get("related_entities", []):
                 entity = self.get_or_create_entity(entity_name)
                 if entity:
-                    case.related_entities.add(entity)
                     CaseEntityRelationship.objects.get_or_create(
                         case=case,
                         entity=entity,
@@ -284,7 +282,12 @@ class CaseImporter:
                     continue
 
                 if entity:
-                    case.locations.add(entity)
+                    CaseEntityRelationship.objects.get_or_create(
+                        case=case,
+                        entity=entity,
+                        relationship_type=RelationshipType.RELATED,
+                        defaults={"notes": ""},
+                    )
 
             # Build evidence list from sources
             self.log("Processing sources...")

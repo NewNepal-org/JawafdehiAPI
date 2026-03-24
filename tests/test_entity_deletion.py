@@ -7,7 +7,13 @@ Ensures entities cannot be deleted if they are referenced by cases or document s
 import pytest
 from django.core.exceptions import ValidationError
 
-from cases.models import CaseType, DocumentSource, JawafEntity
+from cases.models import (
+    CaseEntityRelationship,
+    CaseType,
+    DocumentSource,
+    JawafEntity,
+    RelationshipType,
+)
 from tests.conftest import create_case_with_entities
 
 
@@ -63,19 +69,23 @@ class TestEntityDeletionProtection:
             case_type=CaseType.CORRUPTION,
             description="Test description",
         )
-        case.related_entities.add(entity)
+        CaseEntityRelationship.objects.create(
+            case=case,
+            entity=entity,
+            relationship_type=RelationshipType.RELATED,
+        )
 
         with pytest.raises(ValidationError) as exc_info:
             entity.delete()
 
         assert "Cannot delete entity" in str(exc_info.value)
-        assert "related entity" in str(exc_info.value).lower()
+        assert "entity relationship" in str(exc_info.value).lower()
 
         # Verify entity still exists
         assert JawafEntity.objects.filter(id=entity.id).exists()
 
     def test_cannot_delete_entity_used_as_location(self):
-        """Cannot delete entity if it's a location in any case."""
+        """Cannot delete entity if it's linked to any case relationship."""
         entity = JawafEntity.objects.create(
             nes_id="entity:location/test-location", display_name="Test Location"
         )
@@ -87,13 +97,17 @@ class TestEntityDeletionProtection:
             case_type=CaseType.CORRUPTION,
             description="Test description",
         )
-        case.locations.add(entity)
+        CaseEntityRelationship.objects.create(
+            case=case,
+            entity=entity,
+            relationship_type=RelationshipType.RELATED,
+        )
 
         with pytest.raises(ValidationError) as exc_info:
             entity.delete()
 
         assert "Cannot delete entity" in str(exc_info.value)
-        assert "location" in str(exc_info.value).lower()
+        assert "entity relationship" in str(exc_info.value).lower()
 
         # Verify entity still exists
         assert JawafEntity.objects.filter(id=entity.id).exists()
@@ -132,7 +146,11 @@ class TestEntityDeletionProtection:
             case_type=CaseType.CORRUPTION,
             description="Description 1",
         )
-        case1.related_entities.add(entity)
+        CaseEntityRelationship.objects.create(
+            case=case1,
+            entity=entity,
+            relationship_type=RelationshipType.RELATED,
+        )
 
         case2 = create_case_with_entities(
             title="Case 2",
@@ -141,16 +159,18 @@ class TestEntityDeletionProtection:
             case_type=CaseType.PROMISES,
             description="Description 2",
         )
-        case2.locations.add(entity)
+        CaseEntityRelationship.objects.create(
+            case=case2,
+            entity=entity,
+            relationship_type=RelationshipType.RELATED,
+        )
 
         with pytest.raises(ValidationError) as exc_info:
             entity.delete()
 
         error_message = str(exc_info.value)
         assert "Cannot delete entity" in error_message
-        # Should mention both usages
-        assert "related entity" in error_message.lower()
-        assert "location" in error_message.lower()
+        assert "entity relationship" in error_message.lower()
 
         # Verify entity still exists
         assert JawafEntity.objects.filter(id=entity.id).exists()

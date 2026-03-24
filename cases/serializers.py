@@ -60,9 +60,9 @@ class JawafEntitySerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_related_cases(self, obj):
         """
-        Get list of case IDs where this entity is related or a location.
+        Get list of case IDs where this entity is related.
 
-        Only includes PUBLISHED cases. Uses both unified system and direct location relationships.
+        Only includes PUBLISHED cases. Uses the unified relationship system.
         Excludes cases where entity is already alleged (to avoid duplicates).
         """
         from .models import RelationshipType
@@ -80,17 +80,7 @@ class JawafEntitySerializer(serializers.ModelSerializer):
             entity_relationships__relationship_type=RelationshipType.RELATED,
             state=CaseState.PUBLISHED,
         ).exclude(id__in=alleged_case_ids)
-
-        # Get location cases (still using direct ManyToMany)
-        location_cases = obj.cases_as_location.filter(
-            state=CaseState.PUBLISHED
-        ).exclude(id__in=alleged_case_ids)
-
-        # Combine and deduplicate
-        case_ids = set(related_cases.values_list("id", flat=True))
-        case_ids.update(location_cases.values_list("id", flat=True))
-
-        return list(case_ids)
+        return list(related_cases.values_list("id", flat=True))
 
 
 class CaseEntityRelationshipSerializer(serializers.ModelSerializer):
@@ -177,21 +167,6 @@ class SimplifiedEntitySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class LocationSerializer(serializers.ModelSerializer):
-    """
-    Serializer for location entities in case responses.
-
-    Returns only id, nes_id, and display_name for location entities.
-    Reads directly from JawafEntity model (not through CaseEntityRelationship).
-    Used for the locations field in case responses.
-    """
-
-    class Meta:
-        model = JawafEntity
-        fields = ["id", "nes_id", "display_name"]
-        read_only_fields = fields
-
-
 class CaseSerializer(serializers.ModelSerializer):
     """
     Serializer for Case model.
@@ -200,64 +175,25 @@ class CaseSerializer(serializers.ModelSerializer):
 
     The state field is always included to indicate case status (PUBLISHED or IN_REVIEW).
 
-    Uses the unified entities field for non-location entities and a separate locations field
-    for location entities, both using the unified relationship system for consistency.
+    Uses the unified entities list for all related entities.
 
     SCHEMA FIX: Removed legacy alleged_entities and related_entities fields to eliminate
     schema discrepancy. The API now returns only the unified format as documented.
     """
 
-    # Non-location entities using unified system
     entities = serializers.SerializerMethodField(
-        help_text="Non-location entity relationships using the unified relationship system"
-    )
-
-    # Location entities using unified system but separate field for UI semantics
-    locations = serializers.SerializerMethodField(
-        help_text="Location entity relationships using the unified relationship system"
+        help_text="Entity relationships using the unified relationship system"
     )
 
     @extend_schema_field(SimplifiedEntitySerializer(many=True))
     def get_entities(self, obj):
-        """Get non-location entities from unified relationship system."""
+        """Get entities from unified relationship system."""
         try:
-            non_location_relationships = obj.entity_relationships.exclude(
-                entity__nes_id__startswith="entity:location/"
-            ).select_related("entity")
-            return SimplifiedEntitySerializer(
-                non_location_relationships, many=True
-            ).data
+            relationships = obj.entity_relationships.select_related("entity")
+            return SimplifiedEntitySerializer(relationships, many=True).data
         except (ValueError, TypeError, AttributeError) as e:
-            # Log serialization errors and re-raise to surface to callers
             logger.error(
                 f"Error serializing entities for case {obj.case_id}: {e}",
-                exc_info=True,
-                extra={"case_id": obj.case_id},
-            )
-            raise
-
-    @extend_schema_field(LocationSerializer(many=True))
-    def get_locations(self, obj):
-        """Get location entities from both legacy M2M field and entity_relationships."""
-        try:
-            # Get locations from legacy M2M field
-            legacy_locations = set(obj.locations.all())
-
-            # Get locations from entity_relationships
-            location_relationships = obj.entity_relationships.filter(
-                entity__nes_id__startswith="entity:location/"
-            ).select_related("entity")
-
-            # Combine and deduplicate location entities
-            unified_locations = legacy_locations | {
-                rel.entity for rel in location_relationships
-            }
-
-            return LocationSerializer(list(unified_locations), many=True).data
-        except (ValueError, TypeError, AttributeError) as e:
-            # Log serialization errors and re-raise to surface to callers
-            logger.error(
-                f"Error serializing locations for case {obj.case_id}: {e}",
                 exc_info=True,
                 extra={"case_id": obj.case_id},
             )
@@ -301,8 +237,7 @@ class CaseSerializer(serializers.ModelSerializer):
             "banner_url",
             "case_start_date",
             "case_end_date",
-            "entities",  # Non-location entities using unified system
-            "locations",  # Location entities using unified system (separate for UI semantics)
+            "entities",
             "tags",
             "description",
             "key_allegations",
