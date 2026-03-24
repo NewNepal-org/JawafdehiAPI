@@ -160,14 +160,46 @@ STATICFILES_DIRS = [
 ]
 
 # Whitenoise configuration for serving static files
-STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
+# Configure storage backend - use S3/R2 if AWS credentials are available, otherwise use FileSystemStorage
+if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
+    # Use django-storages with S3 backend for both local (Minio) and cloud (R2/AWS S3)
+    storage_options = {
+        "access_key": os.getenv("AWS_ACCESS_KEY_ID"),
+        "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "bucket_name": os.getenv("AWS_STORAGE_BUCKET_NAME", "jawafdehi"),
+        "region_name": os.getenv("AWS_S3_REGION_NAME", "auto"),
+        "endpoint_url": os.getenv("AWS_S3_ENDPOINT_URL"),
+        "use_ssl": os.getenv("AWS_S3_USE_SSL", "True") == "True",
+        "querystring_auth": False,  # Generate public URLs (no auth required)
+    }
+
+    # Add custom domain for public URLs if specified (separate from endpoint_url for operations)
+    if os.getenv("AWS_S3_CUSTOM_DOMAIN"):
+        storage_options["custom_domain"] = os.getenv("AWS_S3_CUSTOM_DOMAIN")
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "cases.storage.HashedFilenameS3Boto3Storage",
+            "OPTIONS": storage_options,
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+else:
+    # Development: use FileSystemStorage
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+
+# Media Files Configuration
+MEDIA_URL = os.getenv("MEDIA_URL", "/media/")
+MEDIA_ROOT = os.getenv("MEDIA_ROOT", BASE_DIR / "media")
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -314,4 +346,20 @@ JAZZMIN_SETTINGS = {
         "auth.user": "collapsible",
         "auth.group": "vertical_tabs",
     },
+}
+
+TINYMCE_DEFAULT_CONFIG = {
+    "theme": "silver",
+    "height": 800,
+    "width": "100%",
+    "menubar": True,
+    "browser_spellcheck": True,
+    "plugins": "advlist,autolink,lists,link,image,charmap,preview,anchor,"
+    "searchreplace,visualblocks,code,fullscreen,insertdatetime,media,table,"
+    "help,wordcount",
+    "toolbar": "undo redo | blocks | "
+    "bold italic backcolor | alignleft aligncenter "
+    "alignright alignjustify | bullist numlist outdent indent | "
+    "removeformat | code | help",
+    "license_key": "gpl",
 }
