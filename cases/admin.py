@@ -554,8 +554,8 @@ class DocumentSourceAdminForm(forms.ModelForm):
     url = MultiURLField(
         required=False,
         button_label="Add URL",
-        label="URLs",
-        help_text="URLs to the source (you can add multiple)",
+        label="External URLs",
+        help_text="External URLs to the source (you can add multiple)",
     )
 
     class Meta:
@@ -653,7 +653,6 @@ class DocumentSourceAdmin(admin.ModelAdmin):
                     "title",
                     "description",
                     "source_type",
-                    "url",
                     "related_entities",
                     "contributors",
                 )
@@ -668,6 +667,10 @@ class DocumentSourceAdmin(admin.ModelAdmin):
                 ),
                 "classes": ("collapse",),
             },
+        ),
+        (
+            "External URLs",
+            {"fields": ("url",)},
         ),
     )
 

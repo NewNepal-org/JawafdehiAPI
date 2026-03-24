@@ -87,11 +87,12 @@ class TestDocumentSourceAdmin:
     def test_fieldsets_configured(self, db):
         """Test that fieldsets are properly configured."""
         admin_instance = admin.site._registry[DocumentSource]
-        assert len(admin_instance.fieldsets) == 2
+        assert len(admin_instance.fieldsets) == 3
 
         # Check fieldset names
         fieldset_names = [fs[0] for fs in admin_instance.fieldsets]
         assert "Basic Information" in fieldset_names
+        assert "External URLs" in fieldset_names
         assert "Metadata" in fieldset_names
 
     def test_fieldsets_hide_legacy_upload_metadata_inputs(self, db):
