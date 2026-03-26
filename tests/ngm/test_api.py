@@ -1,4 +1,5 @@
 import pytest
+from django.contrib.auth.models import Group
 from django.contrib.auth import get_user_model
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
@@ -9,14 +10,26 @@ QUERY_URL = "/api/ngm/query_judicial"
 User = get_user_model()
 
 
+def add_user_to_groups(user, *group_names):
+    for group_name in group_names:
+        group, _ = Group.objects.get_or_create(name=group_name)
+        user.groups.add(group)
+
+
 @pytest.fixture
 def api_client():
     return APIClient()
 
 
 @pytest.fixture
-def authenticated_client(db):
+def authenticated_user(db):
     user = User.objects.create_user(username="ngm_user", password="testpass123")
+    return user
+
+
+@pytest.fixture
+def authenticated_client(authenticated_user):
+    user = authenticated_user
     token = Token.objects.create(user=user)
     client = APIClient()
     client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
@@ -99,8 +112,32 @@ def test_query_endpoint_success_response_shape(authenticated_client, monkeypatch
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("group_names", "expected_rate"),
+    [
+        ([], "60/hour"),
+        (["NGM_SilverTier"], "60/hour"),
+        (["NGM_GoldTier"], "200/hour"),
+        (["NGM_PlatinumTier"], "500/hour"),
+        (["Moderator"], "500/hour"),
+        (["Admin"], "500/hour"),
+        (["NGM_SilverTier", "NGM_GoldTier"], "200/hour"),
+        (["NGM_SilverTier", "Admin"], "500/hour"),
+    ],
+)
+def test_query_rate_uses_highest_priority_group(
+    authenticated_user, group_names, expected_rate
+):
+    add_user_to_groups(authenticated_user, *group_names)
+
+    throttle = api_views.NGMQueryRateThrottle()
+
+    assert throttle.get_user_rate(authenticated_user) == expected_rate
+
+
+@pytest.mark.django_db
 def test_query_endpoint_rate_limited_per_token(authenticated_client, monkeypatch):
-    monkeypatch.setattr(api_views.NGMQueryRateThrottle, "rate", "2/min")
+    monkeypatch.setattr(api_views.NGMQueryRateThrottle, "DEFAULT_RATE", "2/min")
 
     def fake_execute(query, timeout_seconds):
         return {

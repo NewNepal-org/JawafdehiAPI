@@ -12,7 +12,41 @@ from ngm.services import execute_select_query, validate_query
 
 class NGMQueryRateThrottle(SimpleRateThrottle):
     scope = "ngm_token"
-    rate = "60/hour"
+    rate = None
+    TIER_LIMITS = {
+        "Admin": "500/hour",
+        "Moderator": "500/hour",
+        "NGM_PlatinumTier": "500/hour",
+        "NGM_GoldTier": "200/hour",
+        "NGM_SilverTier": "60/hour",
+    }
+    DEFAULT_RATE = "60/hour"
+    GROUP_PRIORITY = (
+        "Admin",
+        "Moderator",
+        "NGM_PlatinumTier",
+        "NGM_GoldTier",
+        "NGM_SilverTier",
+    )
+
+    def get_rate(self):
+        return self.DEFAULT_RATE
+
+    def get_user_rate(self, user):
+        if not user or not user.is_authenticated:
+            return self.DEFAULT_RATE
+
+        group_names = set(user.groups.values_list("name", flat=True))
+        for group_name in self.GROUP_PRIORITY:
+            if group_name in group_names:
+                return self.TIER_LIMITS[group_name]
+
+        return self.DEFAULT_RATE
+
+    def allow_request(self, request, view):
+        self.rate = self.get_user_rate(getattr(request, "user", None))
+        self.num_requests, self.duration = self.parse_rate(self.rate)
+        return super().allow_request(request, view)
 
     def get_cache_key(self, request, view):
         token = getattr(request, "auth", None)
@@ -34,7 +68,7 @@ class NGMQueryRateThrottle(SimpleRateThrottle):
 
     Security controls:
     - Requires DRF token authentication
-    - Rate limited to 60 requests/hour per token
+    - Rate limited per token based on NGM tier or staff role
     - Only SELECT queries are allowed
     - Only allowlisted judicial tables may be referenced
     - Server enforces statement timeout (max 15 seconds) and row cap
