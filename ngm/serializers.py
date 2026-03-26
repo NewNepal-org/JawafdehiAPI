@@ -1,0 +1,8 @@
+from rest_framework import serializers
+
+
+class NGMQuerySerializer(serializers.Serializer):
+    query = serializers.CharField()
+    timeout = serializers.FloatField(
+        required=False, min_value=1, max_value=60, default=15
+    )
