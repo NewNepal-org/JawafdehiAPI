@@ -186,6 +186,11 @@ class TestURLMigrationProcess(TransactionTestCase):
                 url_value == "https://example.com/doc1.pdf"
             ), "Should revert to first URL string"
 
+    def tearDown(self):
+        """Restore DB schema to latest migrations after each test before flush."""
+        call_command("migrate", verbosity=0)
+        super().tearDown()
+
     @classmethod
     def tearDownClass(cls):
         """Restore DB schema to latest migrations after migration tests."""
