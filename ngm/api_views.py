@@ -28,12 +28,16 @@ class NGMQueryRateThrottle(SimpleRateThrottle):
     description="""
     Executes validated SELECT queries against NGM judicial tables.
 
+    Parameters:
+    - query (string): SELECT query to execute
+    - timeout (float, optional): Statement timeout in seconds (1-15, default: 15)
+
     Security controls:
     - Requires DRF token authentication
     - Rate limited to 60 requests/hour per token
     - Only SELECT queries are allowed
     - Only allowlisted judicial tables may be referenced
-    - Server enforces statement timeout and row cap
+    - Server enforces statement timeout (max 15 seconds) and row cap
     """,
     request=NGMQuerySerializer,
 )
