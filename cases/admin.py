@@ -193,66 +193,13 @@ class CaseAdminForm(forms.ModelForm):
         cleaned_data = super().clean()
         errors = {}
 
-        # For new cases, check if they can be created in non-DRAFT states
-        # Allow IN_REVIEW/PUBLISHED if inline alleged relationships are present
+        # For new cases, enforce DRAFT state
         if not self.instance.pk:
             new_state = cleaned_data.get("state")
-            if new_state not in [
-                CaseState.DRAFT,
-                CaseState.IN_REVIEW,
-                CaseState.PUBLISHED,
-            ]:
+            if new_state != CaseState.DRAFT:
                 errors["state"] = (
-                    f"New cases can only be created in DRAFT, IN_REVIEW, or PUBLISHED state. Cannot create with state {new_state}."
+                    f"New cases must be created in DRAFT state. Cannot create a new case with state {new_state}."
                 )
-            elif new_state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
-                # Only Admins/Moderators can create cases directly in PUBLISHED state.
-                if (
-                    new_state == CaseState.PUBLISHED
-                    and self.request
-                    and not is_admin_or_moderator(self.request.user)
-                ):
-                    errors["state"] = (
-                        "New cases must be created in DRAFT state. Only Admins and Moderators can create cases directly in PUBLISHED state."
-                    )
-                else:
-                    # For new cases in IN_REVIEW/PUBLISHED, check if inline formset has alleged relationships
-                    # This is a preliminary check - the full validation happens later
-                    formset_prefix = "entity_relationships"
-                    has_inline_alleged = False
-
-                    if self.data:
-                        total_forms_key = f"{formset_prefix}-TOTAL_FORMS"
-                        try:
-                            total_forms = int(self.data.get(total_forms_key, 0))
-                        except (TypeError, ValueError):
-                            total_forms = 0
-
-                        for i in range(total_forms):
-                            relationship_type_key = (
-                                f"{formset_prefix}-{i}-relationship_type"
-                            )
-                            entity_key = f"{formset_prefix}-{i}-entity"
-                            delete_key = f"{formset_prefix}-{i}-DELETE"
-
-                            relationship_type = self.data.get(relationship_type_key)
-                            has_entity = bool(self.data.get(entity_key))
-                            is_deleted = self.data.get(delete_key) == "on"
-
-                            if (
-                                relationship_type == RelationshipType.ALLEGED
-                                and has_entity
-                                and not is_deleted
-                            ):
-                                has_inline_alleged = True
-                                break
-
-                    # If creating new case in IN_REVIEW/PUBLISHED without inline alleged relationships
-                    if not has_inline_alleged:
-                        errors["state"] = (
-                            f"New cases cannot be created directly in {new_state} state without alleged entity relationships. "
-                            "Either create the case in DRAFT state first, or add alleged entities in the 'Case Entity Relationships' section below."
-                        )
 
         # Check state transitions for existing cases
         if self.instance.pk:

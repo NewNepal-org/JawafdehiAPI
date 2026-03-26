@@ -1050,7 +1050,7 @@ class TestDjangoAdminWorkflows:
             not form.is_valid()
         ), "Form should not be valid for IN_REVIEW state on new case"
         assert "state" in form.errors, "Should have state error"
-        assert "cannot be created directly in IN_REVIEW" in str(
+        assert "New cases must be created in DRAFT state" in str(
             form.errors["state"]
         ), "Should not allow creating new case with IN_REVIEW state"
 
@@ -1062,7 +1062,7 @@ class TestDjangoAdminWorkflows:
             not form.is_valid()
         ), "Form should not be valid for CLOSED state on new case"
         assert "state" in form.errors, "Should have state error"
-        assert "Cannot create with state CLOSED" in str(
+        assert "New cases must be created in DRAFT state" in str(
             form.errors["state"]
         ), "Should not allow creating new case with CLOSED state"
 
