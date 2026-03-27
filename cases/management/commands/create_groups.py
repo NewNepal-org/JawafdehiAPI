@@ -7,7 +7,7 @@ Usage: python manage.py create_groups
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from cases.models import Case, DocumentSource, JawafEntity
+from cases.models import Case, DocumentSource, DocumentSourceUpload, JawafEntity
 
 
 class Command(BaseCommand):
@@ -19,6 +19,7 @@ class Command(BaseCommand):
         # Get content types
         case_ct = ContentType.objects.get_for_model(Case)
         source_ct = ContentType.objects.get_for_model(DocumentSource)
+        upload_ct = ContentType.objects.get_for_model(DocumentSourceUpload)
         entity_ct = ContentType.objects.get_for_model(JawafEntity)
 
         # Get or create permissions for Case
@@ -69,6 +70,30 @@ class Command(BaseCommand):
             )[0],
         }
 
+        # Get or create permissions for DocumentSourceUpload
+        upload_permissions = {
+            "view": Permission.objects.get_or_create(
+                codename="view_documentsourceupload",
+                content_type=upload_ct,
+                defaults={"name": "Can view document source upload"},
+            )[0],
+            "add": Permission.objects.get_or_create(
+                codename="add_documentsourceupload",
+                content_type=upload_ct,
+                defaults={"name": "Can add document source upload"},
+            )[0],
+            "change": Permission.objects.get_or_create(
+                codename="change_documentsourceupload",
+                content_type=upload_ct,
+                defaults={"name": "Can change document source upload"},
+            )[0],
+            "delete": Permission.objects.get_or_create(
+                codename="delete_documentsourceupload",
+                content_type=upload_ct,
+                defaults={"name": "Can delete document source upload"},
+            )[0],
+        }
+
         # Get or create permissions for JawafEntity
         entity_permissions = {
             "view": Permission.objects.get_or_create(
@@ -111,6 +136,10 @@ class Command(BaseCommand):
                 source_permissions["add"],
                 source_permissions["change"],
                 source_permissions["delete"],
+                upload_permissions["view"],
+                upload_permissions["add"],
+                upload_permissions["change"],
+                upload_permissions["delete"],
                 entity_permissions["view"],
                 entity_permissions["add"],
                 entity_permissions["change"],
@@ -136,6 +165,10 @@ class Command(BaseCommand):
                 source_permissions["add"],
                 source_permissions["change"],
                 source_permissions["delete"],
+                upload_permissions["view"],
+                upload_permissions["add"],
+                upload_permissions["change"],
+                upload_permissions["delete"],
                 entity_permissions["view"],
                 entity_permissions["add"],
                 entity_permissions["change"],
@@ -160,6 +193,10 @@ class Command(BaseCommand):
                 source_permissions["view"],
                 source_permissions["add"],
                 source_permissions["change"],
+                upload_permissions["view"],
+                upload_permissions["add"],
+                upload_permissions["change"],
+                upload_permissions["delete"],
                 entity_permissions["view"],
                 entity_permissions["add"],
             ]
