@@ -1,9 +1,12 @@
+import logging
 import re
 import time
 
 from django.conf import settings
 from django.db import connections
 from django.db.utils import DatabaseError
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_TABLES = {
     "courts",
@@ -39,8 +42,10 @@ def validate_query(query: str) -> tuple[bool, str | None]:
         if re.search(rf"\b{keyword}\b", normalized):
             return False, f"Forbidden keyword detected: {keyword.upper()}"
 
-    table_pattern = r"\b(?:from|join)\s+([a-z_][a-z0-9_]*)"
-    referenced_tables = set(re.findall(table_pattern, normalized))
+    table_pattern = r"\b(?:from|join)\s+([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)?)"
+    referenced_tables = {
+        table_name.split(".")[-1] for table_name in re.findall(table_pattern, normalized)
+    }
 
     if "scraped_dates" in referenced_tables:
         return False, "Access to 'scraped_dates' table is not allowed"
@@ -85,7 +90,8 @@ def execute_select_query(query: str, timeout_seconds: float) -> dict:
             rows = cursor.fetchall()
             columns = [col[0] for col in (cursor.description or [])]
     except DatabaseError as exc:
-        raise ValueError(f"Database error: {exc}") from exc
+        logger.exception("NGM database query failed")
+        raise ValueError("Database query failed") from exc
 
     query_time_ms = int((time.perf_counter() - start_time) * 1000)
     row_data = [list(row) for row in rows]

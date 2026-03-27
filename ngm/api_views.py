@@ -83,7 +83,15 @@ class NGMJudicialQueryView(APIView):
     def post(self, request):
         serializer = NGMQuerySerializer(data=request.data)
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "success": False,
+                    "data": None,
+                    "error": serializer.errors,
+                    "query_time_ms": 0,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         query = serializer.validated_data["query"]
         timeout = serializer.validated_data["timeout"]
@@ -102,7 +110,7 @@ class NGMJudicialQueryView(APIView):
 
         try:
             result = execute_select_query(query, timeout)
-        except ValueError as exc:
+        except Exception as exc:
             message = str(exc)
             status_code = (
                 status.HTTP_503_SERVICE_UNAVAILABLE

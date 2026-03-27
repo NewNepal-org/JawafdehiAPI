@@ -56,7 +56,25 @@ def test_query_endpoint_rejects_invalid_query(authenticated_client):
     assert response.status_code == 400
     payload = response.json()
     assert payload["success"] is False
+    assert payload["data"] is None
+    assert payload["query_time_ms"] == 0
     assert "Only SELECT queries are allowed" in payload["error"]
+
+
+@pytest.mark.django_db
+def test_query_endpoint_serializer_errors_use_common_envelope(authenticated_client):
+    response = authenticated_client.post(
+        QUERY_URL,
+        data={"query": "x" * 2049, "timeout": 5},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["data"] is None
+    assert payload["query_time_ms"] == 0
+    assert "query" in payload["error"]
 
 
 @pytest.mark.django_db
@@ -77,6 +95,31 @@ def test_query_endpoint_returns_503_when_ngm_not_configured(
     payload = response.json()
     assert payload["success"] is False
     assert "not configured" in payload["error"].lower()
+
+
+@pytest.mark.django_db
+def test_query_endpoint_returns_500_for_unexpected_execution_errors(
+    authenticated_client, monkeypatch
+):
+    def raise_unexpected(query, timeout_seconds):
+        raise RuntimeError("unexpected failure")
+
+    monkeypatch.setattr(api_views, "execute_select_query", raise_unexpected)
+
+    response = authenticated_client.post(
+        QUERY_URL,
+        data={"query": "SELECT * FROM court_cases", "timeout": 5},
+        format="json",
+    )
+
+    assert response.status_code == 500
+    payload = response.json()
+    assert payload == {
+        "success": False,
+        "data": None,
+        "error": "unexpected failure",
+        "query_time_ms": 0,
+    }
 
 
 @pytest.mark.django_db
