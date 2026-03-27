@@ -44,7 +44,8 @@ def validate_query(query: str) -> tuple[bool, str | None]:
 
     table_pattern = r"\b(?:from|join)\s+([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)?)"
     referenced_tables = {
-        table_name.split(".")[-1] for table_name in re.findall(table_pattern, normalized)
+        table_name.split(".")[-1]
+        for table_name in re.findall(table_pattern, normalized)
     }
 
     if "scraped_dates" in referenced_tables:

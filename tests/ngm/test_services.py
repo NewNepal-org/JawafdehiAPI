@@ -62,7 +62,9 @@ def test_execute_select_query_hides_database_error_details(monkeypatch, caplog):
         def cursor(self):
             return FakeCursor()
 
-    monkeypatch.setitem(services.settings.DATABASES, "ngm", {"ENGINE": "django.db.backends.postgresql"})
+    monkeypatch.setitem(
+        services.settings.DATABASES, "ngm", {"ENGINE": "django.db.backends.postgresql"}
+    )
     monkeypatch.setattr(services, "connections", {"ngm": FakeConnection()})
 
     with pytest.raises(ValueError, match="Database query failed"):
