@@ -248,6 +248,7 @@ class RelationshipType(models.TextChoices):
     """Enum for entity-case relationship types."""
 
     ALLEGED = "alleged", "Alleged"
+    ACCUSED = "accused", "Accused"
     RELATED = "related", "Related"
     WITNESS = "witness", "Witness"
     OPPOSITION = "opposition", "Opposition"
