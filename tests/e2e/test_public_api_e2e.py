@@ -426,8 +426,6 @@ class TestPublicAPIWorkflows:
         source_detail = response.data
         assert source_detail["title"] == "Land Registry Document"
         assert source_detail["description"] is not None
-        assert "related_entities" in source_detail
-        assert len(source_detail["related_entities"]) > 0
 
         # Verify draft source is not accessible directly
         response = self.client.get(f"/api/sources/{draft_source.id}/")

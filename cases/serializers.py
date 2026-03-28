@@ -306,7 +306,6 @@ class DocumentSourceSerializer(serializers.ModelSerializer):
     Used for public API access to sources associated with published cases.
     """
 
-    related_entities = JawafEntitySerializer(many=True, read_only=True)
     url = serializers.SerializerMethodField(
         help_text="List of URLs for this source, including uploaded file URL when available"
     )
@@ -359,7 +358,6 @@ class DocumentSourceSerializer(serializers.ModelSerializer):
             "description",
             "source_type",
             "url",
-            "related_entities",
             "created_at",
             "updated_at",
         ]
