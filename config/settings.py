@@ -17,6 +17,12 @@ import dj_database_url
 
 load_dotenv()
 
+
+def get_env_list(name, default=""):
+    value = os.getenv(name, default)
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -32,13 +38,9 @@ SECRET_KEY = os.getenv(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = get_env_list("ALLOWED_HOSTS", "localhost,127.0.0.1")
 
-CSRF_TRUSTED_ORIGINS = (
-    os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
-    if os.getenv("CSRF_TRUSTED_ORIGINS")
-    else []
-)
+CSRF_TRUSTED_ORIGINS = get_env_list("CSRF_TRUSTED_ORIGINS")
 
 
 # Application definition
@@ -273,14 +275,11 @@ The cases endpoint supports:
 
 # CORS
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        "CORS_ALLOWED_ORIGINS",
-        "http://localhost:8080,http://127.0.0.1:8080,https://jawafdehi.org,https://beta.jawafdehi.org",
-    ).split(",")
-    if origin.strip()
-]
+CORS_ALLOWED_ORIGINS = get_env_list(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:8080,http://127.0.0.1:8080,https://jawafdehi.org,https://beta.jawafdehi.org",
+)
+CORS_ALLOWED_ORIGIN_REGEXES = get_env_list("CORS_ALLOWED_ORIGIN_REGEXES")
 CORS_ALLOW_METHODS = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
 CORS_ALLOW_HEADERS = [
     "accept",
