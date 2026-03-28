@@ -8,10 +8,10 @@ def migrate_alleged_to_accused(apps, schema_editor):
     Migrate all 'alleged' relationship types to 'accused'.
     """
     CaseEntityRelationship = apps.get_model("cases", "CaseEntityRelationship")
-    
-    CaseEntityRelationship.objects.filter(
-        relationship_type="alleged"
-    ).update(relationship_type="accused")
+
+    CaseEntityRelationship.objects.filter(relationship_type="alleged").update(
+        relationship_type="accused"
+    )
 
 
 def reverse_migrate_accused_to_alleged(apps, schema_editor):
@@ -19,10 +19,10 @@ def reverse_migrate_accused_to_alleged(apps, schema_editor):
     Reverse migration: change 'accused' back to 'alleged'.
     """
     CaseEntityRelationship = apps.get_model("cases", "CaseEntityRelationship")
-    
-    CaseEntityRelationship.objects.filter(
-        relationship_type="accused"
-    ).update(relationship_type="alleged")
+
+    CaseEntityRelationship.objects.filter(relationship_type="accused").update(
+        relationship_type="alleged"
+    )
 
 
 class Migration(migrations.Migration):
