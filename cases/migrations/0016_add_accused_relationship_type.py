@@ -3,6 +3,28 @@
 from django.db import migrations, models
 
 
+def migrate_alleged_to_accused(apps, schema_editor):
+    """
+    Migrate all 'alleged' relationship types to 'accused'.
+    """
+    CaseEntityRelationship = apps.get_model("cases", "CaseEntityRelationship")
+    
+    CaseEntityRelationship.objects.filter(
+        relationship_type="alleged"
+    ).update(relationship_type="accused")
+
+
+def reverse_migrate_accused_to_alleged(apps, schema_editor):
+    """
+    Reverse migration: change 'accused' back to 'alleged'.
+    """
+    CaseEntityRelationship = apps.get_model("cases", "CaseEntityRelationship")
+    
+    CaseEntityRelationship.objects.filter(
+        relationship_type="accused"
+    ).update(relationship_type="alleged")
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,6 +32,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # First, migrate data from 'alleged' to 'accused' and deduplicate
+        migrations.RunPython(
+            migrate_alleged_to_accused,
+            reverse_code=reverse_migrate_accused_to_alleged,
+        ),
+        # Then, update the field choices to include 'accused'
         migrations.AlterField(
             model_name="caseentityrelationship",
             name="relationship_type",
