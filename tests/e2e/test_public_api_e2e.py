@@ -177,6 +177,12 @@ class TestPublicAPIWorkflows:
         assert "source_id" in evidence
         assert "description" in evidence
         assert evidence["source_id"] == self.corruption_source.source_id
+        # Detail endpoint enriches evidence with nested source details
+        assert "source" in evidence
+        assert evidence["source"] is not None
+        assert evidence["source"]["title"] == self.corruption_source.title
+        assert "source_type" in evidence["source"]
+        assert "url" in evidence["source"]
 
     def test_only_published_cases_accessible(self):
         """
