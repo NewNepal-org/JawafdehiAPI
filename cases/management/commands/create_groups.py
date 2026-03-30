@@ -7,7 +7,7 @@ Usage: python manage.py create_groups
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from cases.models import Case, DocumentSource, DocumentSourceUpload, JawafEntity
+from cases.models import Case, DocumentSource, DocumentSourceUpload, JawafEntity, CaseEntityRelationship
 
 
 class Command(BaseCommand):
@@ -21,6 +21,7 @@ class Command(BaseCommand):
         source_ct = ContentType.objects.get_for_model(DocumentSource)
         upload_ct = ContentType.objects.get_for_model(DocumentSourceUpload)
         entity_ct = ContentType.objects.get_for_model(JawafEntity)
+        relationship_ct = ContentType.objects.get_for_model(CaseEntityRelationship)
 
         # Get or create permissions for Case
         case_permissions = {
@@ -118,6 +119,30 @@ class Command(BaseCommand):
             )[0],
         }
 
+        # Get or create permissions for CaseEntityRelationship
+        relationship_permissions = {
+            "view": Permission.objects.get_or_create(
+                codename="view_caseentityrelationship",
+                content_type=relationship_ct,
+                defaults={"name": "Can view case entity relationship"},
+            )[0],
+            "add": Permission.objects.get_or_create(
+                codename="add_caseentityrelationship",
+                content_type=relationship_ct,
+                defaults={"name": "Can add case entity relationship"},
+            )[0],
+            "change": Permission.objects.get_or_create(
+                codename="change_caseentityrelationship",
+                content_type=relationship_ct,
+                defaults={"name": "Can change case entity relationship"},
+            )[0],
+            "delete": Permission.objects.get_or_create(
+                codename="delete_caseentityrelationship",
+                content_type=relationship_ct,
+                defaults={"name": "Can delete case entity relationship"},
+            )[0],
+        }
+
         # Create Admin group
         admin_group, created = Group.objects.get_or_create(name="Admin")
         if created:
@@ -144,6 +169,10 @@ class Command(BaseCommand):
                 entity_permissions["add"],
                 entity_permissions["change"],
                 entity_permissions["delete"],
+                relationship_permissions["view"],
+                relationship_permissions["add"],
+                relationship_permissions["change"],
+                relationship_permissions["delete"],
             ]
         )
 
@@ -173,6 +202,10 @@ class Command(BaseCommand):
                 entity_permissions["add"],
                 entity_permissions["change"],
                 entity_permissions["delete"],
+                relationship_permissions["view"],
+                relationship_permissions["add"],
+                relationship_permissions["change"],
+                relationship_permissions["delete"],
             ]
         )
 
@@ -199,6 +232,10 @@ class Command(BaseCommand):
                 upload_permissions["delete"],
                 entity_permissions["view"],
                 entity_permissions["add"],
+                relationship_permissions["view"],
+                relationship_permissions["add"],
+                relationship_permissions["change"],
+                relationship_permissions["delete"],
             ]
         )
 
