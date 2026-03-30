@@ -37,6 +37,14 @@ urlpatterns = [
     path("api/", include("ngm.urls")),
     # Caseworker Agent routes
     path("api/caseworker/", include("caseworker.urls")),
-    path("api/caseworker/auth/token/", TokenObtainPairView.as_view(), name="cw-token-obtain"),
-    path("api/caseworker/auth/token/refresh/", TokenRefreshView.as_view(), name="cw-token-refresh"),
+    path(
+        "api/caseworker/auth/token/",
+        TokenObtainPairView.as_view(),
+        name="cw-token-obtain",
+    ),
+    path(
+        "api/caseworker/auth/token/refresh/",
+        TokenRefreshView.as_view(),
+        name="cw-token-refresh",
+    ),
 ]
