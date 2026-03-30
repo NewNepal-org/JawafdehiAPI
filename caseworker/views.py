@@ -147,7 +147,7 @@ class SummaryViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"Error generating summary: {e}")
             return Response(
-                {"error": f"Failed to generate summary: {e}"},
+                {"error": "Failed to generate summary. Please try again later."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
