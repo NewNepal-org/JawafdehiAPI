@@ -11,13 +11,14 @@ RUN apt-get update && apt-get install -y \
 RUN pip install poetry
 
 COPY pyproject.toml poetry.lock ./
-RUN poetry config virtualenvs.create false && poetry install --only main --no-interaction --no-root
+RUN poetry config virtualenvs.create false && poetry install --only main --extras llm-all --no-interaction --no-root
 
 COPY manage.py ./
 COPY config ./config
 COPY cases ./cases
 COPY nesq ./nesq
 COPY ngm ./ngm
+COPY caseworker ./caseworker
 COPY static ./static
 
 # Collect static files
