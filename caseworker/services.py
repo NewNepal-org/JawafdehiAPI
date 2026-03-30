@@ -130,11 +130,26 @@ class LLMService:
     def test_connection(self, provider):
         try:
             llm = self.get_llm(provider)
-            response = llm.predict("Hello")
+            response = self._call_llm(llm, "Hello")
             return bool(response)
         except Exception as e:
             logger.error(f"LLM provider {provider.provider_type} connection test failed: {e}")
             return False
+
+    def _call_llm(self, llm, prompt):
+        """Call LLM with compatibility for both old (predict) and new (invoke) APIs."""
+        if hasattr(llm, 'invoke'):
+            # New LangChain API (v1.x+)
+            response = llm.invoke(prompt)
+            # Handle different response types
+            if hasattr(response, 'content'):
+                return response.content
+            return str(response)
+        elif hasattr(llm, 'predict'):
+            # Old LangChain API (v0.x)
+            return llm.predict(prompt)
+        else:
+            raise AttributeError(f"LLM object has neither 'invoke' nor 'predict' method")
 
 
 class AnthropicWrapper:
@@ -173,7 +188,7 @@ class SummaryGenerationService:
             llm_service = LLMService()
             llm = llm_service.get_llm()
             prompt = self._render_prompt(skill.prompt, case_data, query)
-            return llm.predict(prompt)
+            return llm_service._call_llm(llm, prompt)
         except Exception as e:
             if retry_count < self.MAX_RETRIES:
                 return self._generate_with_retry(case_data, skill, query, retry_count + 1)
