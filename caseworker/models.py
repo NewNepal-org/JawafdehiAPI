@@ -61,7 +61,9 @@ class Skill(models.Model):
 
 
 class Summary(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="cw_summaries")
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="cw_summaries"
+    )
     case_number = models.CharField(max_length=100)
     skill = models.ForeignKey(Skill, on_delete=models.SET_NULL, null=True)
     content = models.TextField()
@@ -120,7 +122,9 @@ class LLMProvider(models.Model):
         ("custom", "Custom"),
     ]
 
-    provider_type = models.CharField(max_length=50, choices=PROVIDER_CHOICES, unique=True)
+    provider_type = models.CharField(
+        max_length=50, choices=PROVIDER_CHOICES, unique=True
+    )
     model = models.CharField(max_length=100)
     api_key = models.CharField(max_length=500)
     temperature = models.FloatField(default=0.7)

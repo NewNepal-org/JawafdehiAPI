@@ -11,7 +11,14 @@ class MCPServerAdmin(admin.ModelAdmin):
 
 @admin.register(Skill)
 class SkillAdmin(admin.ModelAdmin):
-    list_display = ["name", "display_name", "model", "temperature", "max_tokens", "created_at"]
+    list_display = [
+        "name",
+        "display_name",
+        "model",
+        "temperature",
+        "max_tokens",
+        "created_at",
+    ]
     search_fields = ["name", "description"]
 
 
@@ -37,5 +44,12 @@ class DraftVersionAdmin(admin.ModelAdmin):
 
 @admin.register(LLMProvider)
 class LLMProviderAdmin(admin.ModelAdmin):
-    list_display = ["provider_type", "model", "temperature", "max_tokens", "is_active", "created_at"]
+    list_display = [
+        "provider_type",
+        "model",
+        "temperature",
+        "max_tokens",
+        "is_active",
+        "created_at",
+    ]
     list_filter = ["provider_type", "is_active"]

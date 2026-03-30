@@ -44,7 +44,9 @@ class QueryViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        match = re.search(r"(\d{3}-\d{3}-\d{4}|\d{3}-CR-\d{4})", query_text, re.IGNORECASE)
+        match = re.search(
+            r"(\d{3}-\d{3}-\d{4}|\d{3}-CR-\d{4})", query_text, re.IGNORECASE
+        )
         if match:
             return Response({"case_number": match.group(1), "found": True})
         return Response({"case_number": None, "found": False})
@@ -61,7 +63,9 @@ class QueryViewSet(viewsets.ViewSet):
             mcp_service = MCPService()
             case_data = mcp_service.retrieve_case_data(case_number)
             if case_data:
-                return Response({"case_number": case_number, "data": case_data, "found": True})
+                return Response(
+                    {"case_number": case_number, "data": case_data, "found": True}
+                )
             return Response(
                 {"error": f"Case {case_number} not found"},
                 status=status.HTTP_404_NOT_FOUND,
@@ -136,7 +140,9 @@ class SummaryViewSet(viewsets.ModelViewSet):
                 skill=skill,
                 content=content,
             )
-            return Response(self.get_serializer(summary).data, status=status.HTTP_201_CREATED)
+            return Response(
+                self.get_serializer(summary).data, status=status.HTTP_201_CREATED
+            )
 
         except Exception as e:
             logger.error(f"Error generating summary: {e}")

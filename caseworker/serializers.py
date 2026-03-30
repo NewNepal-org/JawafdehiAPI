@@ -18,8 +18,15 @@ class MCPServerSerializer(serializers.ModelSerializer):
     class Meta:
         model = MCPServer
         fields = [
-            "id", "name", "display_name", "url", "auth_type",
-            "auth_token", "status", "created_at", "updated_at",
+            "id",
+            "name",
+            "display_name",
+            "url",
+            "auth_type",
+            "auth_token",
+            "status",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = ["id", "status", "created_at", "updated_at"]
         extra_kwargs = {"auth_token": {"write_only": True}}
@@ -29,8 +36,16 @@ class SkillSerializer(serializers.ModelSerializer):
     class Meta:
         model = Skill
         fields = [
-            "id", "name", "display_name", "description", "prompt",
-            "model", "temperature", "max_tokens", "created_at", "updated_at",
+            "id",
+            "name",
+            "display_name",
+            "description",
+            "prompt",
+            "model",
+            "temperature",
+            "max_tokens",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
@@ -40,7 +55,15 @@ class SummarySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Summary
-        fields = ["id", "case_number", "skill", "skill_name", "content", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "case_number",
+            "skill",
+            "skill_name",
+            "content",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
 
@@ -58,18 +81,39 @@ class DraftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Draft
         fields = [
-            "id", "case_number", "skill", "skill_name", "content",
-            "status", "external_reference_id", "versions", "created_at", "updated_at",
+            "id",
+            "case_number",
+            "skill",
+            "skill_name",
+            "content",
+            "status",
+            "external_reference_id",
+            "versions",
+            "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["id", "external_reference_id", "versions", "created_at", "updated_at"]
+        read_only_fields = [
+            "id",
+            "external_reference_id",
+            "versions",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class LLMProviderSerializer(serializers.ModelSerializer):
     class Meta:
         model = LLMProvider
         fields = [
-            "id", "provider_type", "model", "api_key", "temperature",
-            "max_tokens", "is_active", "created_at", "updated_at",
+            "id",
+            "provider_type",
+            "model",
+            "api_key",
+            "temperature",
+            "max_tokens",
+            "is_active",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
         extra_kwargs = {"api_key": {"write_only": True}}
