@@ -239,8 +239,6 @@ REST_FRAMEWORK = {
 }
 
 # JWT Configuration
-
-
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=24),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
@@ -250,10 +248,6 @@ SIMPLE_JWT = {
     "SIGNING_KEY": SECRET_KEY,
 }
 
-# LLM / Caseworker Agent Configuration
-CASEWORKER_LLM_PROVIDER = os.getenv("CASEWORKER_LLM_PROVIDER", "anthropic")
-CASEWORKER_LLM_MODEL = os.getenv("CASEWORKER_LLM_MODEL", "claude-opus-4-6")
-CASEWORKER_LLM_API_KEY = os.getenv("CASEWORKER_LLM_API_KEY", "")
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Jawafdehi Public Accountability API",

@@ -1,6 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+# Providers that require an API key for authentication
+PROVIDERS_REQUIRING_API_KEY = ["openai", "anthropic", "google", "azure"]
+
 
 class MCPServer(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -16,7 +19,9 @@ class MCPServer(models.Model):
         max_length=50,
         choices=[("bearer", "Bearer"), ("api_key", "API Key")],
     )
-    auth_token = models.CharField(max_length=500)
+    # TODO: Replace with encrypted field or secret reference (e.g., django-encrypted-model-fields)
+    # Storing secrets as plain text is a security risk
+    auth_token = models.CharField(max_length=500, blank=True, null=True)
     status = models.CharField(
         max_length=20,
         choices=[
@@ -47,7 +52,8 @@ class Skill(models.Model):
     )
     description = models.TextField()
     prompt = models.TextField()
-    model = models.CharField(max_length=100, default="claude-opus-4-6")
+    # Model should be set by application logic based on configured provider
+    model = models.CharField(max_length=100)
     temperature = models.FloatField(default=0.7)
     max_tokens = models.IntegerField(default=2000)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -65,7 +71,7 @@ class Summary(models.Model):
         User, on_delete=models.CASCADE, related_name="cw_summaries"
     )
     case_number = models.CharField(max_length=100)
-    skill = models.ForeignKey(Skill, on_delete=models.SET_NULL, null=True)
+    skill = models.ForeignKey(Skill, on_delete=models.SET_NULL, null=True, blank=True)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -126,12 +132,24 @@ class LLMProvider(models.Model):
         max_length=50, choices=PROVIDER_CHOICES, unique=True
     )
     model = models.CharField(max_length=100)
-    api_key = models.CharField(max_length=500)
+    # TODO: Replace with encrypted field or secret reference (e.g., django-encrypted-model-fields)
+    # Storing secrets as plain text is a security risk
+    # Optional for local providers like ollama
+    api_key = models.CharField(max_length=500, blank=True, null=True)
     temperature = models.FloatField(default=0.7)
     max_tokens = models.IntegerField(default=2000)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        """Validate that api_key is provided for providers that require it."""
+        from django.core.exceptions import ValidationError
+
+        if self.provider_type in PROVIDERS_REQUIRING_API_KEY and not self.api_key:
+            raise ValidationError(
+                f"API key is required for {self.get_provider_type_display()}"
+            )
 
     def __str__(self):
         return f"{self.provider_type} - {self.model}"

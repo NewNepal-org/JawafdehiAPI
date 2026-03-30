@@ -1,6 +1,14 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import MCPServer, Skill, Summary, Draft, DraftVersion, LLMProvider
+from .models import (
+    MCPServer,
+    Skill,
+    Summary,
+    Draft,
+    DraftVersion,
+    LLMProvider,
+    PROVIDERS_REQUIRING_API_KEY,
+)
 
 
 class CurrentUserSerializer(serializers.ModelSerializer):
@@ -51,7 +59,7 @@ class SkillSerializer(serializers.ModelSerializer):
 
 
 class SummarySerializer(serializers.ModelSerializer):
-    skill_name = serializers.CharField(source="skill.name", read_only=True)
+    skill_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Summary
@@ -66,6 +74,10 @@ class SummarySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
+    def get_skill_name(self, obj):
+        """Return skill name or None if skill is not set."""
+        return obj.skill.name if obj.skill else None
+
 
 class DraftVersionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -75,7 +87,7 @@ class DraftVersionSerializer(serializers.ModelSerializer):
 
 
 class DraftSerializer(serializers.ModelSerializer):
-    skill_name = serializers.CharField(source="skill.name", read_only=True)
+    skill_name = serializers.SerializerMethodField()
     versions = DraftVersionSerializer(many=True, read_only=True)
 
     class Meta:
@@ -100,6 +112,10 @@ class DraftSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def get_skill_name(self, obj):
+        """Return skill name or None if skill is not set."""
+        return obj.skill.name if obj.skill else None
+
 
 class LLMProviderSerializer(serializers.ModelSerializer):
     class Meta:
@@ -117,3 +133,15 @@ class LLMProviderSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
         extra_kwargs = {"api_key": {"write_only": True}}
+
+    def validate(self, data):
+        """Validate that api_key is provided for providers that require it."""
+        provider_type = data.get("provider_type")
+        api_key = data.get("api_key")
+
+        if provider_type in PROVIDERS_REQUIRING_API_KEY and not api_key:
+            raise serializers.ValidationError(
+                {"api_key": f"API key is required for {provider_type}"}
+            )
+
+        return data

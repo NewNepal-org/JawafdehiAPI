@@ -7,6 +7,9 @@ class MCPServerAdmin(admin.ModelAdmin):
     list_display = ["name", "display_name", "url", "auth_type", "status", "created_at"]
     list_filter = ["status", "auth_type"]
     search_fields = ["name"]
+    # Exclude auth_token from admin forms to prevent displaying secrets
+    exclude = ["auth_token"]
+    readonly_fields = ["status", "created_at", "updated_at"]
 
 
 @admin.register(Skill)
@@ -53,3 +56,6 @@ class LLMProviderAdmin(admin.ModelAdmin):
         "created_at",
     ]
     list_filter = ["provider_type", "is_active"]
+    # Exclude api_key from admin forms to prevent displaying secrets
+    exclude = ["api_key"]
+    readonly_fields = ["created_at", "updated_at"]
