@@ -119,7 +119,7 @@ def test_patch_multi_operation_end_to_end_persists_all_changes():
 
 
 @pytest.mark.django_db
-def test_patch_rejects_blocked_path_in_multi_op_without_partial_write():
+def test_patch_rejects_unauthorized_state_transition_in_multi_op_without_partial_write():
     user = create_user_with_role("dipesh", "dipesh@example.com", "Contributor")
     case = _make_case(title="Original title")
     case.contributors.add(user)
@@ -133,7 +133,7 @@ def test_patch_rejects_blocked_path_in_multi_op_without_partial_write():
         URL.format(case.id), data=patch_ops, format="json"
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 403
     case.refresh_from_db()
     assert case.title == "Original title"
     assert case.state == CaseState.DRAFT
