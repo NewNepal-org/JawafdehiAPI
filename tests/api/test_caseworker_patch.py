@@ -253,7 +253,7 @@ def test_patch_400_for_invalid_json_patch_operation():
 
 
 @pytest.mark.django_db
-def test_patch_422_for_blocked_path_state():
+def test_patch_403_for_unauthorized_state_transition_to_published():
     user = _contributor("deepak")
     case = _make_case()
     case.contributors.add(user)
@@ -264,7 +264,57 @@ def test_patch_422_for_blocked_path_state():
         data=[{"op": "replace", "path": "/state", "value": "PUBLISHED"}],
         format="json",
     )
-    assert response.status_code == 422
+    assert response.status_code == 403
+    case.refresh_from_db()
+    assert case.state == CaseState.DRAFT
+
+
+@pytest.mark.django_db
+def test_patch_200_for_draft_to_in_review_transition():
+    user = _contributor("deepak-2")
+    case = _make_case(
+        description="Detailed allegation description",
+        key_allegations=["Primary allegation"],
+    )
+    case.contributors.add(user)
+    accused = JawafEntity.objects.create(display_name="Ram Prasad Gautam")
+    CaseEntityRelationship.objects.create(
+        case=case,
+        entity=accused,
+        relationship_type=RelationshipType.ACCUSED,
+    )
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.pk),
+        data=[{"op": "replace", "path": "/state", "value": "IN_REVIEW"}],
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["state"] == CaseState.IN_REVIEW
+    case.refresh_from_db()
+    assert case.state == CaseState.IN_REVIEW
+
+
+@pytest.mark.django_db
+def test_patch_400_for_draft_to_in_review_missing_required_fields():
+    user = _contributor("deepak-3")
+    case = _make_case(key_allegations=[])
+    case.contributors.add(user)
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.pk),
+        data=[{"op": "replace", "path": "/state", "value": "IN_REVIEW"}],
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "entities" in response.data
+    assert "key_allegations" in response.data
+    case.refresh_from_db()
+    assert case.state == CaseState.DRAFT
 
 
 @pytest.mark.django_db

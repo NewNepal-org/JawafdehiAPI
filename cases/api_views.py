@@ -5,6 +5,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.db import connection, transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -37,7 +38,11 @@ from .models import (
     JawafEntity,
     RelationshipType,
 )
-from .rules.predicates import can_change_case, can_view_case
+from .rules.predicates import (
+    can_change_case,
+    can_transition_case_state,
+    can_view_case,
+)
 from .serializers import (
     CaseDetailSerializer,
     CaseSerializer,
@@ -313,7 +318,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         snapshot of the case. The snapshot is validated after patching, then scalar
         fields are saved via a bulk UPDATE and M2M relations are updated with .set().
 
-        Blocked paths (id, case_id, version, state, contributors, timestamps,
+        Blocked paths (id, case_id, version, contributors, timestamps,
         versionInfo) are rejected before the patch is applied.
         """
         try:
@@ -341,6 +346,15 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             path = op.get("path", "")
+
+            if path == "/state" and op.get("op") != "replace":
+                return Response(
+                    {
+                        "detail": "State transition must use a 'replace' operation on '/state'."
+                    },
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+
             for blocked in BLOCKED_PATH_PREFIXES:
                 if path == blocked or path.startswith(blocked + "/"):
                     return Response(
@@ -362,6 +376,19 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
         validated = serializer.validated_data
 
+        target_state = validated.get("state")
+        if target_state is not None and not can_transition_case_state(
+            request.user, case, target_state
+        ):
+            return Response(
+                {"detail": "Permission denied for requested state transition."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        # Note: only IN_REVIEW transitions are supported by this endpoint today.
+        # Admins/moderators may be allowed other transitions in future PRs.
+        # Non-IN_REVIEW targets will be rejected with 422 below even if the
+        # permission check above passes.
+
         # Fields that map directly to Case model columns (updated via bulk UPDATE)
         scalar_fields = frozenset(
             [
@@ -379,43 +406,63 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             ]
         )
 
-        # Persist scalar field changes
-        scalar_updates = {
-            field: validated[field] for field in scalar_fields if field in validated
-        }
-        if scalar_updates:
-            Case.objects.filter(pk=pk).update(**scalar_updates)
+        with transaction.atomic():
+            # Persist scalar field changes
+            scalar_updates = {
+                field: validated[field] for field in scalar_fields if field in validated
+            }
+            if scalar_updates:
+                Case.objects.filter(pk=pk).update(**scalar_updates)
 
-        # Persist entity relationship changes
-        case.refresh_from_db()
-        if "alleged_entity_ids" in validated:
-            case.entity_relationships.filter(
-                relationship_type=RelationshipType.ACCUSED
-            ).delete()
-            for entity_id in validated["alleged_entity_ids"]:
-                CaseEntityRelationship.objects.create(
-                    case=case,
-                    entity_id=entity_id,
-                    relationship_type=RelationshipType.ACCUSED,
-                )
-        if "related_entity_ids" in validated:
-            case.entity_relationships.filter(
-                relationship_type=RelationshipType.RELATED
-            ).delete()
-            for entity_id in validated["related_entity_ids"]:
-                CaseEntityRelationship.objects.create(
-                    case=case,
-                    entity_id=entity_id,
-                    relationship_type=RelationshipType.RELATED,
-                )
+            # Persist entity relationship changes
+            case.refresh_from_db()
+            if "alleged_entity_ids" in validated:
+                case.entity_relationships.filter(
+                    relationship_type=RelationshipType.ACCUSED
+                ).delete()
+                for entity_id in validated["alleged_entity_ids"]:
+                    CaseEntityRelationship.objects.create(
+                        case=case,
+                        entity_id=entity_id,
+                        relationship_type=RelationshipType.ACCUSED,
+                    )
+            if "related_entity_ids" in validated:
+                case.entity_relationships.filter(
+                    relationship_type=RelationshipType.RELATED
+                ).delete()
+                for entity_id in validated["related_entity_ids"]:
+                    CaseEntityRelationship.objects.create(
+                        case=case,
+                        entity_id=entity_id,
+                        relationship_type=RelationshipType.RELATED,
+                    )
 
-        case.refresh_from_db()
+            case.refresh_from_db()
+
+            if target_state is not None and target_state != case.state:
+                if target_state == CaseState.IN_REVIEW:
+                    try:
+                        case.submit()
+                    except ValidationError as exc:
+                        detail = getattr(exc, "message_dict", None) or {
+                            "detail": exc.messages
+                        }
+                        return Response(detail, status=status.HTTP_400_BAD_REQUEST)
+                else:
+                    return Response(
+                        {
+                            "detail": "Only transitions to IN_REVIEW are supported via this endpoint."
+                        },
+                        status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    )
+
         return Response(CaseSerializer(case).data, status=status.HTTP_200_OK)
 
     def _build_snapshot(self, case: Case) -> dict:
         """Return a writable dict representing the patchable surface of a case."""
         return {
             "title": case.title,
+            "state": case.state,
             "short_description": case.short_description,
             "description": case.description,
             "thumbnail_url": case.thumbnail_url,
