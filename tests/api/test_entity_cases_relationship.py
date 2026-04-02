@@ -175,7 +175,11 @@ def test_entity_list_includes_unified_related_cases_field():
     response = client.get("/api/entities/")
 
     assert response.status_code == 200
-    entity_data = next(item for item in response.data["results"] if item["id"] == entity.id)
+    entity_data = next(
+        (item for item in response.data["results"] if item["id"] == entity.id),
+        None,
+    )
+    assert entity_data is not None, f"Entity {entity.id} not found in results"
 
     assert entity_data["related_cases"] == [
         {

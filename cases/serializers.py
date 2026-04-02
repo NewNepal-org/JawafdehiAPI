@@ -6,7 +6,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 
 import logging
 from rest_framework import serializers
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 from drf_spectacular.types import OpenApiTypes
 from .models import (
     Case,
@@ -36,7 +36,17 @@ class JawafEntitySerializer(serializers.ModelSerializer):
         model = JawafEntity
         fields = ["id", "nes_id", "display_name", "related_cases"]
 
-    @extend_schema_field(OpenApiTypes.OBJECT)
+    @extend_schema_field(
+        inline_serializer(
+            name="RelatedCaseEntry",
+            fields={
+                "case_id": serializers.IntegerField(),
+                "relation_type": serializers.CharField(),
+                "notes": serializers.CharField(allow_null=True),
+            },
+            many=True,
+        )
+    )
     def get_related_cases(self, obj):
         """
         Get related case entries for this entity.
