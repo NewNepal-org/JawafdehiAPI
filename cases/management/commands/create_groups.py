@@ -7,7 +7,13 @@ Usage: python manage.py create_groups
 from django.core.management.base import BaseCommand
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from cases.models import Case, DocumentSource, DocumentSourceUpload, JawafEntity, CaseEntityRelationship
+from cases.models import (
+    Case,
+    DocumentSource,
+    DocumentSourceUpload,
+    JawafEntity,
+    CaseEntityRelationship,
+)
 
 
 class Command(BaseCommand):

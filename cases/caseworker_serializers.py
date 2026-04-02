@@ -115,9 +115,7 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
     key_allegations = serializers.ListField(
         child=serializers.CharField(), required=False
     )
-    court_cases = serializers.ListField(
-        child=serializers.CharField(), required=False
-    )
+    court_cases = serializers.ListField(child=serializers.CharField(), required=False)
     missing_details = serializers.CharField(required=False, allow_blank=True)
     bigo = serializers.IntegerField(required=False, allow_null=True)
     timeline = TimelineItemSerializer(many=True, required=False)
@@ -147,9 +145,7 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     key_allegations = serializers.ListField(
         child=serializers.CharField(), required=False
     )
-    court_cases = serializers.ListField(
-        child=serializers.CharField(), required=False
-    )
+    court_cases = serializers.ListField(child=serializers.CharField(), required=False)
     missing_details = serializers.CharField(required=False, allow_blank=True)
     bigo = serializers.IntegerField(required=False, allow_null=True)
     timeline = TimelineItemSerializer(many=True, required=False)
