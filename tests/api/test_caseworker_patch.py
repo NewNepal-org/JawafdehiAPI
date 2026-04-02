@@ -312,6 +312,7 @@ def test_patch_400_for_draft_to_in_review_missing_required_fields():
 
     assert response.status_code == 400
     assert "entities" in response.data
+    assert "key_allegations" in response.data
     case.refresh_from_db()
     assert case.state == CaseState.DRAFT
 
