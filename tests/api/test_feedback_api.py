@@ -189,6 +189,11 @@ class TestFeedbackRateLimiting:
 class TestFeedbackFileUpload:
     """Test suite for feedback file attachment uploads."""
 
+    @pytest.fixture(autouse=True)
+    def _tmp_media_root(self, settings, tmp_path):
+        """Redirect MEDIA_ROOT to a temp directory to avoid leftover files."""
+        settings.MEDIA_ROOT = tmp_path
+
     def _make_file(
         self, size_bytes: int, name: str = "test.png", content_type: str = "image/png"
     ):

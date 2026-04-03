@@ -908,3 +908,16 @@ class Feedback(models.Model):
 
     def __str__(self):
         return f"{self.feedback_type.upper()}: {self.subject}"
+
+    def clean(self):
+        """Validate attachment size at the model level (covers admin and direct-save paths)."""
+        super().clean()
+        if self.attachment and self.attachment.size > 10 * 1024 * 1024:
+            raise ValidationError(
+                {"attachment": "Attachment must be 10 MB or smaller."}
+            )
+
+    def save(self, *args, **kwargs):
+        """Enforce model-level validation before saving."""
+        self.full_clean(validate_unique=False)
+        super().save(*args, **kwargs)
