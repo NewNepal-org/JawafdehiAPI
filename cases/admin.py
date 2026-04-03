@@ -190,6 +190,13 @@ class CaseAdminForm(forms.ModelForm):
             "cases/js/date_converter.js",
         )
 
+    def clean_missing_details(self):
+        """
+        Ensure empty missing_details is stored as null rather than an empty string.
+        """
+        value = self.cleaned_data.get("missing_details")
+        return value if value and value.strip() else None
+
     def clean(self):
         """
         Validate state transitions, new case state requirements, and required fields.
@@ -356,8 +363,7 @@ class CaseAdmin(admin.ModelAdmin):
         css = {"all": ("admin/css/case_admin.css",)}
 
     list_display = [
-        "case_id",
-        "slug",
+        "slug_link",
         "title",
         "case_type",
         "state_badge",
@@ -379,7 +385,6 @@ class CaseAdmin(admin.ModelAdmin):
 
     readonly_fields = [
         "case_id",
-        "slug",
         "created_at",
         "updated_at",
         "version_info_display",
@@ -387,18 +392,11 @@ class CaseAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (
-            "Identification",
+            "Basic Information",
             {
                 "fields": (
                     "case_id",
                     "slug",
-                )
-            },
-        ),
-        (
-            "Basic Information",
-            {
-                "fields": (
                     "title",
                     "short_description",
                     "thumbnail_url",
@@ -502,6 +500,22 @@ class CaseAdmin(admin.ModelAdmin):
 
     version_info_display.short_description = "Version Info"
 
+    def slug_link(self, obj):
+        """Display slug as a clickable link to jawafdehi.org, or fallback to case_id."""
+        if obj.slug:
+            url = f"https://jawafdehi.org/case/{obj.slug}"
+            return format_html(
+                '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+                url,
+                obj.slug,
+            )
+        else:
+            # Fallback to case_id in plain text when slug is not set
+            return obj.case_id
+
+    slug_link.short_description = "Slug"
+    slug_link.admin_order_field = "slug"  # Allow sorting by slug
+
     def get_queryset(self, request):
         """
         Filter queryset based on user role.
@@ -521,6 +535,17 @@ class CaseAdmin(admin.ModelAdmin):
 
         # No role - see nothing
         return qs.none()
+
+    def get_readonly_fields(self, request, obj=None):
+        """
+        Make slug editable only when it hasn't been set yet.
+        Once set, slug becomes read-only to prevent breaking external links.
+        """
+        readonly = list(super().get_readonly_fields(request, obj))
+        if obj and obj.slug:
+            if "slug" not in readonly:
+                readonly.append("slug")
+        return readonly
 
     def has_view_permission(self, request, obj=None):
         """
