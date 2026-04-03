@@ -882,6 +882,14 @@ class Feedback(models.Model):
     )
     user_agent = models.TextField(blank=True, help_text="User agent string")
 
+    # File attachment
+    attachment = models.FileField(
+        upload_to="feedback_attachments/",
+        blank=True,
+        null=True,
+        help_text="Optional file attachment (max 10 MB)",
+    )
+
     # Admin notes
     admin_notes = models.TextField(
         blank=True, help_text="Internal notes for administrators"

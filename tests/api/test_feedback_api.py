@@ -2,6 +2,7 @@
 Tests for the public Feedback API endpoint.
 """
 
+import io
 import pytest
 from django.core.cache import cache
 from rest_framework.test import APIClient
@@ -181,4 +182,86 @@ class TestFeedbackRateLimiting:
         response = api_client.post(
             "/api/feedback/", data, format="json", REMOTE_ADDR="192.168.1.200"
         )
+        assert response.status_code == 201
+
+
+@pytest.mark.django_db
+class TestFeedbackFileUpload:
+    """Test suite for feedback file attachment uploads."""
+
+    def _make_file(
+        self, size_bytes: int, name: str = "test.png", content_type: str = "image/png"
+    ):
+        """Create an in-memory file of the given size."""
+        data = io.BytesIO(b"x" * size_bytes)
+        data.name = name
+        return data
+
+    def test_submit_feedback_with_attachment(self, api_client):
+        """Test submitting feedback with a valid file attachment."""
+        attachment = self._make_file(1024, name="screenshot.png")
+
+        response = api_client.post(
+            "/api/feedback/",
+            data={
+                "feedbackType": "bug",
+                "subject": "Bug with screenshot",
+                "description": "Here is a screenshot of the issue.",
+                "attachment": attachment,
+            },
+            format="multipart",
+        )
+
+        assert response.status_code == 201
+        feedback = Feedback.objects.get(id=response.json()["id"])
+        assert feedback.attachment is not None
+        assert feedback.attachment.name.startswith("feedback_attachments/")
+
+    def test_submit_feedback_without_attachment(self, api_client):
+        """Test that attachment is optional — JSON submission still works."""
+        data = {
+            "feedbackType": "general",
+            "subject": "No file",
+            "description": "This is text-only feedback.",
+        }
+
+        response = api_client.post("/api/feedback/", data, format="json")
+        assert response.status_code == 201
+
+        feedback = Feedback.objects.get(id=response.json()["id"])
+        assert not feedback.attachment
+
+    def test_attachment_over_10mb_rejected(self, api_client):
+        """Test that attachments over 10 MB are rejected with 400."""
+        oversized = self._make_file(10 * 1024 * 1024 + 1, name="big.png")
+
+        response = api_client.post(
+            "/api/feedback/",
+            data={
+                "feedbackType": "bug",
+                "subject": "Big file",
+                "description": "This file is too large.",
+                "attachment": oversized,
+            },
+            format="multipart",
+        )
+
+        assert response.status_code == 400
+        assert "attachment" in response.json().get("details", {})
+
+    def test_attachment_exactly_10mb_accepted(self, api_client):
+        """Test that a file of exactly 10 MB is accepted."""
+        exact = self._make_file(10 * 1024 * 1024, name="exact.png")
+
+        response = api_client.post(
+            "/api/feedback/",
+            data={
+                "feedbackType": "bug",
+                "subject": "Exactly 10 MB",
+                "description": "Edge case file size.",
+                "attachment": exact,
+            },
+            format="multipart",
+        )
+
         assert response.status_code == 201

@@ -380,6 +380,8 @@ class ContactInfoSerializer(serializers.Serializer):
 class FeedbackSerializer(serializers.ModelSerializer):
     """Serializer for Feedback model."""
 
+    ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+
     feedbackType = serializers.CharField(
         source="feedback_type", help_text="Type of feedback"
     )
@@ -397,6 +399,11 @@ class FeedbackSerializer(serializers.ModelSerializer):
         read_only=True,
         help_text="Timestamp when feedback was submitted",
     )
+    attachment = serializers.FileField(
+        required=False,
+        allow_null=True,
+        help_text="Optional file attachment (max 10 MB)",
+    )
 
     class Meta:
         model = Feedback
@@ -407,6 +414,7 @@ class FeedbackSerializer(serializers.ModelSerializer):
             "description",
             "relatedPage",
             "contactInfo",
+            "attachment",
             "status",
             "submittedAt",
         ]
@@ -420,6 +428,16 @@ class FeedbackSerializer(serializers.ModelSerializer):
         if value not in valid_types:
             raise serializers.ValidationError(
                 f"Invalid feedback type. Must be one of: {', '.join(valid_types)}"
+            )
+        return value
+
+    def validate_attachment(self, value):
+        """Validate attachment file size (max 10 MB)."""
+        if value is None:
+            return value
+        if value.size > self.ATTACHMENT_MAX_BYTES:
+            raise serializers.ValidationError(
+                f"File size must not exceed 10 MB. Received: {value.size / (1024 * 1024):.1f} MB."
             )
         return value
 

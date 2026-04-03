@@ -18,6 +18,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import filters, status, viewsets
 from rest_framework.authentication import TokenAuthentication
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
@@ -785,11 +786,18 @@ class FeedbackRateThrottle(AnonRateThrottle):
     summary="Submit platform feedback",
     description="""
     Submit feedback, bug reports, feature requests, or general comments about the platform.
-    
+
     Rate limited to 5 submissions per IP address per hour.
     Contact information is optional - anonymous submissions are welcome.
+
+    An optional file attachment may be included (max 10 MB). Submit as
+    ``multipart/form-data`` when attaching a file; use ``application/json``
+    for text-only submissions.
     """,
-    request=FeedbackSerializer,
+    request={
+        "application/json": FeedbackSerializer,
+        "multipart/form-data": FeedbackSerializer,
+    },
     responses={
         201: FeedbackSerializer,
         400: OpenApiTypes.OBJECT,
@@ -825,6 +833,7 @@ class FeedbackView(APIView):
     """API view for submitting platform feedback."""
 
     throttle_classes = [FeedbackRateThrottle]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def post(self, request):
         """Handle feedback submission."""
