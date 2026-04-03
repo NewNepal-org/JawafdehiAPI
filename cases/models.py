@@ -537,11 +537,11 @@ class Case(models.Model):
         """
         base = slugify(self.title) or slugify(self.case_id) or "case"
         base = base[:42]  # Leave room for UUID suffix
-        
+
         # Append a short UUID to ensure uniqueness without database queries
         unique_suffix = uuid.uuid4().hex[:8]
         slug = f"{base}-{unique_suffix}"
-        
+
         return slug[:50]  # Respect max_length
 
     def save(self, *args, **kwargs):
@@ -555,7 +555,9 @@ class Case(models.Model):
             raise ValidationError("Title cannot be empty")
 
         # Auto-generate slug for published cases if not set
-        if self.state == CaseState.PUBLISHED and (not self.slug or not self.slug.strip()):
+        if self.state == CaseState.PUBLISHED and (
+            not self.slug or not self.slug.strip()
+        ):
             self.slug = self._generate_unique_slug()
 
         # Enforce slug immutability
@@ -645,11 +647,11 @@ class Case(models.Model):
 
         # Set state to PUBLISHED
         self.state = CaseState.PUBLISHED
-        
+
         # Ensure slug exists for published cases
         if not self.slug or not self.slug.strip():
             self.slug = self._generate_unique_slug()
-        
+
         # Validate before publishing
         self.validate()
 
