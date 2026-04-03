@@ -416,23 +416,23 @@ class Case(models.Model):
         blank=True, help_text="Short description/summary of the case"
     )
     slug = models.CharField(
-        max_length=50,
+        max_length=100,
         unique=True,
         blank=True,
         null=True,
         db_index=True,
         validators=[
             RegexValidator(
-                regex=r"^(?!\d)[A-Za-z0-9-]{1,50}$",
+                regex=r"^(?!\d)[A-Za-z0-9-]{1,100}$",
                 message=(
-                    "Slug must be 1-50 characters, can only use letters, numbers, and '-', "
+                    "Slug must be 1-100 characters, can only use letters, numbers, and '-', "
                     "and cannot start with a digit."
                 ),
             )
         ],
         help_text=(
-            "A slug will go in the URL. For CIAA corruption cases, you can prepend the "
-            "special court case number (e.g. case-case-078-WC-0123-sunil-poudel)."
+            "A slug will go in the URL. For CIAA corruption cases, prefix with the "
+            "special court case number (e.g. 078-WC-0123-sunil-poudel)."
         ),
     )
     thumbnail_url = models.URLField(

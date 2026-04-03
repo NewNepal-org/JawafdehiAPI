@@ -102,7 +102,7 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
         default=CaseState.DRAFT,
     )
     title = serializers.CharField(max_length=200)
-    slug = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    slug = serializers.CharField(max_length=100, required=False, allow_blank=True)
     short_description = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
     thumbnail_url = serializers.URLField(
@@ -128,7 +128,7 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
 
 class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     title = serializers.CharField(max_length=200)
-    slug = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    slug = serializers.CharField(max_length=100, required=False, allow_blank=True)
     short_description = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
     thumbnail_url = serializers.URLField(
