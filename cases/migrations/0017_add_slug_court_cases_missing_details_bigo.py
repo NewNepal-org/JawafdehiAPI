@@ -28,7 +28,6 @@ class Migration(migrations.Migration):
             model_name="case",
             name="court_cases",
             field=models.JSONField(
-                default=list,
                 blank=True,
                 null=True,
                 validators=[cases.validators.validate_court_cases],
@@ -40,7 +39,8 @@ class Migration(migrations.Migration):
             name="missing_details",
             field=models.TextField(
                 blank=True,
-                default="",
+                null=True,
+                default=None,
                 help_text="Notes about missing or incomplete information for this case",
             ),
         ),

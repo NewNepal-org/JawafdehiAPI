@@ -490,15 +490,14 @@ class Case(models.Model):
         help_text="URL-friendly unique identifier (immutable once set, required for published cases)",
     )
     court_cases = models.JSONField(
-        default=list,
         blank=True,
         null=True,
         validators=[validate_court_cases],
-        help_text="List of court case references in format <court_identifier>:<case_number>",
+        help_text="List of court case references in format {court_identifier}:{case_number}, e.g. ['supreme:078-WC-0123', 'special:076-CR-0456']",
     )
     missing_details = models.TextField(
         blank=True,
-        default="",
+        null=True,
         help_text="Notes about missing or incomplete information for this case",
     )
     bigo = models.BigIntegerField(
