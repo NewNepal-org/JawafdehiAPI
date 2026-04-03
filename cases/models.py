@@ -492,6 +492,7 @@ class Case(models.Model):
     court_cases = models.JSONField(
         default=list,
         blank=True,
+        null=True,
         validators=[validate_court_cases],
         help_text="List of court case references in format <court_identifier>:<case_number>",
     )
