@@ -23,7 +23,6 @@ BLOCKED_PATH_PREFIXES = frozenset(
         "/case_id",
         "/case_type",
         "/version",
-        "/state",
         "/contributors",
         "/created_at",
         "/updated_at",
@@ -142,6 +141,7 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     key_allegations = serializers.ListField(
         child=serializers.CharField(), required=False
     )
+    state = serializers.ChoiceField(choices=CaseState.choices, required=False)
     timeline = TimelineItemSerializer(many=True, required=False)
     evidence = EvidenceItemSerializer(many=True, required=False)
     alleged_entity_ids = serializers.ListField(
