@@ -360,7 +360,7 @@ class CaseAdmin(admin.ModelAdmin):
         css = {"all": ("admin/css/case_admin.css",)}
 
     list_display = [
-        "slug_link",
+        "case_link",
         "title",
         "case_type",
         "state_badge",
@@ -464,7 +464,7 @@ class CaseAdmin(admin.ModelAdmin):
 
     state_badge.short_description = "State"
 
-    def slug_link(self, obj):
+    def case_link(self, obj):
         """Display slug as an external link to the public case details page."""
         if not obj.slug:
             return "-"
@@ -474,8 +474,8 @@ class CaseAdmin(admin.ModelAdmin):
             obj.slug,
         )
 
-    slug_link.short_description = "Slug"
-    slug_link.admin_order_field = "slug"
+    case_link.short_description = "Case"
+    case_link.admin_order_field = "slug"
 
     def version_info_display(self, obj):
         """Display version info in a readable format."""
