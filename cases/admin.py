@@ -357,6 +357,7 @@ class CaseAdmin(admin.ModelAdmin):
 
     list_display = [
         "case_id",
+        "slug",
         "title",
         "case_type",
         "state_badge",
@@ -378,6 +379,7 @@ class CaseAdmin(admin.ModelAdmin):
 
     readonly_fields = [
         "case_id",
+        "slug",
         "created_at",
         "updated_at",
         "version_info_display",
@@ -385,16 +387,25 @@ class CaseAdmin(admin.ModelAdmin):
 
     fieldsets = (
         (
-            "Basic Information",
+            "Identification",
             {
                 "fields": (
                     "case_id",
+                    "slug",
+                )
+            },
+        ),
+        (
+            "Basic Information",
+            {
+                "fields": (
                     "title",
                     "short_description",
                     "thumbnail_url",
                     "banner_url",
                     "case_type",
                     "state",
+                    "bigo",
                 )
             },
         ),
@@ -417,11 +428,20 @@ class CaseAdmin(admin.ModelAdmin):
                     "timeline",
                     "description",
                     "tags",
-                    "notes",
+                    "court_cases",
                 )
             },
         ),
         ("Evidence", {"fields": ("evidence",)}),
+        (
+            "Internal Notes",
+            {
+                "fields": (
+                    "missing_details",
+                    "notes",
+                )
+            },
+        ),
         ("Assignment", {"fields": ("contributors",)}),
         (
             "Metadata",

@@ -17,6 +17,7 @@ from .fields import (
     TimelineListField,
     EvidenceListField,
 )
+from .validators import validate_slug, validate_court_cases
 
 User = get_user_model()
 
@@ -478,6 +479,33 @@ class Case(models.Model):
         help_text="Internal notes about the case (markdown supported)",
     )
 
+    # New fields for case identification and tracking
+    slug = models.SlugField(
+        max_length=50,
+        blank=True,
+        null=True,
+        unique=True,
+        db_index=True,
+        validators=[validate_slug],
+        help_text="URL-friendly unique identifier (immutable once set, required for published cases)",
+    )
+    court_cases = models.JSONField(
+        default=list,
+        blank=True,
+        validators=[validate_court_cases],
+        help_text="List of court case references in format <court_identifier>:<case_number>",
+    )
+    missing_details = models.TextField(
+        blank=True,
+        default="",
+        help_text="Notes about missing or incomplete information for this case",
+    )
+    bigo = models.BigIntegerField(
+        blank=True,
+        null=True,
+        help_text="Big integer field for additional case metadata",
+    )
+
     class Meta:
         ordering = ["-created_at"]
 
@@ -509,6 +537,12 @@ class Case(models.Model):
         # Validate title is not empty
         if not self.title or not self.title.strip():
             raise ValidationError("Title cannot be empty")
+
+        # Enforce slug immutability
+        if self.pk:  # Existing case
+            old_instance = Case.objects.get(pk=self.pk)
+            if old_instance.slug and old_instance.slug != self.slug:
+                raise ValidationError("Slug cannot be modified once set")
 
         super().save(*args, **kwargs)
 
@@ -545,6 +579,11 @@ class Case(models.Model):
                 errors["description"] = (
                     "Description is required for IN_REVIEW or PUBLISHED state"
                 )
+
+        # Require slug for published cases
+        if self.state == CaseState.PUBLISHED:
+            if not self.slug or not self.slug.strip():
+                errors["slug"] = "Slug is required for published cases"
 
         if errors:
             raise ValidationError(errors)

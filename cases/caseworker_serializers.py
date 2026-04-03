@@ -14,6 +14,7 @@ from .models import (
     CaseType,
     JawafEntity,
 )
+from .validators import validate_slug, validate_court_cases
 
 # Paths that callers are not permitted to target in a patch operation.
 # The view rejects any op whose `path` equals or is prefixed by one of these.
@@ -123,6 +124,28 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
     related_entities = serializers.ListField(
         child=serializers.IntegerField(), required=False
     )
+    slug = serializers.SlugField(
+        max_length=50,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[validate_slug],
+    )
+    court_cases = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+        validators=[validate_court_cases],
+    )
+    missing_details = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    bigo = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+    )
 
 
 class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
@@ -147,4 +170,19 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     )
     related_entity_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False
+    )
+    court_cases = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        default=list,
+        validators=[validate_court_cases],
+    )
+    missing_details = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+    )
+    bigo = serializers.IntegerField(
+        required=False,
+        allow_null=True,
     )

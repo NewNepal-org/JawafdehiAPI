@@ -229,6 +229,7 @@ class CaseSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "case_id",
+            "slug",
             "case_type",
             "state",
             "title",
@@ -244,6 +245,9 @@ class CaseSerializer(serializers.ModelSerializer):
             "timeline",
             "evidence",
             "notes",
+            "court_cases",
+            "missing_details",
+            "bigo",
             "versionInfo",
             "created_at",
             "updated_at",
