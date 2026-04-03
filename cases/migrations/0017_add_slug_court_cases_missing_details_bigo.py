@@ -50,7 +50,7 @@ class Migration(migrations.Migration):
             field=models.BigIntegerField(
                 blank=True,
                 null=True,
-                help_text="Big integer field for additional case metadata",
+                help_text="Bigo (बिगो) — the total disputed or embezzled amount claimed in the case (in NPR)",
             ),
         ),
     ]
