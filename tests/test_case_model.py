@@ -320,3 +320,35 @@ def test_notes_field_stores_markdown():
     )
     case.refresh_from_db()
     assert case.notes == markdown_content
+
+
+# ============================================================================
+# Slug auto-generation during validation
+# ============================================================================
+
+
+@pytest.mark.django_db
+def test_slug_auto_generated_during_validation_for_published_cases():
+    """
+    For any case in PUBLISHED state with empty slug, validate() should
+    auto-generate a slug instead of raising a validation error.
+    """
+    # Create a case with complete data
+    case = create_case_with_entities(
+        title="Test Case for Slug Generation",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 1"],
+        description="Test description",
+        case_type=CaseType.CORRUPTION,
+    )
+
+    # Set state to PUBLISHED without setting slug
+    case.state = CaseState.PUBLISHED
+    assert not case.slug or not case.slug.strip(), "Slug should be empty initially"
+
+    # Validate should not raise and should auto-generate slug
+    case.validate()
+
+    assert case.slug, "Slug should be auto-generated during validation"
+    assert len(case.slug) > 0, "Generated slug should not be empty"
+    assert "-" in case.slug, "Generated slug should contain hyphen separator"

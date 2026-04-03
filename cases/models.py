@@ -602,10 +602,10 @@ class Case(models.Model):
                     "Description is required for IN_REVIEW or PUBLISHED state"
                 )
 
-        # Require slug for published cases
+        # Auto-generate slug for published cases if not set
         if self.state == CaseState.PUBLISHED:
             if not self.slug or not self.slug.strip():
-                errors["slug"] = "Slug is required for published cases"
+                self.slug = self._generate_unique_slug()
 
         if errors:
             raise ValidationError(errors)
