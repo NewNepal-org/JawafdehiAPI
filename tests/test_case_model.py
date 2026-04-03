@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 from django.utils.text import slugify
 from hypothesis import given, settings
 
-from cases.models import Case, CaseState, CaseType, RelationshipType, CaseEntityRelationship
+from cases.models import Case, CaseState, CaseType, RelationshipType, CaseEntityRelationship, JawafEntity
 from tests.conftest import create_case_with_entities
 from tests.strategies import minimal_case_data, complete_case_data
 
