@@ -49,10 +49,8 @@ def test_moderators_can_publish_cases(case_data, moderator_data):
 
     assert can_publish, "Moderator should be able to transition case to PUBLISHED state"
 
-    # Actually perform the transition
-    case.state = CaseState.PUBLISHED
-    case.validate()  # Should not raise
-    case.save()
+    # Actually perform the transition using the publish() method
+    case.publish()
 
     assert (
         case.state == CaseState.PUBLISHED

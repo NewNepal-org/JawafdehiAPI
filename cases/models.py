@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.utils import timezone
+from django.utils.text import slugify
 import mimetypes
 import uuid
 
@@ -528,6 +529,21 @@ class Case(models.Model):
         ).values_list("entity_id", flat=True)
         return JawafEntity.objects.filter(pk__in=entity_ids)
 
+    def _generate_unique_slug(self) -> str:
+        """
+        Generate a unique, URL-friendly slug.
+
+        Uses title as base; falls back to case_id; appends UUID suffix to ensure uniqueness.
+        """
+        base = slugify(self.title) or slugify(self.case_id) or "case"
+        base = base[:42]  # Leave room for UUID suffix
+        
+        # Append a short UUID to ensure uniqueness without database queries
+        unique_suffix = uuid.uuid4().hex[:8]
+        slug = f"{base}-{unique_suffix}"
+        
+        return slug[:50]  # Respect max_length
+
     def save(self, *args, **kwargs):
         """Override save to generate case_id for new cases."""
         if not self.case_id:
@@ -537,6 +553,10 @@ class Case(models.Model):
         # Validate title is not empty
         if not self.title or not self.title.strip():
             raise ValidationError("Title cannot be empty")
+
+        # Auto-generate slug for published cases if not set
+        if self.state == CaseState.PUBLISHED and (not self.slug or not self.slug.strip()):
+            self.slug = self._generate_unique_slug()
 
         # Enforce slug immutability
         if self.pk:  # Existing case
@@ -616,14 +636,21 @@ class Case(models.Model):
         Publish this case.
 
         Sets state to PUBLISHED and updates versionInfo.
+        Auto-generates slug if not already set.
         """
         if self.state not in [CaseState.IN_REVIEW, CaseState.DRAFT]:
             raise ValidationError(
                 f"Can only publish cases in IN_REVIEW or DRAFT state, current state is {self.state}"
             )
 
-        # Validate before publishing
+        # Set state to PUBLISHED
         self.state = CaseState.PUBLISHED
+        
+        # Ensure slug exists for published cases
+        if not self.slug or not self.slug.strip():
+            self.slug = self._generate_unique_slug()
+        
+        # Validate before publishing
         self.validate()
 
         # Update versionInfo

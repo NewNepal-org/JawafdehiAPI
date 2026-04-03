@@ -28,6 +28,7 @@ BLOCKED_PATH_PREFIXES = frozenset(
         "/created_at",
         "/updated_at",
         "/versionInfo",
+        "/slug",  # Slug is immutable once set
     ]
 )
 
@@ -146,6 +147,12 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
         allow_null=True,
     )
 
+    def validate_missing_details(self, value):
+        """Normalize empty/whitespace missing_details to None."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
+
 
 class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     state = serializers.ChoiceField(choices=CaseState.choices, required=False)
@@ -186,3 +193,9 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
         required=False,
         allow_null=True,
     )
+
+    def validate_missing_details(self, value):
+        """Normalize empty/whitespace missing_details to None."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
