@@ -133,13 +133,13 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
     court_cases = serializers.ListField(
         child=serializers.CharField(),
         required=False,
-        default=list,
+        allow_null=True,
         validators=[validate_court_cases],
     )
     missing_details = serializers.CharField(
         required=False,
         allow_blank=True,
-        default="",
+        allow_null=True,
     )
     bigo = serializers.IntegerField(
         required=False,
@@ -174,13 +174,13 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     court_cases = serializers.ListField(
         child=serializers.CharField(),
         required=False,
-        default=list,
+        allow_null=True,
         validators=[validate_court_cases],
     )
     missing_details = serializers.CharField(
         required=False,
         allow_blank=True,
-        default="",
+        allow_null=True,
     )
     bigo = serializers.IntegerField(
         required=False,
