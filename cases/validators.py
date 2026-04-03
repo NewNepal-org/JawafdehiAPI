@@ -11,11 +11,7 @@ from django.core.exceptions import ValidationError
 # Valid court identifiers for Nepal's court system
 VALID_COURT_IDENTIFIERS = [
     "supreme",
-    "high-patan",
-    "high-surkhet",
-    "district-kathmandu",
-    "district-lalitpur",
-    "district-bhaktapur",
+    "special",
 ]
 
 
