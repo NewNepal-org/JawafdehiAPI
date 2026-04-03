@@ -6,7 +6,7 @@ See: .kiro/specs/accountability-platform-core/design.md
 
 import logging
 from rest_framework import serializers
-from drf_spectacular.utils import extend_schema_field, inline_serializer
+from drf_spectacular.utils import extend_schema_field
 from drf_spectacular.types import OpenApiTypes
 from .models import (
     Case,
@@ -28,49 +28,59 @@ class JawafEntitySerializer(serializers.ModelSerializer):
     Uses the unified system to get case relationships.
     """
 
+    alleged_cases = serializers.SerializerMethodField(
+        help_text="List of case IDs where this entity is alleged"
+    )
     related_cases = serializers.SerializerMethodField(
-        help_text="List of related case entries with case_id, relation_type, and notes"
+        help_text="List of case IDs where this entity is related or a location"
     )
 
     class Meta:
         model = JawafEntity
-        fields = ["id", "nes_id", "display_name", "related_cases"]
+        fields = ["id", "nes_id", "display_name", "alleged_cases", "related_cases"]
 
-    @extend_schema_field(
-        inline_serializer(
-            name="RelatedCaseEntry",
-            fields={
-                "case_id": serializers.IntegerField(),
-                "relation_type": serializers.CharField(),
-                "notes": serializers.CharField(allow_null=True),
-            },
-            many=True,
-        )
-    )
-    def get_related_cases(self, obj):
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_alleged_cases(self, obj):
         """
-        Get related case entries for this entity.
+        Get list of case IDs where this entity is alleged.
 
         Only includes PUBLISHED cases. Uses the unified relationship system.
-        Each entry includes relation metadata required by the frontend.
         """
-        relationships = (
-            CaseEntityRelationship.objects.filter(
-                entity=obj,
-                case__state=CaseState.PUBLISHED,
-            )
-            .select_related("case")
-            .order_by("-case_id", "relationship_type")
+        from .models import RelationshipType
+
+        # Get cases where this entity has an 'alleged' relationship
+        cases = Case.objects.filter(
+            entity_relationships__entity=obj,
+            entity_relationships__relationship_type=RelationshipType.ACCUSED,
+            state=CaseState.PUBLISHED,
         )
 
-        return [
-            {
-                "case_id": relationship.case_id,
-                "relation_type": relationship.relationship_type,
-                "notes": relationship.notes,
-            }
-            for relationship in relationships
-        ]
+        return list(cases.values_list("id", flat=True))
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_related_cases(self, obj):
+        """
+        Get list of case IDs where this entity is related.
+
+        Only includes PUBLISHED cases. Uses the unified relationship system.
+        Excludes cases where entity is already alleged (to avoid duplicates).
+        """
+        from .models import RelationshipType
+
+        # Get alleged case IDs to exclude
+        alleged_case_ids = Case.objects.filter(
+            entity_relationships__entity=obj,
+            entity_relationships__relationship_type=RelationshipType.ACCUSED,
+            state=CaseState.PUBLISHED,
+        ).values_list("id", flat=True)
+
+        # Get related cases from unified system
+        related_cases = Case.objects.filter(
+            entity_relationships__entity=obj,
+            entity_relationships__relationship_type=RelationshipType.RELATED,
+            state=CaseState.PUBLISHED,
+        ).exclude(id__in=alleged_case_ids)
+        return list(related_cases.values_list("id", flat=True))
 
 
 class CaseEntityRelationshipSerializer(serializers.ModelSerializer):
@@ -219,6 +229,7 @@ class CaseSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "case_id",
+            "slug",
             "case_type",
             "state",
             "title",

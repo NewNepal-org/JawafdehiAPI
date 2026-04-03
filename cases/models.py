@@ -7,9 +7,10 @@ See: .kiro/specs/accountability-platform-core/design.md
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.core.validators import URLValidator
+from django.core.validators import RegexValidator, URLValidator
 from django.utils import timezone
 import mimetypes
+import re
 import uuid
 
 from .fields import (
@@ -414,6 +415,26 @@ class Case(models.Model):
     short_description = models.TextField(
         blank=True, help_text="Short description/summary of the case"
     )
+    slug = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=True,
+        null=True,
+        db_index=True,
+        validators=[
+            RegexValidator(
+                regex=r"^(?!\d)[A-Za-z0-9-]{1,50}$",
+                message=(
+                    "Slug must be 1-50 characters, can only use letters, numbers, and '-', "
+                    "and cannot start with a digit."
+                ),
+            )
+        ],
+        help_text=(
+            "A slug will go in the URL. For CIAA corruption cases, you can prepend the "
+            "special court case number (e.g. case-case-078-WC-0123-sunil-poudel)."
+        ),
+    )
     thumbnail_url = models.URLField(
         blank=True,
         max_length=500,
@@ -447,7 +468,6 @@ class Case(models.Model):
     key_allegations = TextListField(
         blank=True, help_text="List of key allegation statements"
     )
-
     # Structured data fields
     timeline = TimelineListField(help_text="List of timeline entries")
     evidence = EvidenceListField(
@@ -506,6 +526,8 @@ class Case(models.Model):
             # Generate unique case_id for new cases
             self.case_id = f"case-{uuid.uuid4().hex[:12]}"
 
+        self.slug = (self.slug or "").strip() or None
+
         # Validate title is not empty
         if not self.title or not self.title.strip():
             raise ValidationError("Title cannot be empty")
@@ -544,6 +566,15 @@ class Case(models.Model):
             if not self.description or not self.description.strip():
                 errors["description"] = (
                     "Description is required for IN_REVIEW or PUBLISHED state"
+                )
+
+        # Slug is mandatory before publishing.
+        if self.state == CaseState.PUBLISHED:
+            if not self.slug:
+                errors["slug"] = "Slug is required before publishing a case"
+            elif self.slug.isnumeric() or re.match(r"^\d", self.slug):
+                errors["slug"] = (
+                    "Slug cannot be purely numeric and cannot start with a digit"
                 )
 
         if errors:

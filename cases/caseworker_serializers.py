@@ -23,6 +23,7 @@ BLOCKED_PATH_PREFIXES = frozenset(
         "/case_id",
         "/case_type",
         "/version",
+        "/state",
         "/contributors",
         "/created_at",
         "/updated_at",
@@ -101,6 +102,7 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
         default=CaseState.DRAFT,
     )
     title = serializers.CharField(max_length=200)
+    slug = serializers.CharField(max_length=50, required=False, allow_blank=True)
     short_description = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
     thumbnail_url = serializers.URLField(
@@ -125,8 +127,8 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
 
 
 class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
-    state = serializers.ChoiceField(choices=CaseState.choices, required=False)
     title = serializers.CharField(max_length=200)
+    slug = serializers.CharField(max_length=50, required=False, allow_blank=True)
     short_description = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
     thumbnail_url = serializers.URLField(
