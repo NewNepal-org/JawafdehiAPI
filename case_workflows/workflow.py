@@ -326,9 +326,9 @@ class Workflow(ABC):
                 )
             return found
         elif runner == "kiro":
-            found = shutil.which("kiro")
+            found = shutil.which("kiro-cli")
             if not found:
-                raise RuntimeError("'kiro' not found on PATH.")
+                raise RuntimeError("'kiro-cli' not found on PATH.")
             return found
         else:
             raise ValueError(f"Unknown runner: {runner!r}")
@@ -353,9 +353,11 @@ class Workflow(ABC):
         else:  # kiro
             return [
                 agent_bin,
-                "agent",
+                "chat",
+                "--agent",
                 self.get_agent_name(),
-                "--prompt",
+                "--no-interactive",
+                "--require-mcp-startup",
                 prompt,
             ]
 

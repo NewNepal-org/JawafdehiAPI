@@ -135,7 +135,7 @@ class TestWorkflowInitialize:
         workflow = get_workflow("ciaa_caseworker")
         fake_agents_dir = tmp_path / ".kiro" / "agents"
 
-        with patch("shutil.which", return_value="/usr/bin/kiro"), \
+        with patch("shutil.which", return_value="/usr/bin/kiro-cli"), \
              patch("pathlib.Path.home", return_value=tmp_path):
             workflow.initialize(runner="kiro")
 
