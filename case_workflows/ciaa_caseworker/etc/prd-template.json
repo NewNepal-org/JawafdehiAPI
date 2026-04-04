@@ -1,0 +1,88 @@
+{
+  "project": "Jawafdehi",
+  "branchName": "main",
+  "description": "Agentic Workflow Plan: Case Creation Pipeline",
+  "is_complete": false,
+  "failed": false,
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Initialize Casework",
+      "description": "Verifies case is eligible for processing, and setup the necessary casework directories",
+      "acceptanceCriteria": [
+        "Verify the case exists in ngm database",
+        "Required folders are there and are empty",
+        "progress.log has marked the workflow is eligible for running"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Fetch Judicial Data",
+      "description": "Pull the crucial sources and factual data to start the case work.",
+      "acceptanceCriteria": [
+        "sources/case_<case_number>_<date-time>.md file exists, and includes the case infomration, plaintiff/defendants, and hearings.",
+        "CIAA Press release raw file (PDF or DOC or equivalent) is downloaded.",
+        "CIAA Press release is converted to markdown in sources/markdown/ using convert_to_markdown tool.",
+        "Attorney General's Office charge sheet raw file (PDF or DOC or equivalent) is downloaded.",
+        "Attorney General's Office charge sheet is converted to markdown in sources/markdown/ using convert_to_markdown tool.",
+        "Bolpatra (procurement documents) are downloaded if IFB/RFP/EOI/PQ numbers are found in press release or charge sheet."
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Fetch News Articles",
+      "description": "Fetch news items from Web search regarding the case.",
+      "acceptanceCriteria": [
+        "Web search executed",
+        "Relevant news items regarding the case are fetched",
+        "News articles are saved as markdown in sources/markdown/"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Convert Remaining Documents to Markdown",
+      "description": "Convert any remaining raw files (like bolpatra PDFs) to markdown using the convert_to_markdown tool.",
+      "acceptanceCriteria": [
+        "All remaining raw files (bolpatra documents, etc.) have been converted to markdown."
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Draft a Case Locally",
+      "description": "We prepare the information necessary to file a Jawafdehi case. The actual Jawafdehi case is created on the next user story.",
+      "acceptanceCriteria": [
+        "A local case draft file exists.",
+        "The case draft has all the information necessary to submit to the Jawafdehi website.",
+        "The case draft has gone through an AI review to ensure that it meets the content requirements."
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Submit the case to Jawafdehi",
+      "description": "We prepare a Jawafdehi case to be submitted to the Jawafdehi website.",
+      "acceptanceCriteria": [
+        "Jawafdehi case is drafted",
+        "All entities, timeline, key allegations, description, tags, and other fields have been populated.",
+        "Case review passes."
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
