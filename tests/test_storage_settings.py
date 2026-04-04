@@ -3,8 +3,36 @@ import pytest
 from config.settings import (
     build_media_url,
     build_s3_storage_options,
+    env_flag,
     ensure_trailing_slash,
 )
+
+
+@pytest.mark.parametrize("value", ["True", "true", " 1 ", "YES", "y", "on"])
+def test_env_flag_recognizes_truthy_values(monkeypatch, value):
+    monkeypatch.setenv("TEST_FLAG", value)
+
+    assert env_flag("TEST_FLAG") is True
+
+
+@pytest.mark.parametrize("value", ["False", "false", " 0 ", "NO", "n", "off"])
+def test_env_flag_recognizes_falsy_values(monkeypatch, value):
+    monkeypatch.setenv("TEST_FLAG", value)
+
+    assert env_flag("TEST_FLAG", default=True) is False
+
+
+def test_env_flag_returns_default_when_unset(monkeypatch):
+    monkeypatch.delenv("TEST_FLAG", raising=False)
+
+    assert env_flag("TEST_FLAG", default=True) is True
+
+
+def test_env_flag_returns_default_when_value_is_unrecognized(monkeypatch):
+    monkeypatch.setenv("TEST_FLAG", "maybe")
+
+    assert env_flag("TEST_FLAG", default=True) is True
+    assert env_flag("TEST_FLAG", default=False) is False
 
 
 def test_ensure_trailing_slash_preserves_existing_suffix():

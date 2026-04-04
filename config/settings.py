@@ -28,7 +28,13 @@ def env_flag(name, default=False):
     value = os.getenv(name)
     if value is None:
         return default
-    return value == "True"
+
+    normalized = value.strip().lower()
+    if normalized in {"true", "1", "yes", "y", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "n", "off"}:
+        return False
+    return default
 
 
 def ensure_trailing_slash(value):
