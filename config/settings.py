@@ -24,6 +24,72 @@ def get_env_list(name, default=""):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def env_flag(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if normalized in {"true", "1", "yes", "y", "on"}:
+        return True
+    if normalized in {"false", "0", "no", "n", "off"}:
+        return False
+    return default
+
+
+def ensure_trailing_slash(value):
+    if not value:
+        return value
+    return value if value.endswith("/") else f"{value}/"
+
+
+def build_s3_storage_options(
+    access_key,
+    secret_key,
+    bucket_name,
+    region_name,
+    endpoint_url,
+    use_ssl,
+    custom_domain=None,
+):
+    storage_options = {
+        "access_key": access_key,
+        "secret_key": secret_key,
+        "bucket_name": bucket_name,
+        "region_name": region_name,
+        "endpoint_url": endpoint_url,
+        "use_ssl": use_ssl,
+        "querystring_auth": False,
+    }
+
+    if custom_domain:
+        storage_options["custom_domain"] = custom_domain
+
+    return storage_options
+
+
+def build_media_url(
+    explicit_media_url=None,
+    custom_domain=None,
+    endpoint_url=None,
+    bucket_name=None,
+    use_ssl=True,
+):
+    if explicit_media_url:
+        return ensure_trailing_slash(explicit_media_url)
+
+    if custom_domain:
+        if custom_domain.startswith(("http://", "https://")):
+            return ensure_trailing_slash(custom_domain)
+        scheme = "https" if use_ssl else "http"
+        return f"{scheme}://{ensure_trailing_slash(custom_domain)}"
+
+    if endpoint_url and bucket_name:
+        return f"{ensure_trailing_slash(endpoint_url)}{bucket_name}/"
+
+    return "/media/"
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -178,21 +244,25 @@ STATICFILES_DIRS = [
 
 # Whitenoise configuration for serving static files
 # Configure storage backend - use S3/R2 if AWS credentials are available, otherwise use FileSystemStorage
-if os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY"):
-    # Use django-storages with S3 backend for both local (Minio) and cloud (R2/AWS S3)
-    storage_options = {
-        "access_key": os.getenv("AWS_ACCESS_KEY_ID"),
-        "secret_key": os.getenv("AWS_SECRET_ACCESS_KEY"),
-        "bucket_name": os.getenv("AWS_STORAGE_BUCKET_NAME", "jawafdehi"),
-        "region_name": os.getenv("AWS_S3_REGION_NAME", "auto"),
-        "endpoint_url": os.getenv("AWS_S3_ENDPOINT_URL"),
-        "use_ssl": os.getenv("AWS_S3_USE_SSL", "True") == "True",
-        "querystring_auth": False,  # Generate public URLs (no auth required)
-    }
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME", "jawafdehi")
+AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "auto")
+AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL")
+AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN")
+AWS_S3_USE_SSL = env_flag("AWS_S3_USE_SSL", True)
 
-    # Add custom domain for public URLs if specified (separate from endpoint_url for operations)
-    if os.getenv("AWS_S3_CUSTOM_DOMAIN"):
-        storage_options["custom_domain"] = os.getenv("AWS_S3_CUSTOM_DOMAIN")
+if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
+    # Use django-storages with S3 backend for both local (Minio) and cloud (R2/AWS S3)
+    storage_options = build_s3_storage_options(
+        access_key=AWS_ACCESS_KEY_ID,
+        secret_key=AWS_SECRET_ACCESS_KEY,
+        bucket_name=AWS_STORAGE_BUCKET_NAME,
+        region_name=AWS_S3_REGION_NAME,
+        endpoint_url=AWS_S3_ENDPOINT_URL,
+        use_ssl=AWS_S3_USE_SSL,
+        custom_domain=AWS_S3_CUSTOM_DOMAIN,
+    )
 
     STORAGES = {
         "default": {
@@ -215,7 +285,15 @@ else:
     }
 
 # Media Files Configuration
-MEDIA_URL = os.getenv("MEDIA_URL", "/media/")
+MEDIA_URL = build_media_url(
+    explicit_media_url=os.getenv("MEDIA_URL"),
+    custom_domain=AWS_S3_CUSTOM_DOMAIN,
+    endpoint_url=AWS_S3_ENDPOINT_URL,
+    bucket_name=(
+        AWS_STORAGE_BUCKET_NAME if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY else None
+    ),
+    use_ssl=AWS_S3_USE_SSL,
+)
 MEDIA_ROOT = os.getenv("MEDIA_ROOT", BASE_DIR / "media")
 
 # Default primary key field type

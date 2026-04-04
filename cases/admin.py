@@ -1187,17 +1187,33 @@ class FeedbackAdmin(admin.ModelAdmin):
         "feedback_type",
         "subject",
         "status",
+        "has_attachment",
         "has_contact_info",
         "submitted_at",
     ]
     list_filter = ["feedback_type", "status", "submitted_at"]
     search_fields = ["subject", "description", "related_page"]
-    readonly_fields = ["submitted_at", "updated_at", "ip_address", "user_agent"]
+    readonly_fields = [
+        "attachment_link",
+        "submitted_at",
+        "updated_at",
+        "ip_address",
+        "user_agent",
+    ]
 
     fieldsets = (
         (
             "Feedback Details",
-            {"fields": ("feedback_type", "subject", "description", "related_page")},
+            {
+                "fields": (
+                    "feedback_type",
+                    "subject",
+                    "description",
+                    "related_page",
+                    "attachment",
+                    "attachment_link",
+                )
+            },
         ),
         (
             "Contact Information",
@@ -1219,3 +1235,22 @@ class FeedbackAdmin(admin.ModelAdmin):
 
     has_contact_info.boolean = True
     has_contact_info.short_description = "Has Contact"
+
+    def has_attachment(self, obj):
+        """Check if feedback includes an attachment."""
+        return bool(obj.attachment)
+
+    has_attachment.boolean = True
+    has_attachment.short_description = "Has File"
+
+    def attachment_link(self, obj):
+        """Render a clickable link to the uploaded attachment."""
+        if not obj.attachment:
+            return "No attachment"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+            obj.attachment.url,
+            obj.attachment.name,
+        )
+
+    attachment_link.short_description = "Attachment"
