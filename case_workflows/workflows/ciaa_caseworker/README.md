@@ -10,7 +10,7 @@ The agent logic here is designed to be **provider agnostic**. While there are co
 
 1. **Kiro CLI (First-Class)**
    - The primary execution loop for the caseworker relies on invoking `kiro-cli` in a stateless, user-story driven architecture.
-   - The configurations `jawafdehi-caseworker.json` and `jawafdehi-caseworker-verifier.json` support standard execution via `kiro-cli`.
+   - The configuration `jawafdehi-caseworker.json` supports standard execution via `kiro-cli`.
    - You can run the automation loop via `python .agents/caseworker/run_workflow.py <CIAA-case-number>`.
 
 2. **GitHub Copilot**

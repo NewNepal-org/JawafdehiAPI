@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -164,6 +165,18 @@ class Workflow(ABC):
         candidate = self.get_template_dir() / "etc" / "copilot-mcp-config.json"
         return candidate if candidate.exists() else None
 
+    def get_prompt(self, case_dir: Path) -> str:
+        """Return the prompt string passed to the agent CLI.
+
+        Override to customise what the agent is told at invocation time.
+        Default: direct the agent to process the next incomplete story in
+        *case_dir* and stop after exactly one story.
+        """
+        return (
+            f"Process the next incomplete story in {case_dir}. "
+            "Execute exactly one story, then stop."
+        )
+
     def on_work_dir_created(self, case_dir: Path) -> None:
         """
         Called after the base work directory is created.
@@ -236,11 +249,11 @@ class Workflow(ABC):
 
         # Static PRD spec (agent reads, never writes)
         with open(case_dir / "prd.json", "w") as f:
-            json.dump(self.get_prd(), f, indent=2)
+            json.dump(self.get_prd(), f, indent=2, ensure_ascii=False)
 
         # Progress tracking (agent writes, runner reads)
         with open(case_dir / "progress.json", "w") as f:
-            json.dump(self.get_progress_json_template(), f, indent=2)
+            json.dump(self.get_progress_json_template(), f, indent=2, ensure_ascii=False)
 
         # Template-specific extra setup
         self.on_work_dir_created(case_dir)
@@ -321,12 +334,12 @@ class Workflow(ABC):
                 except KeyboardInterrupt:
                     logger.warning("Workflow interrupted by user")
                     run.mark_failed(error_message="Interrupted by user")
-                    return
+                    raise  # propagate so the caller can break cleanly
 
                 if result.returncode == 130:
                     logger.warning("Workflow interrupted (exit 130)")
                     run.mark_failed(error_message="Interrupted (exit 130)")
-                    return
+                    raise KeyboardInterrupt()  # agent exited from SIGINT; surface to caller
 
                 # ── Phase 2: review stdout and append to progress.json ──────
                 self._review_and_update_progress(case_dir, result, iteration_count)
@@ -392,7 +405,7 @@ class Workflow(ABC):
         self, agent_bin: str, runner: str, case_dir: Path
     ) -> list[str]:
         """Assemble the agent CLI invocation."""
-        prompt = f"Follow {case_dir}/instructions/INSTRUCTIONS.md"
+        prompt = self.get_prompt(case_dir)
         if runner == "copilot":
             cmd = [
                 agent_bin,
@@ -418,13 +431,51 @@ class Workflow(ABC):
 
     @staticmethod
     def _run_agent(cmd: list[str]) -> subprocess.CompletedProcess:
-        """Phase 1 — execute the agent CLI and capture its output.
+        """Phase 1 — execute the agent CLI, streaming output in real time.
+
+        stdout and stderr are merged into a single stream so interleaved
+        output (e.g. agent reasoning + tool errors) appears in order.
+        Each line is printed immediately; the full output is also collected
+        and returned as ``result.stdout`` so Phase 2 is unchanged.
+
+        KeyboardInterrupt is caught internally: the process is terminated
+        and partial output is returned with returncode 130, so Phase 2
+        (log writing) still runs before the caller exits.
 
         The agent must NOT write to ``prd.json`` or ``progress.json``.
         All progress is communicated through stdout markers (see
         ``_parse_progress_from_stdout``).
         """
-        return subprocess.run(cmd, capture_output=True, text=True)
+        output_lines: list[str] = []
+        returncode = -1
+
+        with subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # merge stderr into stdout
+            text=True,
+            bufsize=1,                 # line-buffered
+        ) as proc:
+            try:
+                for line in proc.stdout:   # type: ignore[union-attr]
+                    print(line, end="", flush=True)
+                    output_lines.append(line)
+                proc.wait()  # ensure returncode is populated after stdout is drained
+                returncode = proc.returncode
+            except KeyboardInterrupt:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                returncode = 130
+
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=returncode,
+            stdout="".join(output_lines),
+            stderr="",
+        )
 
     def _review_and_update_progress(
         self,
@@ -490,9 +541,26 @@ class Workflow(ABC):
 
         try:
             with open(case_dir / "progress.json", "w") as f:
-                json.dump(data, f, indent=2)
+                json.dump(data, f, indent=2, ensure_ascii=False)
         except OSError as exc:
             logger.warning("Could not write progress.json: %s", exc)
+
+    @classmethod
+    def _normalize_marker_line(cls, line: str) -> str:
+        """Strip ANSI codes and runner-specific prefixes before checking for markers.
+
+        kiro colorises its output and prefixes every agent output line with
+        ``> ``, so the raw line looks like
+        ``\x1b[...]> \x1b[...]WORKFLOW_PROGRESS: {...}``.  ANSI codes must be
+        removed before the ``>`` prefix check, otherwise ``startswith(">")
+        `` never matches.
+        """
+        # Remove ANSI escape sequences first, then strip surrounding whitespace
+        stripped = cls._strip_ansi(line).strip()
+        # Strip a single leading "> " (kiro streaming prefix)
+        if stripped.startswith(">"):
+            stripped = stripped[1:].strip()
+        return stripped
 
     @staticmethod
     def _parse_progress_from_stdout(stdout: str) -> list[dict]:
@@ -503,10 +571,13 @@ class Workflow(ABC):
             WORKFLOW_PROGRESS: {"story": "US-001", "success": true,
                                 "notes": "Done.", "started": "...",
                                 "completed": "..."}
+
+        Handles runner-specific line prefixes (e.g. kiro emits ``> `` before
+        each agent output line).
         """
         updates = []
         for line in stdout.splitlines():
-            stripped = line.strip()
+            stripped = Workflow._normalize_marker_line(line)
             if stripped.startswith("WORKFLOW_PROGRESS:"):
                 payload = stripped[len("WORKFLOW_PROGRESS:"):].strip()
                 try:
@@ -522,9 +593,12 @@ class Workflow(ABC):
         The agent emits this to signal an unrecoverable failure, e.g.::
 
             WORKFLOW_FAILED: Could not download required source documents.
+
+        Handles runner-specific line prefixes (e.g. kiro emits ``> `` before
+        each agent output line).
         """
         for line in stdout.splitlines():
-            stripped = line.strip()
+            stripped = Workflow._normalize_marker_line(line)
             if stripped.startswith("WORKFLOW_FAILED:"):
                 return stripped[len("WORKFLOW_FAILED:"):].strip()
         return None
@@ -542,6 +616,15 @@ class Workflow(ABC):
             logger.warning("Could not read progress.json: %s", exc)
             return None
 
+    # ANSI CSI escape sequences: ESC [ ... (letter)  plus lone ESC sequences.
+    # Includes private-use parameter bytes like '?' (e.g. \x1b[?25l cursor hide).
+    _ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-9;?]*[A-Za-z]|[^\[])")  
+
+    @classmethod
+    def _strip_ansi(cls, text: str) -> str:
+        """Remove ANSI terminal escape codes from *text*."""
+        return cls._ANSI_ESCAPE.sub("", text)
+
     @staticmethod
     def _write_iteration_log(
         case_dir: Path,
@@ -549,21 +632,23 @@ class Workflow(ABC):
         stdout: str,
         stderr: str,
     ) -> str:
-        """Write captured agent output to ``logs/<n>_<timestamp>.log``.
+        """Write captured agent output to ``logs/run-summary-<timestamp>.stdout.md``.
 
+        ANSI escape codes are stripped so logs are plain text.
+        stderr is empty when stdout+stderr were merged by ``_run_agent``.
         Returns the bare filename so it can be stored in ``progress.json`` entries.
         """
         logs_dir = case_dir / "logs"
         logs_dir.mkdir(exist_ok=True)
 
         timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
-        log_filename = f"{iteration:03d}_{timestamp}.log"
+        log_filename = f"run-summary-{timestamp}.stdout.md"
 
         parts = []
         if stdout:
-            parts.append(stdout)
+            parts.append(Workflow._strip_ansi(stdout))
         if stderr:
-            parts.append("--- STDERR ---\n" + stderr)
+            parts.append("--- STDERR ---\n" + Workflow._strip_ansi(stderr))
 
         (logs_dir / log_filename).write_text("\n".join(parts))
         logger.debug("Iteration log written: %s", log_filename)

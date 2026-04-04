@@ -2,20 +2,29 @@
 
 You are an expert agentic workflow runner and you are helping build a fact-based database of corruption cases for Nepal. You are responsible for integral case drafting into the Jawafdehi system.
 
-Follow the user stories strictly in `prd.json`. Start by reading INSTRUCTIONS.md file from the .agents/caseworker/instructions folder, and then read progress.log and PRD.json from the casework folder thereafter. Verify the state from `prd.json` and keep track of your steps in `progress.log`. When you are updating progress.log, also include the system date/time. Execute one user story task at a time and then shut down.
+Follow the user stories strictly in `prd.json`.
 
-NOTE: BEFORE start your work, aloways update progress.log. THEN, AFTER you have finished your work, you will need to conclude the progress log that you created.
+Start by reading INSTRUCTIONS.md, then read `progress.json` to find the next incomplete story. Execute **exactly one** user story, then stop immediately. Do not plan or proceed to any subsequent stories.
 
-CRITICAL: Once all user stories in `prd.json` are complete and the final Jawafdehi case is prepared, you MUST update the `is_complete` global flag in `prd.json` to `true`. This signals the workflow runner to stop iterating. If, for some reason, you are unable to complete the user stores, you may also mark `failed` which signals the runner that the workflow has failed and that it should stop.
+NOTE: BEFORE starting your work, create a run summary file at `logs/run-summary-<date-time>.md` (use the current ISO 8601 datetime without colons, e.g. `logs/run-summary-2026-04-04T172904.md`). Record the single story you are about to execute. THEN, AFTER you have finished, update the same file with what you completed, any findings, and the outcome.
 
-CRITICAL: Once all user stories in `prd.json` are complete and the final Jawafdehi case is prepared, you MUST update the `is_complete` global flag in `prd.json` to `true`. This signals the workflow runner to stop iterating.
+CRITICAL: After completing the story, emit exactly one progress marker to stdout and then exit:
+
+```
+WORKFLOW_PROGRESS: {"story": "US-XXX", "story_title": "...", "success": true, "notes": "...", "started": "<iso8601>", "completed": "<iso8601>"}
+```
+
+The workflow runner reads this marker to record progress and will invoke you again for the next story. Do **not** attempt to continue to the next story in the same invocation. If the story cannot be completed, emit `success: false` with a notes explanation. To abort the entire workflow, emit `WORKFLOW_FAILED: <reason>` instead.
+
+**IMPORTANT:** Do **NOT** write to `progress.json` or `prd.json`. These files are managed exclusively by the workflow runner. You may only read them.
 
 ## US-001: Casework Folder Structure
 
 Your working environment for each case is isolated within a unique case folder located at `casework/<case_number>`. This folder contains the following structure:
 
 - `prd.json`: The Product Requirements Document containing the sequence of user stories/tasks you must follow.
-- `progress.log`: The log file where you must record your steps and track completion progress.
+- `progress.json`: Tracks which user stories are complete. Written by the workflow runner — do not edit directly.
+- `logs/`: A directory for run summaries. Each agent invocation writes one `run-summary-<date-time>.md` file here.
 - `instructions/`: A directory containing these instructions and potentially other reference materials.
 - `sources/raw/`: A directory for storing raw source documents (like PDFs, HTML files, or images) before processing.
 - `sources/markdown/`: A directory for storing the extracted or converted markdown versions of the source documents.
@@ -151,9 +160,9 @@ Then document this in the progress log and continue with the next user story. No
 
 Use the web search tool to find and fetch relevant news items regarding the case from Web search. This helps build out the context and details of the allegations. Ensure you search using case details like case number, defendants' names, and the relevant court. Try searching near the court case registration date or the CIAA press release date.
 
-If you are unable to discover any news items that's also fine. Just update the progress log and move on to the next user story. But please write a file called sources/markdown/news-search-results.md in the casework folder.
+If you are unable to discover any news items that's also fine. Just note it in your run summary and move on to the next user story. But please write a file called sources/markdown/news-search-results.md in the casework folder.
 
-Also, for checkpoint, after every 10 or so web searches, keep updating the search results in sources/markdown/news-search-progress.md.
+Also, for checkpoint, after every 10 or so web searches, keep updating the search results in sources/markdown/news-search-progress.md and note progress in your run summary.
 
 
 ## US-005: Preparing the Case Draft Locally

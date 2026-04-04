@@ -122,6 +122,10 @@ class Command(BaseCommand):
                 workflow.setup_work_dir(run)
                 self.stderr.write(f"  📁 Work dir: {run.work_dir}")
                 workflow.execute(run, runner=runner_name)
+            except KeyboardInterrupt:
+                self.stderr.write("  ⚠ Interrupted — stopping")
+                fail_count += 1
+                break
             except Exception as exc:
                 self.stderr.write(f"  ✗ Error: {exc}")
                 fail_count += 1

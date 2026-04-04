@@ -157,10 +157,6 @@ class CIAACaseworkerWorkflow(Workflow):
     def get_template_dir(self) -> Path:
         return TEMPLATE_DIR
 
-    def get_instructions_dir(self) -> Path:
-        """Return the instructions directory path."""
-        return TEMPLATE_DIR / "instructions"
-
     def get_agent_name(self) -> str:
         return "jawafdehi-caseworker"
 
@@ -207,14 +203,6 @@ class CIAACaseworkerWorkflow(Workflow):
 
         - ``sources/raw/``      — downloaded raw files (PDFs, HTML, etc.)
         - ``sources/markdown/`` — converted markdown versions
-        - ``instructions``      — symlink pointing to this template's instructions/
         """
         (case_dir / "sources" / "raw").mkdir(parents=True, exist_ok=True)
         (case_dir / "sources" / "markdown").mkdir(parents=True, exist_ok=True)
-
-        instructions_dest = case_dir / "instructions"
-        if not instructions_dest.exists():
-            try:
-                os.symlink(self.get_instructions_dir(), instructions_dest)
-            except OSError as exc:
-                logger.warning("Failed to symlink instructions: %s", exc)
