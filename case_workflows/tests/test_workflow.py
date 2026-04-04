@@ -41,7 +41,7 @@ class TestWorkflowABC:
             Workflow()
 
     def test_concrete_workflow_requires_all_methods(self):
-        """A subclass missing required methods cannot be instantiated."""
+        """A subclass missing required abstract methods cannot be instantiated."""
 
         class IncompleteWorkflow(Workflow):
             @property

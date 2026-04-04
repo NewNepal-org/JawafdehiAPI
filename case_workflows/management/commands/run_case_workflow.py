@@ -6,24 +6,17 @@ Usage::
     # List all registered workflows
     python manage.py run_case_workflow --list
 
-    # Dry-run: show eligible cases without executing
-    python manage.py run_case_workflow ciaa_caseworker --dry-run
-
     # Run workflow for all eligible cases
     python manage.py run_case_workflow ciaa_caseworker
 
     # Run workflow for a specific case
-    python manage.py run_case_workflow ciaa_caseworker --case-id 081-CR-0123
-
-    # Re-run a previously completed/failed workflow
-    python manage.py run_case_workflow ciaa_caseworker --case-id 081-CR-0123 --overwrite
+    python manage.py run_case_workflow ciaa_caseworker --case-id case-abc123
 """
 
 from django.core.management.base import BaseCommand, CommandError
 
 from case_workflows.models import CaseWorkflowRun
 from case_workflows.registry import get_workflow, list_workflows
-from case_workflows.runner import WorkflowRunner
 
 
 class Command(BaseCommand):
@@ -39,13 +32,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--case-id",
             type=str,
-            help="Target a specific case instead of auto-selecting eligible ones",
-        )
-        parser.add_argument(
-            "--max-iterations",
-            type=int,
-            default=15,
-            help="Maximum agent loop iterations per case (default: 15)",
+            help="Target a specific Jawafdehi case_id instead of auto-selecting",
         )
         parser.add_argument(
             "--runner",
@@ -53,16 +40,6 @@ class Command(BaseCommand):
             choices=["copilot", "kiro"],
             default="copilot",
             help="Agent CLI runner to use (default: copilot)",
-        )
-        parser.add_argument(
-            "--dry-run",
-            action="store_true",
-            help="List eligible cases and exit without executing",
-        )
-        parser.add_argument(
-            "--overwrite",
-            action="store_true",
-            help="Re-run even if a CaseWorkflowRun already exists (resets state)",
         )
         parser.add_argument(
             "--list",
@@ -84,7 +61,7 @@ class Command(BaseCommand):
                 self.stderr.write(f"  • {wid} — {wf.display_name}")
             return
 
-        # ---- Require workflow_id for all other modes ----
+        # ---- Require workflow_id for execution ----
         workflow_id = options["workflow_id"]
         if not workflow_id:
             raise CommandError(
@@ -96,7 +73,15 @@ class Command(BaseCommand):
         except KeyError as exc:
             raise CommandError(str(exc))
 
+        runner_name = options["runner"]
         self.stderr.write(f"Workflow: {workflow.display_name} ({workflow_id})")
+        self.stderr.write(f"Runner:   {runner_name}")
+
+        # ---- Initialize runner (validates binary + provider-specific setup) ----
+        try:
+            workflow.initialize(runner=runner_name)
+        except (RuntimeError, ValueError) as exc:
+            raise CommandError(f"Initialization failed: {exc}")
 
         # ---- Determine target cases ----
         specific_case = options["case_id"]
@@ -111,29 +96,7 @@ class Command(BaseCommand):
             self.stderr.write("No cases to process. Exiting.")
             return
 
-        # ---- Dry-run mode ----
-        if options["dry_run"]:
-            self.stderr.write("Dry-run — eligible cases:")
-            for cid in case_ids:
-                existing = CaseWorkflowRun.objects.filter(
-                    case_id=cid, workflow_template_id=workflow_id
-                ).first()
-                status = ""
-                if existing:
-                    if existing.is_complete:
-                        status = " [COMPLETE]"
-                    elif existing.has_failed:
-                        status = " [FAILED]"
-                    else:
-                        status = " [IN PROGRESS]"
-                self.stderr.write(f"  • {cid}{status}")
-            return
-
         # ---- Execute workflow for each case ----
-        overwrite = options["overwrite"]
-        max_iterations = options["max_iterations"]
-        runner_name = options["runner"]
-
         success_count = 0
         skip_count = 0
         fail_count = 0
@@ -143,55 +106,36 @@ class Command(BaseCommand):
             self.stderr.write(f"Processing case: {cid}")
             self.stderr.write(f"{'=' * 60}")
 
-            # Get or create the run record
             run, created = CaseWorkflowRun.objects.get_or_create(
                 case_id=cid,
-                workflow_template_id=workflow_id,
+                workflow_id=workflow_id,
             )
 
-            if not created:
-                if run.is_complete and not overwrite:
-                    self.stderr.write(f"  ⏭ Skipping — already complete")
-                    skip_count += 1
-                    continue
-                if overwrite:
-                    self.stderr.write(f"  ♻ Resetting existing run")
-                    run.is_complete = False
-                    run.has_failed = False
-                    run.error_message = ""
-                    run.started_at = None
-                    run.completed_at = None
-                    run.case_data = {}
-                    run.save()
-            else:
-                self.stderr.write(f"  ✦ Created new CaseWorkflowRun")
+            if not created and run.is_complete:
+                self.stderr.write("  ⏭ Skipping — already complete")
+                skip_count += 1
+                continue
 
-            # Set up working directory and execute
-            wf_runner = WorkflowRunner(workflow, run)
+            self.stderr.write("  ✦ Created new run" if created else "  ♻ Resuming existing run")
 
             try:
-                wf_runner.setup_work_dir(overwrite=overwrite)
+                workflow.setup_work_dir(run)
                 self.stderr.write(f"  📁 Work dir: {run.work_dir}")
-
-                wf_runner.execute(
-                    max_iterations=max_iterations,
-                    runner=runner_name,
-                )
+                workflow.execute(run, runner=runner_name)
             except Exception as exc:
                 self.stderr.write(f"  ✗ Error: {exc}")
                 fail_count += 1
                 continue
 
-            # Report outcome
             run.refresh_from_db()
             if run.is_complete:
-                self.stderr.write(f"  ✓ Completed")
+                self.stderr.write("  ✓ Completed")
                 success_count += 1
             elif run.has_failed:
                 self.stderr.write(f"  ✗ Failed: {run.error_message}")
                 fail_count += 1
             else:
-                self.stderr.write(f"  … Status unclear")
+                self.stderr.write("  … Status unclear")
 
         # ---- Summary ----
         self.stderr.write(f"\n{'=' * 60}")

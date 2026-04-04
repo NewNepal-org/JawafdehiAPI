@@ -7,7 +7,7 @@ from .models import CaseWorkflowRun
 class CaseWorkflowRunAdmin(admin.ModelAdmin):
     list_display = [
         "case_id",
-        "workflow_template_id",
+        "workflow_id",
         "is_complete",
         "has_failed",
         "started_at",
@@ -15,17 +15,17 @@ class CaseWorkflowRunAdmin(admin.ModelAdmin):
         "created_at",
     ]
     list_filter = [
-        "workflow_template_id",
+        "workflow_id",
         "is_complete",
         "has_failed",
     ]
     search_fields = [
         "case_id",
         "workflow_id",
-        "workflow_template_id",
+        "run_id",
     ]
     readonly_fields = [
-        "workflow_id",
+        "run_id",
         "case_data",
         "work_dir",
         "started_at",

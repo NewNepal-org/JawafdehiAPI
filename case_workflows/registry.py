@@ -74,18 +74,18 @@ def list_workflows() -> list[str]:
 
 def autodiscover():
     """
-    Import all ``case_workflows.<subpackage>.workflow`` modules so their
-    ``@register`` decorators fire.
+    Import all ``case_workflows.workflows.<template>.workflow`` modules so
+    their ``@register`` decorators fire.
 
+    Templates live under ``case_workflows/workflows/<template_id>/workflow.py``.
     Called automatically from ``CaseWorkflowsConfig.ready()``.
     """
-    import case_workflows
+    import case_workflows.workflows as workflows_pkg
 
-    package_path = case_workflows.__path__
-    for importer, modname, ispkg in pkgutil.iter_modules(package_path):
+    for importer, modname, ispkg in pkgutil.iter_modules(workflows_pkg.__path__):
         if not ispkg:
             continue
-        module_name = f"case_workflows.{modname}.workflow"
+        module_name = f"case_workflows.workflows.{modname}.workflow"
         try:
             importlib.import_module(module_name)
         except ModuleNotFoundError:

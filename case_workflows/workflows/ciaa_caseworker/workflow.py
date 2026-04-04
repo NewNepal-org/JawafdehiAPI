@@ -2,14 +2,15 @@
 CIAA Caseworker workflow — processes Special Court cases from the NGM
 database and creates Jawafdehi accountability cases.
 
-This is the original caseworker workflow migrated from
-``.agents/caseworker/`` into the Django ``case_workflows`` framework.
+Template location: ``case_workflows/workflows/ciaa_caseworker/``
+Original source:   ``.agents/caseworker/``
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import List
 
@@ -123,43 +124,39 @@ class CIAACaseworkerWorkflow(Workflow):
 
     def get_eligible_cases(self) -> List[str]:
         """
-        Return Special Court case numbers that are eligible for processing.
+        Return Jawafdehi Case ``case_id`` values eligible for this workflow.
 
         A case is eligible if:
-        - It exists in the NGM database as a Special Court case
+        - It is a CORRUPTION case in DRAFT or IN_REVIEW state
         - There is no existing completed CaseWorkflowRun for it
 
-        NOTE: This is a placeholder that returns an empty list.
-        In production, this should query the NGM database for recent
-        Special Court cases and filter out already-processed ones.
+        Returns a list of Jawafdehi ``Case.case_id`` strings
+        (e.g. ``["case-abc123", "case-def456"]``).
         """
         from case_workflows.models import CaseWorkflowRun
+        from cases.models import Case, CaseState, CaseType
 
         # Find already-completed case IDs for this workflow
         completed_case_ids = set(
             CaseWorkflowRun.objects.filter(
-                workflow_template_id=self.workflow_id,
+                workflow_id=self.workflow_id,
                 is_complete=True,
             ).values_list("case_id", flat=True)
         )
 
-        # TODO: Query NGM database for eligible Special Court cases.
-        # For now, return empty — users should use --case-id to specify
-        # individual cases until the NGM query is implemented.
-        #
-        # Example future implementation:
-        #   from ngm.models import CourtCase  # or NGM SQL query
-        #   ngm_cases = CourtCase.objects.using("ngm").filter(
-        #       court_identifier="special",
-        #       registration_date_ad__gte=cutoff_date,
-        #   ).values_list("case_number", flat=True)
-        #   return [c for c in ngm_cases if c not in completed_case_ids]
-
-        logger.info(
-            "get_eligible_cases() not yet connected to NGM. "
-            "Use --case-id to specify cases manually."
+        eligible = (
+            Case.objects.filter(
+                case_type=CaseType.CORRUPTION,
+                state__in=[CaseState.DRAFT, CaseState.IN_REVIEW],
+            )
+            .exclude(case_id__in=completed_case_ids)
+            .values_list("case_id", flat=True)
         )
-        return []
+
+        return list(eligible)
+
+    def get_template_dir(self) -> Path:
+        return TEMPLATE_DIR
 
     def get_prd_template(self) -> dict:
         """Load prd-template.json from the template directory."""
@@ -177,3 +174,54 @@ class CIAACaseworkerWorkflow(Workflow):
     def get_mcp_config_path(self) -> Path | None:
         candidate = TEMPLATE_DIR / "etc" / "copilot-mcp-config.json"
         return candidate if candidate.exists() else None
+
+    def on_initialize(self, runner: str) -> None:
+        """
+        Provider-specific setup:
+
+        **kiro**: symlink the agent JSON into ``~/.kiro/agents/`` so kiro
+        can discover the ``jawafdehi-caseworker`` agent.
+        """
+        if runner == "kiro":
+            self._symlink_kiro_agent()
+
+    def _symlink_kiro_agent(self) -> None:
+        """Symlink the agent definition into ~/.kiro/agents/."""
+        agent_src = TEMPLATE_DIR / "agents" / "jawafdehi-caseworker.json"
+        agents_dir = Path.home() / ".kiro" / "agents"
+        agents_dir.mkdir(parents=True, exist_ok=True)
+        agent_dest = agents_dir / "jawafdehi-caseworker.json"
+
+        if agent_dest.is_symlink():
+            if agent_dest.resolve() == agent_src.resolve():
+                logger.debug("kiro agent symlink already correct: %s", agent_dest)
+                return
+            logger.warning("Removing stale kiro agent symlink: %s", agent_dest)
+            agent_dest.unlink()
+        elif agent_dest.exists():
+            logger.warning(
+                "kiro agent file already exists (not a symlink) — leaving in place: %s",
+                agent_dest,
+            )
+            return
+
+        os.symlink(agent_src, agent_dest)
+        logger.info("Symlinked kiro agent: %s → %s", agent_dest, agent_src)
+
+    def on_work_dir_created(self, case_dir: Path) -> None:
+        """
+        CIAA-specific work directory setup:
+
+        - ``sources/raw/``      — downloaded raw files (PDFs, HTML, etc.)
+        - ``sources/markdown/`` — converted markdown versions
+        - ``instructions``      — symlink pointing to this template's instructions/
+        """
+        (case_dir / "sources" / "raw").mkdir(parents=True, exist_ok=True)
+        (case_dir / "sources" / "markdown").mkdir(parents=True, exist_ok=True)
+
+        instructions_dest = case_dir / "instructions"
+        if not instructions_dest.exists():
+            try:
+                os.symlink(self.get_instructions_dir(), instructions_dest)
+            except OSError as exc:
+                logger.warning("Failed to symlink instructions: %s", exc)

@@ -331,7 +331,7 @@ NGM_QUERY_MAX_ROWS = int(os.getenv("NGM_QUERY_MAX_ROWS", "500"))
 
 # Case Workflow Configuration
 CASE_WORKFLOWS_WORK_DIR = os.getenv(
-    "CASE_WORKFLOWS_WORK_DIR", BASE_DIR / "workflows"
+    "CASE_WORKFLOWS_WORK_DIR", BASE_DIR / "workflow-runs"
 )
 
 # Cache Configuration

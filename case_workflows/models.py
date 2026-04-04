@@ -10,18 +10,16 @@ from django.utils import timezone
 
 class CaseWorkflowRun(models.Model):
     """
-    Tracks a single execution of a workflow template against a case.
+    Tracks a single execution of a workflow against a case.
 
-    Each ``(case_id, workflow_template_id)`` pair is unique — a case can
-    only have one run per template.  To re-run, delete/reset the existing
-    record.
+    Each ``(case_id, workflow_id)`` pair is unique — a case can only have
+    one run per workflow template.
 
-    The ``case_id`` field is a **generic string identifier** (not a FK),
-    because workflows may target external cases (e.g. NGM court-case
-    numbers) that don't yet have a corresponding Jawafdehi ``Case`` record.
+    The ``case_id`` field is a Jawafdehi ``Case.case_id`` string
+    (e.g. ``"case-abc123"``).
     """
 
-    workflow_id = models.CharField(
+    run_id = models.CharField(
         max_length=100,
         unique=True,
         db_index=True,
@@ -30,12 +28,12 @@ class CaseWorkflowRun(models.Model):
     case_id = models.CharField(
         max_length=200,
         db_index=True,
-        help_text="Case identifier (NGM case number, Jawafdehi case_id, etc.)",
+        help_text="Jawafdehi Case.case_id (e.g. case-abc123)",
     )
-    workflow_template_id = models.CharField(
+    workflow_id = models.CharField(
         max_length=100,
         db_index=True,
-        help_text="ID of the workflow template (matches directory name)",
+        help_text="Workflow template ID (matches directory name under workflows/)",
     )
     case_data = models.JSONField(
         default=dict,
@@ -81,18 +79,18 @@ class CaseWorkflowRun(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
-                fields=["case_id", "workflow_template_id"],
-                name="unique_case_workflow_template",
+                fields=["case_id", "workflow_id"],
+                name="unique_case_workflow",
             )
         ]
 
     def __str__(self):
         status = "✓" if self.is_complete else ("✗" if self.has_failed else "…")
-        return f"[{status}] {self.workflow_template_id} / {self.case_id}"
+        return f"[{status}] {self.workflow_id} / {self.case_id}"
 
     def save(self, *args, **kwargs):
-        if not self.workflow_id:
-            self.workflow_id = f"run-{uuid.uuid4().hex[:12]}"
+        if not self.run_id:
+            self.run_id = f"run-{uuid.uuid4().hex[:12]}"
         super().save(*args, **kwargs)
 
     def mark_started(self):
