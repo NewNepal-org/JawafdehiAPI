@@ -101,6 +101,7 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
         default=CaseState.DRAFT,
     )
     title = serializers.CharField(max_length=200)
+    slug = serializers.CharField(max_length=50, required=False, allow_blank=True)
     short_description = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
     thumbnail_url = serializers.URLField(
@@ -113,6 +114,9 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
     key_allegations = serializers.ListField(
         child=serializers.CharField(), required=False
     )
+    court_cases = serializers.ListField(child=serializers.CharField(), required=False)
+    missing_details = serializers.CharField(required=False, allow_blank=True)
+    bigo = serializers.IntegerField(required=False, allow_null=True)
     timeline = TimelineItemSerializer(many=True, required=False)
     evidence = EvidenceItemSerializer(many=True, required=False)
     notes = serializers.CharField(required=False, allow_blank=True)
@@ -127,6 +131,7 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
 class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     state = serializers.ChoiceField(choices=CaseState.choices, required=False)
     title = serializers.CharField(max_length=200)
+    slug = serializers.CharField(max_length=50, required=False, allow_blank=True)
     short_description = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
     thumbnail_url = serializers.URLField(
@@ -140,6 +145,9 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     key_allegations = serializers.ListField(
         child=serializers.CharField(), required=False
     )
+    court_cases = serializers.ListField(child=serializers.CharField(), required=False)
+    missing_details = serializers.CharField(required=False, allow_blank=True)
+    bigo = serializers.IntegerField(required=False, allow_null=True)
     timeline = TimelineItemSerializer(many=True, required=False)
     evidence = EvidenceItemSerializer(many=True, required=False)
     alleged_entity_ids = serializers.ListField(

@@ -7,9 +7,10 @@ See: .kiro/specs/accountability-platform-core/design.md
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.core.validators import URLValidator
+from django.core.validators import RegexValidator, URLValidator
 from django.utils import timezone
 import mimetypes
+import re
 import uuid
 
 from .fields import (
@@ -48,6 +49,44 @@ def validate_url_list(value):
             raise ValidationError("URLs cannot be blank or whitespace-only.")
 
         validator(stripped)
+
+
+def validate_court_case_list(value):
+    """
+    Validate that court_cases is a list of strings in <court_identifier>:<case_number> format.
+
+    For now, court_identifier is restricted to: supreme, special.
+    """
+    if value in (None, []):
+        return
+
+    if not isinstance(value, list):
+        raise ValidationError("court_cases must be a list of strings.")
+
+    allowed_courts = {"supreme", "special"}
+    for item in value:
+        if not isinstance(item, str):
+            raise ValidationError(
+                "Each court case entry must be a string in '<court_identifier>:<case_number>' format."
+            )
+
+        entry = item.strip()
+        if ":" not in entry:
+            raise ValidationError(
+                f"Invalid court case '{item}'. Expected format '<court_identifier>:<case_number>'."
+            )
+
+        court_identifier, case_number = entry.split(":", 1)
+        if court_identifier not in allowed_courts:
+            allowed = ", ".join(sorted(allowed_courts))
+            raise ValidationError(
+                f"Invalid court identifier '{court_identifier}' in '{item}'. Allowed values: {allowed}."
+            )
+
+        if not case_number.strip():
+            raise ValidationError(
+                f"Invalid court case '{item}'. case_number cannot be empty."
+            )
 
 
 # File upload configuration
@@ -414,6 +453,26 @@ class Case(models.Model):
     short_description = models.TextField(
         blank=True, help_text="Short description/summary of the case"
     )
+    slug = models.CharField(
+        max_length=50,
+        unique=True,
+        blank=True,
+        null=True,
+        db_index=True,
+        validators=[
+            RegexValidator(
+                regex=r"^(?!\d)[A-Za-z0-9-]{1,50}$",
+                message=(
+                    "Slug must be 1-50 characters, can only use letters, numbers, and '-', "
+                    "and cannot start with a digit."
+                ),
+            )
+        ],
+        help_text=(
+            "A slug will go in the URL. For CIAA corruption cases, you can prepend the "
+            "special court case number (e.g. case-case-078-WC-0123-sunil-poudel)."
+        ),
+    )
     thumbnail_url = models.URLField(
         blank=True,
         max_length=500,
@@ -446,6 +505,21 @@ class Case(models.Model):
     )
     key_allegations = TextListField(
         blank=True, help_text="List of key allegation statements"
+    )
+    court_cases = models.JSONField(
+        default=list,
+        blank=True,
+        validators=[validate_court_case_list],
+        help_text="List of linked court cases in '<court_identifier>:<case_number>' format",
+    )
+    missing_details = models.TextField(
+        blank=True,
+        help_text="Multiline notes describing what details are still missing",
+    )
+    bigo = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Optional numeric bigo value (integer)",
     )
 
     # Structured data fields
@@ -506,6 +580,8 @@ class Case(models.Model):
             # Generate unique case_id for new cases
             self.case_id = f"case-{uuid.uuid4().hex[:12]}"
 
+        self.slug = (self.slug or "").strip() or None
+
         # Validate title is not empty
         if not self.title or not self.title.strip():
             raise ValidationError("Title cannot be empty")
@@ -544,6 +620,15 @@ class Case(models.Model):
             if not self.description or not self.description.strip():
                 errors["description"] = (
                     "Description is required for IN_REVIEW or PUBLISHED state"
+                )
+
+        # Slug is mandatory before publishing.
+        if self.state == CaseState.PUBLISHED:
+            if not self.slug:
+                errors["slug"] = "Slug is required before publishing a case"
+            elif self.slug.isnumeric() or re.match(r"^\d", self.slug):
+                errors["slug"] = (
+                    "Slug cannot be purely numeric and cannot start with a digit"
                 )
 
         if errors:

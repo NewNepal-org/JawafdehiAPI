@@ -244,6 +244,10 @@ class CaseAdminForm(forms.ModelForm):
                     "Description is required for IN_REVIEW or PUBLISHED state"
                 )
 
+        if new_state == CaseState.PUBLISHED:
+            if not (cleaned_data.get("slug") or "").strip():
+                errors["slug"] = "Slug is required before publishing a case"
+
         if errors:
             raise ValidationError(errors)
 
@@ -356,13 +360,14 @@ class CaseAdmin(admin.ModelAdmin):
         css = {"all": ("admin/css/case_admin.css",)}
 
     list_display = [
-        "case_id",
+        "slug_link",
         "title",
         "case_type",
         "state_badge",
         "created_at",
         "updated_at",
     ]
+    list_display_links = ["title"]
 
     list_filter = [
         "state",
@@ -371,6 +376,7 @@ class CaseAdmin(admin.ModelAdmin):
     ]
 
     search_fields = [
+        "slug",
         "case_id",
         "title",
         "description",
@@ -389,6 +395,7 @@ class CaseAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "case_id",
+                    "slug",
                     "title",
                     "short_description",
                     "thumbnail_url",
@@ -414,6 +421,9 @@ class CaseAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "key_allegations",
+                    "court_cases",
+                    "missing_details",
+                    "bigo",
                     "timeline",
                     "description",
                     "tags",
@@ -456,6 +466,19 @@ class CaseAdmin(admin.ModelAdmin):
         )
 
     state_badge.short_description = "State"
+
+    def slug_link(self, obj):
+        """Display slug as an external link to the public case details page."""
+        if not obj.slug:
+            return "-"
+        return format_html(
+            '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
+            f"https://jawafdehi.org/case/{obj.slug}",
+            obj.slug,
+        )
+
+    slug_link.short_description = "Slug"
+    slug_link.admin_order_field = "slug"
 
     def version_info_display(self, obj):
         """Display version info in a readable format."""
