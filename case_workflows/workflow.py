@@ -12,9 +12,10 @@ import shutil
 import subprocess
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from django.conf import settings
 
@@ -38,6 +39,28 @@ class WorkflowStep:
     description: str
     priority: int
     acceptance_criteria: List[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Progress
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Progress:
+    """Tracks execution state for a single workflow step.
+
+    The agent writes to ``progress.json`` updating these fields as it works.
+    The runner back-fills ``log_file_name`` after each iteration.
+    """
+
+    story: str                      # User story code, e.g. "US-001"
+    story_title: str                # Human-readable title
+    success: bool = False
+    notes: str = ""                 # Multi-line markdown written by the agent
+    started: Optional[str] = None   # ISO 8601 datetime set by the agent
+    completed: Optional[str] = None # ISO 8601 datetime set by the agent
+    log_file_name: str = ""         # e.g. "001_20260404T094100.log"; set by runner
 
 
 # ---------------------------------------------------------------------------
@@ -95,10 +118,30 @@ class Workflow(ABC):
         """
         ...
 
-    @abstractmethod
-    def get_prd_template(self) -> dict:
-        """Return the PRD template dict to seed ``prd.json`` in each work dir."""
-        ...
+    def get_prd(self) -> dict:
+        """Return the PRD dict to seed ``prd.json`` in each work dir.
+
+        Read-only reference for the agent — completion state lives in
+        ``progress.json``, not here.
+        Built dynamically from ``self.steps`` — no static JSON file required.
+        """
+        return {
+            "project": "Jawafdehi",
+            "description": f"Agentic Workflow Plan: {self.display_name}",
+            "userStories": [asdict(step) for step in self.steps],
+        }
+
+    def get_progress_json_template(self) -> dict:
+        """Return the initial ``progress.json`` schema for a new run.
+
+        ``progress`` is an **append-only log** — each agent invocation adds
+        one entry for the story it worked on.  The runner is the sole writer.
+        """
+        return {
+            "is_complete": False,
+            "failed": False,
+            "progress": [],
+        }
 
     # ------------------------------------------------------------------
     # Optional overrides
@@ -175,8 +218,8 @@ class Workflow(ABC):
         Create the work directory for a run and populate base files.
 
         - If the directory already exists, logs a warning and deletes it
-        - Copies the PRD template as ``prd.json``
-        - Creates an empty ``progress.log``
+        - Writes ``prd.json`` (read-only spec for the agent)
+        - Writes ``progress.json`` (agent updates this to track completion)
         - Calls ``on_work_dir_created(case_dir)`` for template-specific setup
 
         Persists ``run.work_dir`` and returns the directory path.
@@ -191,12 +234,13 @@ class Workflow(ABC):
 
         case_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy PRD template
+        # Static PRD spec (agent reads, never writes)
         with open(case_dir / "prd.json", "w") as f:
-            json.dump(self.get_prd_template(), f, indent=2)
+            json.dump(self.get_prd(), f, indent=2)
 
-        # Empty progress log
-        (case_dir / "progress.log").write_text("")
+        # Progress tracking (agent writes, runner reads)
+        with open(case_dir / "progress.json", "w") as f:
+            json.dump(self.get_progress_json_template(), f, indent=2)
 
         # Template-specific extra setup
         self.on_work_dir_created(case_dir)
@@ -219,7 +263,15 @@ class Workflow(ABC):
         runner: str = "copilot",
     ) -> None:
         """
-        Main execution loop: check PRD completion, invoke agent CLI, repeat.
+        Main execution loop — two phases per iteration:
+
+        **Phase 1** ``_run_agent``: invoke the agent CLI and capture its output.
+        The agent is forbidden from writing to ``prd.json`` or ``progress.json``;
+        it communicates outcomes exclusively through stdout markers.
+
+        **Phase 2** ``_review_and_update_progress``: the runner reads the agent's
+        stdout, writes the iteration log, and is the sole writer of
+        ``progress.json``.
 
         Updates ``run`` on completion or failure.
         """
@@ -239,43 +291,47 @@ class Workflow(ABC):
 
         try:
             while iteration_count < max_iterations:
-                # Check PRD completion
-                prd_state = self._read_prd(case_dir)
-                if prd_state and prd_state.get("is_complete", False):
-                    if prd_state.get("failed", False):
+                # Check progress.json before each iteration (updated by previous Phase 2)
+                progress_data = self._read_progress(case_dir)
+                if progress_data and progress_data.get("is_complete", False):
+                    if progress_data.get("failed", False):
                         run.mark_failed(
-                            error_message="Workflow marked as failed in prd.json",
-                            case_data=prd_state,
+                            error_message="Workflow marked as failed in progress.json",
+                            case_data=progress_data,
                         )
-                        logger.warning("Workflow %s failed (prd.json flag)", run.case_id)
+                        logger.warning("Workflow %s failed (progress.json flag)", run.case_id)
                     else:
-                        run.mark_complete(case_data=prd_state)
+                        run.mark_complete(case_data=progress_data)
                         logger.info("Workflow %s completed successfully", run.case_id)
                     return
 
+                iteration_count += 1
                 logger.info(
-                    "Iteration %d/%d for %s",
-                    iteration_count + 1,
+                    "Iteration %d/%d | case %s",
+                    iteration_count,
                     max_iterations,
                     run.case_id,
                 )
 
                 cmd = self._build_command(agent_bin, runner, case_dir)
 
+                # ── Phase 1: run the agent (reads prd.json + progress.json itself) ─
                 try:
-                    result = subprocess.run(cmd)
-                    exit_code = result.returncode
+                    result = self._run_agent(cmd)
                 except KeyboardInterrupt:
                     logger.warning("Workflow interrupted by user")
                     run.mark_failed(error_message="Interrupted by user")
                     return
 
-                if exit_code != 0:
-                    if exit_code == 130:
-                        logger.warning("Workflow interrupted (exit 130)")
-                        run.mark_failed(error_message="Interrupted (exit 130)")
-                        return
+                if result.returncode == 130:
+                    logger.warning("Workflow interrupted (exit 130)")
+                    run.mark_failed(error_message="Interrupted (exit 130)")
+                    return
 
+                # ── Phase 2: review stdout and append to progress.json ──────
+                self._review_and_update_progress(case_dir, result, iteration_count)
+
+                if result.returncode != 0:
                     retry_count += 1
                     if retry_count > 3:
                         msg = f"{runner} CLI failed {retry_count} times consecutively"
@@ -286,21 +342,20 @@ class Workflow(ABC):
                     logger.warning(
                         "%s CLI exited %d — retry %d/3 in 10s",
                         runner,
-                        exit_code,
+                        result.returncode,
                         retry_count,
                     )
                     time.sleep(10)
                     continue
 
                 retry_count = 0
-                iteration_count += 1
                 time.sleep(2)
 
             # Exhausted iterations
-            prd_state = self._read_prd(case_dir) or {}
+            progress_data = self._read_progress(case_dir) or {}
             run.mark_failed(
                 error_message=f"Reached max iterations ({max_iterations})",
-                case_data=prd_state,
+                case_data=progress_data,
             )
             logger.warning("Max iterations reached for %s", run.case_id)
 
@@ -362,14 +417,154 @@ class Workflow(ABC):
             ]
 
     @staticmethod
-    def _read_prd(case_dir: Path) -> dict | None:
-        """Read and parse ``prd.json`` from the work directory."""
-        prd_file = case_dir / "prd.json"
-        if not prd_file.exists():
+    def _run_agent(cmd: list[str]) -> subprocess.CompletedProcess:
+        """Phase 1 — execute the agent CLI and capture its output.
+
+        The agent must NOT write to ``prd.json`` or ``progress.json``.
+        All progress is communicated through stdout markers (see
+        ``_parse_progress_from_stdout``).
+        """
+        return subprocess.run(cmd, capture_output=True, text=True)
+
+    def _review_and_update_progress(
+        self,
+        case_dir: Path,
+        result: subprocess.CompletedProcess,
+        iteration: int,
+    ) -> None:
+        """Phase 2 — sole writer of ``progress.json``.
+
+        1. Writes the iteration log to ``logs/``.
+        2. Parses stdout for a ``WORKFLOW_PROGRESS`` marker emitted by the agent.
+           The agent is responsible for reading ``prd.json`` and ``progress.json``
+           to decide which story it worked on; the runner does not impose this.
+        3. **Appends** the new ``Progress`` entry to the log if a marker was found.
+           If the agent emits no marker, logs a warning and skips appending.
+        4. Infers ``is_complete`` when every step id has a ``success: true``
+           entry anywhere in the log.
+        5. Checks for ``WORKFLOW_FAILED`` to short-circuit the loop.
+        """
+        log_filename = self._write_iteration_log(
+            case_dir, iteration, result.stdout, result.stderr
+        )
+
+        data = self._read_progress(case_dir)
+        if not data:
+            logger.warning("progress.json missing — cannot apply updates")
+            return
+
+        # Parse the single WORKFLOW_PROGRESS marker from stdout
+        updates = self._parse_progress_from_stdout(result.stdout)
+        if not updates:
+            logger.warning(
+                "Iteration %d: no WORKFLOW_PROGRESS marker in stdout — nothing appended",
+                iteration,
+            )
+        else:
+            raw = updates[0]  # agent works on exactly one story per run
+            new_entry = asdict(
+                Progress(
+                    story=raw.get("story", ""),
+                    story_title=raw.get("story_title", ""),
+                    success=bool(raw.get("success", False)),
+                    notes=raw.get("notes", ""),
+                    started=raw.get("started"),
+                    completed=raw.get("completed"),
+                    log_file_name=log_filename,
+                )
+            )
+            data["progress"].append(new_entry)
+
+        # Check for workflow failure signal
+        failure_reason = self._parse_failure_from_stdout(result.stdout)
+        if failure_reason:
+            data["failed"] = True
+            data["is_complete"] = True
+            logger.warning("Agent signalled workflow failure: %s", failure_reason)
+
+        # Infer completion when every defined step has a success=true entry
+        if not data.get("is_complete"):
+            succeeded = {e["story"] for e in data["progress"] if e.get("success")}
+            if all(step.id in succeeded for step in self.steps):
+                data["is_complete"] = True
+
+        try:
+            with open(case_dir / "progress.json", "w") as f:
+                json.dump(data, f, indent=2)
+        except OSError as exc:
+            logger.warning("Could not write progress.json: %s", exc)
+
+    @staticmethod
+    def _parse_progress_from_stdout(stdout: str) -> list[dict]:
+        """Scan stdout for ``WORKFLOW_PROGRESS: <json>`` lines.
+
+        The agent must emit one such line per completed step, e.g.::
+
+            WORKFLOW_PROGRESS: {"story": "US-001", "success": true,
+                                "notes": "Done.", "started": "...",
+                                "completed": "..."}
+        """
+        updates = []
+        for line in stdout.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("WORKFLOW_PROGRESS:"):
+                payload = stripped[len("WORKFLOW_PROGRESS:"):].strip()
+                try:
+                    updates.append(json.loads(payload))
+                except json.JSONDecodeError:
+                    logger.warning("Malformed WORKFLOW_PROGRESS line: %s", stripped)
+        return updates
+
+    @staticmethod
+    def _parse_failure_from_stdout(stdout: str) -> str | None:
+        """Scan stdout for a ``WORKFLOW_FAILED: <reason>`` line.
+
+        The agent emits this to signal an unrecoverable failure, e.g.::
+
+            WORKFLOW_FAILED: Could not download required source documents.
+        """
+        for line in stdout.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("WORKFLOW_FAILED:"):
+                return stripped[len("WORKFLOW_FAILED:"):].strip()
+        return None
+
+    @staticmethod
+    def _read_progress(case_dir: Path) -> dict | None:
+        """Read and parse ``progress.json`` from the work directory."""
+        progress_file = case_dir / "progress.json"
+        if not progress_file.exists():
             return None
         try:
-            with open(prd_file) as f:
+            with open(progress_file) as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Could not read prd.json: %s", exc)
+            logger.warning("Could not read progress.json: %s", exc)
             return None
+
+    @staticmethod
+    def _write_iteration_log(
+        case_dir: Path,
+        iteration: int,
+        stdout: str,
+        stderr: str,
+    ) -> str:
+        """Write captured agent output to ``logs/<n>_<timestamp>.log``.
+
+        Returns the bare filename so it can be stored in ``progress.json`` entries.
+        """
+        logs_dir = case_dir / "logs"
+        logs_dir.mkdir(exist_ok=True)
+
+        timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
+        log_filename = f"{iteration:03d}_{timestamp}.log"
+
+        parts = []
+        if stdout:
+            parts.append(stdout)
+        if stderr:
+            parts.append("--- STDERR ---\n" + stderr)
+
+        (logs_dir / log_filename).write_text("\n".join(parts))
+        logger.debug("Iteration log written: %s", log_filename)
+        return log_filename

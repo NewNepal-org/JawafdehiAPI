@@ -8,7 +8,6 @@ Original source:   ``.agents/caseworker/``
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from pathlib import Path
@@ -27,7 +26,7 @@ class CIAACaseworkerWorkflow(Workflow):
     """
     Workflow for processing CIAA Special Court corruption cases.
 
-    Steps mirror the user stories in ``prd-template.json``:
+    Steps (which become ``prd.json`` user stories at runtime):
 
     1. Initialize casework folder & verify eligibility
     2. Fetch judicial data (NGM extract, CIAA press release, charge sheet, bolpatra)
@@ -157,12 +156,6 @@ class CIAACaseworkerWorkflow(Workflow):
 
     def get_template_dir(self) -> Path:
         return TEMPLATE_DIR
-
-    def get_prd_template(self) -> dict:
-        """Load prd-template.json from the template directory."""
-        prd_path = TEMPLATE_DIR / "etc" / "prd-template.json"
-        with open(prd_path) as f:
-            return json.load(f)
 
     def get_instructions_dir(self) -> Path:
         """Return the instructions directory path."""
