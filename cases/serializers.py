@@ -10,8 +10,14 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 
-from .models import (Case, CaseEntityRelationship, CaseState, DocumentSource,
-                     Feedback, JawafEntity)
+from .models import (
+    Case,
+    CaseEntityRelationship,
+    CaseState,
+    DocumentSource,
+    Feedback,
+    JawafEntity,
+)
 
 logger = logging.getLogger(__name__)
 

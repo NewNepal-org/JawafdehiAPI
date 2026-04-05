@@ -11,8 +11,12 @@ from django.db import connection, transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import (OpenApiExample, OpenApiParameter,
-                                   extend_schema, extend_schema_view)
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_view,
+)
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -22,15 +26,27 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from .admin import CaseAdminForm
-from .caseworker_serializers import (BLOCKED_PATH_PREFIXES,
-                                     CaseCreateSerializer, CasePatchSerializer)
-from .models import (Case, CaseEntityRelationship, CaseState, DocumentSource,
-                     JawafEntity, RelationshipType)
-from .rules.predicates import (can_change_case, can_transition_case_state,
-                               can_view_case)
-from .serializers import (CaseDetailSerializer, CaseSerializer,
-                          DocumentSourceSerializer, FeedbackSerializer,
-                          JawafEntitySerializer)
+from .caseworker_serializers import (
+    BLOCKED_PATH_PREFIXES,
+    CaseCreateSerializer,
+    CasePatchSerializer,
+)
+from .models import (
+    Case,
+    CaseEntityRelationship,
+    CaseState,
+    DocumentSource,
+    JawafEntity,
+    RelationshipType,
+)
+from .rules.predicates import can_change_case, can_transition_case_state, can_view_case
+from .serializers import (
+    CaseDetailSerializer,
+    CaseSerializer,
+    DocumentSourceSerializer,
+    FeedbackSerializer,
+    JawafEntitySerializer,
+)
 
 
 @extend_schema_view(
