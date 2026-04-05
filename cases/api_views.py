@@ -16,7 +16,7 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -528,21 +528,47 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         """,
         tags=["sources"],
     ),
+    create=extend_schema(
+        summary="Create a new document source",
+        description="""
+        Create a new document source with an optional file upload.
+        
+        Requires authentication. Accepts multipart form data.
+        """,
+        tags=["sources"],
+    ),
 )
-class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
+class DocumentSourceViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
     """
-    Public read-only API for DocumentSources.
+    Public API for DocumentSources.
 
     Provides:
     - List endpoint: GET /api/sources/
     - Retrieve endpoint: GET /api/sources/{id_or_source_id}/
+    - Create endpoint: POST /api/sources/
 
     The retrieve endpoint accepts either the database id or the source_id.
     Only sources associated with published or in-review cases are accessible.
     """
 
-    serializer_class = DocumentSourceSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     lookup_field = "pk"
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            from .serializers import DocumentSourceCreateSerializer
+            return DocumentSourceCreateSerializer
+        return DocumentSourceSerializer
 
     def get_queryset(self):
         """
@@ -643,14 +669,29 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         """,
         tags=["entities"],
     ),
+    create=extend_schema(
+        summary="Create an entity",
+        description="""
+        Create a new JawafEntity.
+        
+        Requires authentication.
+        """,
+        tags=["entities"],
+    ),
 )
-class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
+class JawafEntityViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
     """
-    Public read-only API for JawafEntities.
+    Public API for JawafEntities.
 
     Provides:
     - List endpoint: GET /api/entities/ (filtered by case association)
     - Retrieve endpoint: GET /api/entities/{id}/
+    - Create endpoint: POST /api/entities/
 
     Search:
     - Full-text search across nes_id and display_name
@@ -659,9 +700,19 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
     Entities must appear in alleged_entities or related_entities (not locations).
     """
 
-    serializer_class = JawafEntitySerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["nes_id", "display_name"]
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            from .serializers import JawafEntityCreateSerializer
+            return JawafEntityCreateSerializer
+        return JawafEntitySerializer
 
     def get_queryset(self):
         """

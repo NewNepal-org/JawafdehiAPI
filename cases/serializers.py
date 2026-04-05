@@ -477,3 +477,41 @@ class FeedbackSerializer(serializers.ModelSerializer):
             "submittedAt": data["submittedAt"],
             "message": "Thank you for your feedback! We will review it and get back to you if needed.",
         }
+
+
+class JawafEntityCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating JawafEntity records via API."""
+
+    class Meta:
+        model = JawafEntity
+        fields = ["id", "nes_id", "display_name"]
+        read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        has_nes_id = bool(attrs.get("nes_id") and attrs.get("nes_id").strip())
+        has_display_name = bool(attrs.get("display_name") and attrs.get("display_name").strip())
+
+        if not has_nes_id and not has_display_name:
+            raise serializers.ValidationError("Entity must have either nes_id or display_name")
+        return attrs
+
+
+class DocumentSourceCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating DocumentSource records with file uploads via API."""
+
+    class Meta:
+        model = DocumentSource
+        fields = [
+            "id",
+            "source_id",
+            "title",
+            "description",
+            "source_type",
+            "uploaded_file",
+        ]
+        read_only_fields = ["id", "source_id"]
+
+    def validate_title(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Title is required and cannot be empty")
+        return value.strip()
