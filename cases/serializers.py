@@ -5,17 +5,13 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 import logging
-from rest_framework import serializers
-from drf_spectacular.utils import extend_schema_field, inline_serializer
+
 from drf_spectacular.types import OpenApiTypes
-from .models import (
-    Case,
-    DocumentSource,
-    JawafEntity,
-    CaseState,
-    Feedback,
-    CaseEntityRelationship,
-)
+from drf_spectacular.utils import extend_schema_field, inline_serializer
+from rest_framework import serializers
+
+from .models import (Case, CaseEntityRelationship, CaseState, DocumentSource,
+                     Feedback, JawafEntity)
 
 logger = logging.getLogger(__name__)
 
@@ -488,10 +484,16 @@ class JawafEntityCreateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
     def validate(self, attrs):
-        has_nes_id = bool(attrs.get("nes_id") and attrs.get("nes_id").strip())
-        has_display_name = bool(
-            attrs.get("display_name") and attrs.get("display_name").strip()
-        )
+        if "nes_id" in attrs:
+            val = attrs.get("nes_id")
+            attrs["nes_id"] = val.strip() if val and val.strip() else None
+
+        if "display_name" in attrs:
+            val = attrs.get("display_name")
+            attrs["display_name"] = val.strip() if val and val.strip() else None
+
+        has_nes_id = bool(attrs.get("nes_id"))
+        has_display_name = bool(attrs.get("display_name"))
 
         if not has_nes_id and not has_display_name:
             raise serializers.ValidationError(
