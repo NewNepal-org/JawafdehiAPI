@@ -72,10 +72,9 @@ class TestWorkflowRegistry:
 
     def test_prd_template_loads(self):
         wf = get_workflow("ciaa_caseworker")
-        prd = wf.get_prd_template()
+        prd = wf.get_prd()
         assert "userStories" in prd
         assert prd["project"] == "Jawafdehi"
-        assert prd["is_complete"] is False
 
     def test_instructions_dir_exists(self):
         wf = get_workflow("ciaa_caseworker")

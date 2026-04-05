@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, List, Optional
 
 from django.conf import settings
 
+from case_workflows.storage_utils import download_workflow_outputs, upload_workflow_outputs
+
 if TYPE_CHECKING:
     from case_workflows.models import CaseWorkflowRun
 
@@ -142,6 +144,9 @@ class Workflow(ABC):
             "is_complete": False,
             "failed": False,
             "progress": [],
+            # Keyed by local relative path string; value is a file tracking record
+            # with "backend_path", "size" (bytes), and "checksum" (sha256:<hex>).
+            "files": {},
         }
 
     # ------------------------------------------------------------------
@@ -252,8 +257,13 @@ class Workflow(ABC):
             json.dump(self.get_prd(), f, indent=2, ensure_ascii=False)
 
         # Progress tracking (agent writes, runner reads)
+        progress_data = run.case_data if run.case_data else self.get_progress_json_template()
         with open(case_dir / "progress.json", "w") as f:
-            json.dump(self.get_progress_json_template(), f, indent=2, ensure_ascii=False)
+            json.dump(progress_data, f, indent=2, ensure_ascii=False)
+
+        # Download existing tracked files if present
+        if progress_data.get("files"):
+            download_workflow_outputs(case_dir, progress_data["files"])
 
         # Template-specific extra setup
         self.on_work_dir_created(case_dir)
@@ -342,7 +352,7 @@ class Workflow(ABC):
                     raise KeyboardInterrupt()  # agent exited from SIGINT; surface to caller
 
                 # ── Phase 2: review stdout and append to progress.json ──────
-                self._review_and_update_progress(case_dir, result, iteration_count)
+                self._review_and_update_progress(case_dir, run, result, iteration_count)
 
                 if result.returncode != 0:
                     retry_count += 1
@@ -380,6 +390,21 @@ class Workflow(ABC):
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _upload_outputs(case_dir: Path, case_id: str, previous_files: dict[str, dict] | None = None) -> dict[str, dict]:
+        """Upload all non-excluded files in *case_dir* to ``default_storage``.
+
+        Returns the dictionary of file records from storage_utils.
+        """
+        try:
+            return upload_workflow_outputs(case_dir, case_id, previous_files)
+        except Exception as exc:  # noqa: BLE001
+            # Upload failures must never crash the workflow run record.
+            logger.error(
+                "Failed to upload workflow outputs for %s: %s", case_id, exc
+            )
+            return {}
 
     def _resolve_agent_binary(self, runner: str) -> str:
         """Locate the agent CLI binary on PATH. Raises ``RuntimeError`` if missing."""
@@ -480,6 +505,7 @@ class Workflow(ABC):
     def _review_and_update_progress(
         self,
         case_dir: Path,
+        run: CaseWorkflowRun,
         result: subprocess.CompletedProcess,
         iteration: int,
     ) -> None:
@@ -539,9 +565,19 @@ class Workflow(ABC):
             if all(step.id in succeeded for step in self.steps):
                 data["is_complete"] = True
 
+        # Upload workflow outputs and merge into files dictionary
+        previous_files = data.get("files", {})
+        uploaded_records = self._upload_outputs(case_dir, run.case_id, previous_files)
+        if "files" not in data:
+            data["files"] = {}
+        data["files"].update(uploaded_records)
+
         try:
             with open(case_dir / "progress.json", "w") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
+                
+            run.case_data = data
+            run.save(update_fields=["case_data", "updated_at"])
         except OSError as exc:
             logger.warning("Could not write progress.json: %s", exc)
 

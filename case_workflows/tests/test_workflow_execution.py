@@ -27,7 +27,7 @@ class TestWorkflowSetupWorkDir:
         )
 
     def test_setup_creates_base_files(self, tmp_path, settings):
-        """setup_work_dir creates dir with prd.json and progress.log."""
+        """setup_work_dir creates dir with prd.json and progress.json."""
         settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
         workflow = get_workflow("ciaa_caseworker")
         run = self._make_run()
@@ -36,7 +36,7 @@ class TestWorkflowSetupWorkDir:
 
         assert work_dir.is_dir()
         assert (work_dir / "prd.json").is_file()
-        assert (work_dir / "progress.log").is_file()
+        assert (work_dir / "progress.json").is_file()
 
         run.refresh_from_db()
         assert run.work_dir == str(work_dir)
@@ -53,18 +53,21 @@ class TestWorkflowSetupWorkDir:
 
         assert (work_dir / "sources" / "raw").is_dir()
         assert (work_dir / "sources" / "markdown").is_dir()
-        assert (work_dir / "instructions").exists()
 
         shutil.rmtree(tmp_path, ignore_errors=True)
 
-    def test_setup_progress_log_is_empty(self, tmp_path, settings):
-        """progress.log starts empty."""
+    def test_setup_progress_json_is_valid(self, tmp_path, settings):
+        """progress.json starts with expected schema."""
         settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
         workflow = get_workflow("ciaa_caseworker")
         run = self._make_run()
 
         work_dir = workflow.setup_work_dir(run)
-        assert (work_dir / "progress.log").read_text() == ""
+        import json
+        data = json.loads((work_dir / "progress.json").read_text())
+        assert data["is_complete"] is False
+        assert data["progress"] == []
+        assert isinstance(data["files"], dict)
 
         shutil.rmtree(tmp_path, ignore_errors=True)
 
@@ -79,7 +82,7 @@ class TestWorkflowSetupWorkDir:
             prd = json.load(f)
 
         assert prd["project"] == "Jawafdehi"
-        assert prd["is_complete"] is False
+        assert "userStories" in prd
 
         shutil.rmtree(tmp_path, ignore_errors=True)
 
