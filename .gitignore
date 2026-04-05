@@ -11,4 +11,5 @@ staticfiles/
 media/jawafdehi/sources/
 tmp/
 /nes-db
-/media
+/media/
+/workflow-runs/
