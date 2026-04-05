@@ -567,6 +567,7 @@ class DocumentSourceViewSet(
     def get_serializer_class(self):
         if self.action == "create":
             from .serializers import DocumentSourceCreateSerializer
+
             return DocumentSourceCreateSerializer
         return DocumentSourceSerializer
 
@@ -711,6 +712,7 @@ class JawafEntityViewSet(
     def get_serializer_class(self):
         if self.action == "create":
             from .serializers import JawafEntityCreateSerializer
+
             return JawafEntityCreateSerializer
         return JawafEntitySerializer
 

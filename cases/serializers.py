@@ -489,10 +489,14 @@ class JawafEntityCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         has_nes_id = bool(attrs.get("nes_id") and attrs.get("nes_id").strip())
-        has_display_name = bool(attrs.get("display_name") and attrs.get("display_name").strip())
+        has_display_name = bool(
+            attrs.get("display_name") and attrs.get("display_name").strip()
+        )
 
         if not has_nes_id and not has_display_name:
-            raise serializers.ValidationError("Entity must have either nes_id or display_name")
+            raise serializers.ValidationError(
+                "Entity must have either nes_id or display_name"
+            )
         return attrs
 
 
