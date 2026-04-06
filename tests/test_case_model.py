@@ -352,3 +352,52 @@ def test_slug_auto_generated_during_validation_for_published_cases():
     assert case.slug, "Slug should be auto-generated during validation"
     assert len(case.slug) > 0, "Generated slug should not be empty"
     assert "-" in case.slug, "Generated slug should contain hyphen separator"
+
+
+@pytest.mark.django_db
+def test_multiple_drafts_without_slug_no_collision():
+    """
+    Multiple draft cases without slugs should not cause unique constraint violations.
+    Empty/whitespace slugs should be normalized to None.
+    """
+    # Create first draft without slug
+    draft1 = create_case_with_entities(
+        title="Draft Case 1",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 1"],
+        description="Test description",
+        case_type=CaseType.CORRUPTION,
+    )
+    draft1.state = CaseState.DRAFT
+    draft1.slug = ""  # Explicitly set to empty string
+    draft1.save()
+    draft1.refresh_from_db()
+    assert draft1.slug is None, "Empty slug should be normalized to None"
+
+    # Create second draft without slug - should not raise uniqueness error
+    draft2 = create_case_with_entities(
+        title="Draft Case 2",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 2"],
+        description="Test description 2",
+        case_type=CaseType.CORRUPTION,
+    )
+    draft2.state = CaseState.DRAFT
+    draft2.slug = "   "  # Whitespace-only slug
+    draft2.save()
+    draft2.refresh_from_db()
+    assert draft2.slug is None, "Whitespace slug should be normalized to None"
+
+    # Create third draft without slug
+    draft3 = create_case_with_entities(
+        title="Draft Case 3",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 3"],
+        description="Test description 3",
+        case_type=CaseType.CORRUPTION,
+    )
+    draft3.state = CaseState.DRAFT
+    # Don't set slug at all
+    draft3.save()
+    draft3.refresh_from_db()
+    assert draft3.slug is None, "Unset slug should remain None"
