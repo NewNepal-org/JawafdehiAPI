@@ -67,12 +67,13 @@ def validate_court_cases(value):
 
     Examples:
         Valid: ["supreme:2078-CR-0123"],
-               ["district-kathmandu:2077-WO-0456", "high-patan:2078-AP-0789"],
+               ["special:2076-CR-0456"],
                []
         Invalid: "supreme:2078-CR-0123" (string instead of list),
                  ["invalid-court:123"] (unknown court identifier),
                  ["supreme-2078-CR-0123"] (missing colon),
-                 ["supreme:2078:CR:0123"] (multiple colons)
+                 ["supreme:2078:CR:0123"] (multiple colons),
+                 ["supreme:"] (empty case number)
     """
     # Check if value is a list
     if not isinstance(value, list):
@@ -92,6 +93,12 @@ def validate_court_cases(value):
 
         # Split and validate court identifier
         court_identifier, case_number = item.split(":", 1)
+
+        # Validate case_number is not empty
+        if not case_number or not case_number.strip():
+            raise ValidationError(
+                "Case number cannot be empty in court case reference"
+            )
 
         if court_identifier not in VALID_COURT_IDENTIFIERS:
             valid_list = ", ".join(VALID_COURT_IDENTIFIERS)
