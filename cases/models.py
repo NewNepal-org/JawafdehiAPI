@@ -488,7 +488,7 @@ class Case(models.Model):
         unique=True,
         db_index=True,
         validators=[validate_slug],
-        help_text="URL-friendly unique identifier (immutable once set, required for published cases)",
+        help_text="A slug will go in the URL (e.g., jawafdehi.org/case/YOUR-SLUG). For CIAA corruption cases, you can prepend the special court case number (e.g., case-078-WC-0123-sunil-poudel). Must start with a letter and contain only letters, numbers, and hyphens (max 50 characters). Immutable once set, required for published cases.",
     )
     court_cases = models.JSONField(
         blank=True,
