@@ -32,9 +32,9 @@ def test_new_cases_start_in_draft_state(case_data):
     """
     case = create_case_with_entities(**case_data)
 
-    assert (
-        case.state == CaseState.DRAFT
-    ), f"New case should start in DRAFT state, but got {case.state}"
+    assert case.state == CaseState.DRAFT, (
+        f"New case should start in DRAFT state, but got {case.state}"
+    )
 
 
 # ============================================================================
@@ -135,9 +135,9 @@ def test_draft_submission_transitions_to_in_review(case_data):
     # Submit the draft (this will be a method on the Case model)
     case.submit()
 
-    assert (
-        case.state == CaseState.IN_REVIEW
-    ), f"Submitted case should be in IN_REVIEW state, but got {case.state}"
+    assert case.state == CaseState.IN_REVIEW, (
+        f"Submitted case should be in IN_REVIEW state, but got {case.state}"
+    )
 
 
 # ============================================================================
@@ -232,20 +232,20 @@ def test_soft_delete_sets_state_to_closed(case_data):
     case.delete()
 
     # Verify the case still exists in the database
-    assert Case.objects.filter(
-        id=original_id
-    ).exists(), "Soft-deleted case should still exist in database"
+    assert Case.objects.filter(id=original_id).exists(), (
+        "Soft-deleted case should still exist in database"
+    )
 
     # Verify the state is set to CLOSED
     case.refresh_from_db()
-    assert (
-        case.state == CaseState.CLOSED
-    ), f"Soft-deleted case should have state CLOSED, but got {case.state}"
+    assert case.state == CaseState.CLOSED, (
+        f"Soft-deleted case should have state CLOSED, but got {case.state}"
+    )
 
     # Verify the case_id is unchanged
-    assert (
-        case.case_id == original_case_id
-    ), "Soft-deleted case should retain its case_id"
+    assert case.case_id == original_case_id, (
+        "Soft-deleted case should retain its case_id"
+    )
 
 
 @pytest.mark.django_db
@@ -287,9 +287,9 @@ def test_soft_delete_preserves_all_data(case_data):
         )
         == original_alleged_entities
     ), "Soft-deleted case should preserve alleged entities"
-    assert (
-        case.key_allegations == original_key_allegations
-    ), "Soft-deleted case should preserve key_allegations"
+    assert case.key_allegations == original_key_allegations, (
+        "Soft-deleted case should preserve key_allegations"
+    )
 
 
 # ============================================================================
@@ -320,3 +320,84 @@ def test_notes_field_stores_markdown():
     )
     case.refresh_from_db()
     assert case.notes == markdown_content
+
+
+# ============================================================================
+# Slug auto-generation during validation
+# ============================================================================
+
+
+@pytest.mark.django_db
+def test_slug_auto_generated_during_validation_for_published_cases():
+    """
+    For any case in PUBLISHED state with empty slug, validate() should
+    auto-generate a slug instead of raising a validation error.
+    """
+    # Create a case with complete data
+    case = create_case_with_entities(
+        title="Test Case for Slug Generation",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 1"],
+        description="Test description",
+        case_type=CaseType.CORRUPTION,
+    )
+
+    # Set state to PUBLISHED without setting slug
+    case.state = CaseState.PUBLISHED
+    assert not case.slug or not case.slug.strip(), "Slug should be empty initially"
+
+    # Validate should not raise and should auto-generate slug
+    case.validate()
+
+    assert case.slug, "Slug should be auto-generated during validation"
+    assert len(case.slug) > 0, "Generated slug should not be empty"
+    assert "-" in case.slug, "Generated slug should contain hyphen separator"
+
+
+@pytest.mark.django_db
+def test_multiple_drafts_without_slug_no_collision():
+    """
+    Multiple draft cases without slugs should not cause unique constraint violations.
+    Empty/whitespace slugs should be normalized to None.
+    """
+    # Create first draft without slug
+    draft1 = create_case_with_entities(
+        title="Draft Case 1",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 1"],
+        description="Test description",
+        case_type=CaseType.CORRUPTION,
+    )
+    draft1.state = CaseState.DRAFT
+    draft1.slug = ""  # Explicitly set to empty string
+    draft1.save()
+    draft1.refresh_from_db()
+    assert draft1.slug is None, "Empty slug should be normalized to None"
+
+    # Create second draft without slug - should not raise uniqueness error
+    draft2 = create_case_with_entities(
+        title="Draft Case 2",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 2"],
+        description="Test description 2",
+        case_type=CaseType.CORRUPTION,
+    )
+    draft2.state = CaseState.DRAFT
+    draft2.slug = "   "  # Whitespace-only slug
+    draft2.save()
+    draft2.refresh_from_db()
+    assert draft2.slug is None, "Whitespace slug should be normalized to None"
+
+    # Create third draft without slug
+    draft3 = create_case_with_entities(
+        title="Draft Case 3",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 3"],
+        description="Test description 3",
+        case_type=CaseType.CORRUPTION,
+    )
+    draft3.state = CaseState.DRAFT
+    # Don't set slug at all
+    draft3.save()
+    draft3.refresh_from_db()
+    assert draft3.slug is None, "Unset slug should remain None"

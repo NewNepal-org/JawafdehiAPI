@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.utils import timezone
+from django.utils.text import slugify
 import mimetypes
 import uuid
 
@@ -17,6 +18,7 @@ from .fields import (
     TimelineListField,
     EvidenceListField,
 )
+from .validators import validate_slug, validate_court_cases
 
 User = get_user_model()
 
@@ -478,8 +480,40 @@ class Case(models.Model):
         help_text="Internal notes about the case (markdown supported)",
     )
 
+    # New fields for case identification and tracking
+    slug = models.SlugField(
+        max_length=50,
+        blank=True,
+        null=True,
+        unique=True,
+        db_index=True,
+        validators=[validate_slug],
+        help_text="URL-friendly unique identifier (immutable once set, required for published cases)",
+    )
+    court_cases = models.JSONField(
+        blank=True,
+        null=True,
+        validators=[validate_court_cases],
+        help_text="List of court case references in format {court_identifier}:{case_number}, e.g. ['supreme:078-WC-0123', 'special:076-CR-0456']",
+    )
+    missing_details = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Notes about missing or incomplete information for this case",
+    )
+    bigo = models.BigIntegerField(
+        blank=True,
+        null=True,
+        help_text="Bigo (बिगो) — the total disputed or embezzled amount claimed in the case (in NPR)",
+    )
+
     class Meta:
         ordering = ["-created_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Track original slug value to detect changes without extra query
+        self._original_slug = self.slug
 
     def __str__(self):
         return f"{self.case_id} - {self.title} ({self.state})"
@@ -500,8 +534,33 @@ class Case(models.Model):
         ).values_list("entity_id", flat=True)
         return JawafEntity.objects.filter(pk__in=entity_ids)
 
+    def _generate_unique_slug(self) -> str:
+        """
+        Generate a unique, URL-friendly slug.
+
+        Uses title as base; falls back to case_id; appends UUID suffix to ensure uniqueness.
+        Ensures the slug always starts with a letter to comply with validate_slug requirements.
+        """
+        base = slugify(self.title) or slugify(self.case_id) or "case"
+        base = base[:42]  # Leave room for UUID suffix
+
+        # Ensure base starts with a letter (required by validate_slug)
+        if base and not base[0].isalpha():
+            base = f"case-{base}"
+            base = base[:42]  # Re-trim after adding prefix
+
+        # Append a short UUID to ensure uniqueness without database queries
+        unique_suffix = uuid.uuid4().hex[:8]
+        slug = f"{base}-{unique_suffix}"
+
+        return slug[:50]  # Respect max_length
+
     def save(self, *args, **kwargs):
         """Override save to generate case_id for new cases."""
+        # Normalize empty/whitespace slug to None to avoid unique constraint violations
+        if self.slug is not None and not self.slug.strip():
+            self.slug = None
+
         if not self.case_id:
             # Generate unique case_id for new cases
             self.case_id = f"case-{uuid.uuid4().hex[:12]}"
@@ -510,7 +569,21 @@ class Case(models.Model):
         if not self.title or not self.title.strip():
             raise ValidationError("Title cannot be empty")
 
+        # Auto-generate slug for published cases if not set
+        if self.state == CaseState.PUBLISHED and (
+            not self.slug or not self.slug.strip()
+        ):
+            self.slug = self._generate_unique_slug()
+
+        # Enforce slug immutability (use cached original value to avoid extra query)
+        if self.pk and hasattr(self, "_original_slug"):
+            if self._original_slug and self._original_slug != self.slug:
+                raise ValidationError("Slug cannot be modified once set")
+
         super().save(*args, **kwargs)
+
+        # Update cached original slug after successful save
+        self._original_slug = self.slug
 
     def validate(self):
         """
@@ -546,6 +619,11 @@ class Case(models.Model):
                     "Description is required for IN_REVIEW or PUBLISHED state"
                 )
 
+        # Auto-generate slug for published cases if not set
+        if self.state == CaseState.PUBLISHED:
+            if not self.slug or not self.slug.strip():
+                self.slug = self._generate_unique_slug()
+
         if errors:
             raise ValidationError(errors)
 
@@ -577,14 +655,21 @@ class Case(models.Model):
         Publish this case.
 
         Sets state to PUBLISHED and updates versionInfo.
+        Auto-generates slug if not already set.
         """
         if self.state not in [CaseState.IN_REVIEW, CaseState.DRAFT]:
             raise ValidationError(
                 f"Can only publish cases in IN_REVIEW or DRAFT state, current state is {self.state}"
             )
 
-        # Validate before publishing
+        # Set state to PUBLISHED
         self.state = CaseState.PUBLISHED
+
+        # Ensure slug exists for published cases
+        if not self.slug or not self.slug.strip():
+            self.slug = self._generate_unique_slug()
+
+        # Validate before publishing
         self.validate()
 
         # Update versionInfo

@@ -14,6 +14,7 @@ from .models import (
     CaseType,
     JawafEntity,
 )
+from .validators import validate_slug, validate_court_cases
 
 # Paths that callers are not permitted to target in a patch operation.
 # The view rejects any op whose `path` equals or is prefixed by one of these.
@@ -27,6 +28,7 @@ BLOCKED_PATH_PREFIXES = frozenset(
         "/created_at",
         "/updated_at",
         "/versionInfo",
+        "/slug",  # Slug is immutable once set
     ]
 )
 
@@ -122,6 +124,33 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
     related_entities = serializers.ListField(
         child=serializers.IntegerField(), required=False
     )
+    slug = serializers.SlugField(
+        max_length=50,
+        required=False,
+        allow_null=True,
+        validators=[validate_slug],
+    )
+    court_cases = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_null=True,
+        validators=[validate_court_cases],
+    )
+    missing_details = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
+    bigo = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+    )
+
+    def validate_missing_details(self, value):
+        """Normalize empty/whitespace missing_details to None."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
 
 
 class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
@@ -148,3 +177,41 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     related_entity_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False
     )
+    slug = serializers.SlugField(
+        max_length=50,
+        required=False,
+        allow_null=True,
+        validators=[validate_slug],
+    )
+    court_cases = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_null=True,
+        validators=[validate_court_cases],
+    )
+    missing_details = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
+    bigo = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+    )
+
+    def validate_missing_details(self, value):
+        """Normalize empty/whitespace missing_details to None."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
+
+    def validate_slug(self, value):
+        """
+        Validate slug for PATCH operations.
+
+        Normalize empty/whitespace slugs to None.
+        Note: Slug immutability is enforced at the view layer via BLOCKED_PATH_PREFIXES.
+        """
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
