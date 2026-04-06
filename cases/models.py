@@ -510,6 +510,11 @@ class Case(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Track original slug value to detect changes without extra query
+        self._original_slug = self.slug
+
     def __str__(self):
         return f"{self.case_id} - {self.title} ({self.state})"
 
@@ -534,9 +539,15 @@ class Case(models.Model):
         Generate a unique, URL-friendly slug.
 
         Uses title as base; falls back to case_id; appends UUID suffix to ensure uniqueness.
+        Ensures the slug always starts with a letter to comply with validate_slug requirements.
         """
         base = slugify(self.title) or slugify(self.case_id) or "case"
         base = base[:42]  # Leave room for UUID suffix
+
+        # Ensure base starts with a letter (required by validate_slug)
+        if base and not base[0].isalpha():
+            base = f"case-{base}"
+            base = base[:42]  # Re-trim after adding prefix
 
         # Append a short UUID to ensure uniqueness without database queries
         unique_suffix = uuid.uuid4().hex[:8]
@@ -546,6 +557,10 @@ class Case(models.Model):
 
     def save(self, *args, **kwargs):
         """Override save to generate case_id for new cases."""
+        # Normalize empty/whitespace slug to None to avoid unique constraint violations
+        if self.slug is not None and not self.slug.strip():
+            self.slug = None
+
         if not self.case_id:
             # Generate unique case_id for new cases
             self.case_id = f"case-{uuid.uuid4().hex[:12]}"
@@ -560,13 +575,15 @@ class Case(models.Model):
         ):
             self.slug = self._generate_unique_slug()
 
-        # Enforce slug immutability
-        if self.pk:  # Existing case
-            old_instance = Case.objects.get(pk=self.pk)
-            if old_instance.slug and old_instance.slug != self.slug:
+        # Enforce slug immutability (use cached original value to avoid extra query)
+        if self.pk and hasattr(self, '_original_slug'):
+            if self._original_slug and self._original_slug != self.slug:
                 raise ValidationError("Slug cannot be modified once set")
 
         super().save(*args, **kwargs)
+        
+        # Update cached original slug after successful save
+        self._original_slug = self.slug
 
     def validate(self):
         """
