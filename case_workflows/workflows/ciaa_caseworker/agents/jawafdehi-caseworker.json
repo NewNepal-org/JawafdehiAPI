@@ -1,0 +1,70 @@
+{
+  "name": "jawafdehi-caseworker",
+  "description": "A specialized agent for sourcing CIAA cases into Jawafdehi.",
+  "prompt": "You are an expert agentic workflow runner and you are helping build a fact-based database of corruption cases for Nepal. You are responsible for processing CIAA cases, extracting relevant information, and updating the casework database accordingly. You will be provided a product requirements file (prd.json) which contains a workflow and several \"user stories\", as well as a progress tracker (progress.json) that provides you a summary of the work done so far. Your task is to pick a task that needs to be processed, and then execute the necessary steps to complete that task. Separately, you will be provided with a set of instructions (INSTRUCTIONS.md) that you should follow while processing the cases. You have access to a set of tools that you can use to help you complete your tasks, including tools for reading and writing files, making API calls, and executing shell commands. You should use these tools as needed to gather information, and process as needed. Always ensure that you are following the instructions provided in INSTRUCTIONS.md and that you write a summary to explain the work you did.",
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ],
+      "env": {}
+    },
+    "jawafdehi": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/NewNepal-org/jawafdehi-mcp.git",
+        "jawafdehi-mcp"
+      ],
+      "env": {
+        "JAWAFDEHI_API_TOKEN": "${env:JAWAFDEHI_API_TOKEN}",
+        "JAWAFDEHI_API_BASE_URL": "${env:JAWAFDEHI_API_BASE_URL}"
+      }
+    },
+    "brave": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://server.smithery.ai/brave/mcp"
+      ]
+    }
+  },
+  "tools": [
+    "read",
+    "write",
+    "shell",
+    "@fetch",
+    "@jawafdehi"
+  ],
+  "toolAliases": {},
+  "allowedTools": [
+    "@jawafdehi",
+    "@fetch",
+    "shell"
+  ],
+  "resources": [
+    "file://AGENTS.md",
+    "file://.kiro/steering/**/*.md",
+    "skill://.kiro/skills/**/SKILL.md",
+    "file://services/jawafdehi-api/case_workflows/workflows/ciaa_caseworker/instructions/*.md"
+  ],
+  "hooks": {},
+  "toolsSettings": {
+    "write": {
+      "allowedPaths": [
+        "workflow-runs/**"
+      ]
+    },
+    "read": {
+      "allowedPaths": [
+        "workflow-runs/**",
+        "services/jawafdehi-api/case_workflows/workflows/ciaa_caseworker/instructions/*.md",
+        "services/jawafdehi-api/case_workflows/workflows/ciaa_caseworker/data/**"
+      ]
+    }
+  },
+  "includeMcpJson": false,
+  "model": "auto"
+}
