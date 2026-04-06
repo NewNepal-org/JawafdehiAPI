@@ -101,6 +101,7 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
         default=CaseState.DRAFT,
     )
     title = serializers.CharField(max_length=200)
+    slug = serializers.CharField(max_length=100, required=False, allow_blank=True)
     short_description = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
     thumbnail_url = serializers.URLField(
@@ -125,8 +126,8 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
 
 
 class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
-    state = serializers.ChoiceField(choices=CaseState.choices, required=False)
     title = serializers.CharField(max_length=200)
+    slug = serializers.CharField(max_length=100, required=False, allow_blank=True)
     short_description = serializers.CharField(required=False, allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True)
     thumbnail_url = serializers.URLField(
@@ -140,6 +141,7 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     key_allegations = serializers.ListField(
         child=serializers.CharField(), required=False
     )
+    state = serializers.ChoiceField(choices=CaseState.choices, required=False)
     timeline = TimelineItemSerializer(many=True, required=False)
     evidence = EvidenceItemSerializer(many=True, required=False)
     alleged_entity_ids = serializers.ListField(

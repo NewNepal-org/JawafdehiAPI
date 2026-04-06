@@ -8,6 +8,7 @@ import jsonpatch
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import connection, transaction
+from django.http import Http404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -158,6 +159,31 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     filterset_fields = ["case_type"]
     search_fields = ["title", "description", "key_allegations"]
     authentication_classes = [TokenAuthentication]
+
+    def get_object(self):
+        """
+        Resolve case by numeric primary key or slug.
+
+        Endpoint compatibility:
+        - /cases/{id}/ for numeric IDs
+        - /cases/{slug}/ for slug-based access
+        """
+        lookup_value = str(self.kwargs.get(self.lookup_field or "pk", "")).strip()
+        queryset = self.filter_queryset(self.get_queryset())
+
+        if not lookup_value:
+            raise Http404
+
+        if lookup_value.isdigit():
+            obj = queryset.filter(pk=int(lookup_value)).first()
+        else:
+            obj = queryset.filter(slug=lookup_value).first()
+
+        if obj is None:
+            raise Http404
+
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_permissions(self):
         """

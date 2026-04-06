@@ -221,6 +221,7 @@ class CaseSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "case_id",
+            "slug",
             "case_type",
             "state",
             "title",
