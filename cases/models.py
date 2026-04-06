@@ -576,12 +576,12 @@ class Case(models.Model):
             self.slug = self._generate_unique_slug()
 
         # Enforce slug immutability (use cached original value to avoid extra query)
-        if self.pk and hasattr(self, '_original_slug'):
+        if self.pk and hasattr(self, "_original_slug"):
             if self._original_slug and self._original_slug != self.slug:
                 raise ValidationError("Slug cannot be modified once set")
 
         super().save(*args, **kwargs)
-        
+
         # Update cached original slug after successful save
         self._original_slug = self.slug
 

@@ -96,9 +96,7 @@ def validate_court_cases(value):
 
         # Validate case_number is not empty
         if not case_number or not case_number.strip():
-            raise ValidationError(
-                "Case number cannot be empty in court case reference"
-            )
+            raise ValidationError("Case number cannot be empty in court case reference")
 
         if court_identifier not in VALID_COURT_IDENTIFIERS:
             valid_list = ", ".join(VALID_COURT_IDENTIFIERS)

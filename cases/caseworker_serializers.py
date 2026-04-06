@@ -208,7 +208,7 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     def validate_slug(self, value):
         """
         Validate slug for PATCH operations.
-        
+
         Normalize empty/whitespace slugs to None.
         Note: Slug immutability is enforced at the view layer via BLOCKED_PATH_PREFIXES.
         """
