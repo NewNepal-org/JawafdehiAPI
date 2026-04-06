@@ -583,15 +583,19 @@ class CaseAdmin(admin.ModelAdmin):
         return FormWithRequest
 
     def get_fieldsets(self, request, obj=None):
-        """Remove notes from fieldsets for contributors (admin/moderator only)."""
+        """Remove sensitive fields from fieldsets for contributors (admin/moderator only)."""
         fieldsets = super().get_fieldsets(request, obj)
         if is_contributor(request.user) and not is_admin_or_moderator(request.user):
+            # Fields that should be hidden from contributors
+            hidden_fields = {"notes", "court_cases", "missing_details", "bigo"}
             return [
                 (
                     name,
                     {
                         **options,
-                        "fields": tuple(f for f in options["fields"] if f != "notes"),
+                        "fields": tuple(
+                            f for f in options["fields"] if f not in hidden_fields
+                        ),
                     },
                 )
                 for name, options in fieldsets
