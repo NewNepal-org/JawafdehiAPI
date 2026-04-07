@@ -144,6 +144,8 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
     bigo = serializers.IntegerField(
         required=False,
         allow_null=True,
+        min_value=-9223372036854775808,
+        max_value=9223372036854775807,
     )
 
     def validate_missing_details(self, value):
@@ -197,6 +199,8 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     bigo = serializers.IntegerField(
         required=False,
         allow_null=True,
+        min_value=-9223372036854775808,
+        max_value=9223372036854775807,
     )
 
     def validate_missing_details(self, value):

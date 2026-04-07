@@ -18,10 +18,9 @@ class Migration(migrations.Migration):
                 blank=True,
                 null=True,
                 unique=True,
-                db_index=True,
                 max_length=50,
                 validators=[cases.validators.validate_slug],
-                help_text="URL-friendly unique identifier (immutable once set, required for published cases)",
+                help_text="A slug will go in the URL (e.g., jawafdehi.org/case/YOUR-SLUG). For CIAA corruption cases, you can prepend the special court case number (e.g., case-078-WC-0123-sunil-poudel). Must start with a letter and contain only letters, numbers, and hyphens (max 50 characters). Immutable once set, required for published cases.",
             ),
         ),
         migrations.AddField(
@@ -31,7 +30,7 @@ class Migration(migrations.Migration):
                 blank=True,
                 null=True,
                 validators=[cases.validators.validate_court_cases],
-                help_text="List of court case references in format <court_identifier>:<case_number>",
+                help_text="List of court case references in format {court_identifier}:{case_number}, e.g. ['supreme:078-WC-0123', 'special:076-CR-0456']",
             ),
         ),
         migrations.AddField(
@@ -40,7 +39,6 @@ class Migration(migrations.Migration):
             field=models.TextField(
                 blank=True,
                 null=True,
-                default=None,
                 help_text="Notes about missing or incomplete information for this case",
             ),
         ),

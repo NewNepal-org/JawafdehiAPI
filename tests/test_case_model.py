@@ -32,9 +32,9 @@ def test_new_cases_start_in_draft_state(case_data):
     """
     case = create_case_with_entities(**case_data)
 
-    assert case.state == CaseState.DRAFT, (
-        f"New case should start in DRAFT state, but got {case.state}"
-    )
+    assert (
+        case.state == CaseState.DRAFT
+    ), f"New case should start in DRAFT state, but got {case.state}"
 
 
 # ============================================================================
@@ -135,9 +135,9 @@ def test_draft_submission_transitions_to_in_review(case_data):
     # Submit the draft (this will be a method on the Case model)
     case.submit()
 
-    assert case.state == CaseState.IN_REVIEW, (
-        f"Submitted case should be in IN_REVIEW state, but got {case.state}"
-    )
+    assert (
+        case.state == CaseState.IN_REVIEW
+    ), f"Submitted case should be in IN_REVIEW state, but got {case.state}"
 
 
 # ============================================================================
@@ -232,20 +232,20 @@ def test_soft_delete_sets_state_to_closed(case_data):
     case.delete()
 
     # Verify the case still exists in the database
-    assert Case.objects.filter(id=original_id).exists(), (
-        "Soft-deleted case should still exist in database"
-    )
+    assert Case.objects.filter(
+        id=original_id
+    ).exists(), "Soft-deleted case should still exist in database"
 
     # Verify the state is set to CLOSED
     case.refresh_from_db()
-    assert case.state == CaseState.CLOSED, (
-        f"Soft-deleted case should have state CLOSED, but got {case.state}"
-    )
+    assert (
+        case.state == CaseState.CLOSED
+    ), f"Soft-deleted case should have state CLOSED, but got {case.state}"
 
     # Verify the case_id is unchanged
-    assert case.case_id == original_case_id, (
-        "Soft-deleted case should retain its case_id"
-    )
+    assert (
+        case.case_id == original_case_id
+    ), "Soft-deleted case should retain its case_id"
 
 
 @pytest.mark.django_db
@@ -287,9 +287,9 @@ def test_soft_delete_preserves_all_data(case_data):
         )
         == original_alleged_entities
     ), "Soft-deleted case should preserve alleged entities"
-    assert case.key_allegations == original_key_allegations, (
-        "Soft-deleted case should preserve key_allegations"
-    )
+    assert (
+        case.key_allegations == original_key_allegations
+    ), "Soft-deleted case should preserve key_allegations"
 
 
 # ============================================================================
@@ -331,11 +331,11 @@ def test_notes_field_stores_markdown():
 def test_slug_auto_generated_during_validation_for_published_cases():
     """
     For any case in PUBLISHED state with empty slug, validate() should
-    auto-generate a slug instead of raising a validation error.
+    auto-generate a slug that starts with a letter and stays within 50 characters.
     """
-    # Create a case with complete data
+    # Create a case with a numeric-leading title
     case = create_case_with_entities(
-        title="Test Case for Slug Generation",
+        title="2078 Corruption Case Investigation",
         alleged_entities=["entity:person/test-person"],
         key_allegations=["Allegation 1"],
         description="Test description",
@@ -351,6 +351,8 @@ def test_slug_auto_generated_during_validation_for_published_cases():
 
     assert case.slug, "Slug should be auto-generated during validation"
     assert len(case.slug) > 0, "Generated slug should not be empty"
+    assert len(case.slug) <= 50, "Generated slug should not exceed 50 characters"
+    assert case.slug[0].isalpha(), "Generated slug must start with a letter"
     assert "-" in case.slug, "Generated slug should contain hyphen separator"
 
 
