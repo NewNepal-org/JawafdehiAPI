@@ -154,6 +154,12 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
             return None
         return value
 
+    def validate_slug(self, value):
+        """Normalize empty/whitespace slugs to None."""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            return None
+        return value
+
 
 class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     state = serializers.ChoiceField(choices=CaseState.choices, required=False)
