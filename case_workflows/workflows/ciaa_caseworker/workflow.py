@@ -3,15 +3,18 @@ CIAA Caseworker workflow — processes Special Court cases from the NGM
 database and creates Jawafdehi accountability cases.
 
 Template location: ``case_workflows/workflows/ciaa_caseworker/``
-Original source:   ``.agents/caseworker/``
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import List
+
+from langchain_core.tools import tool
 
 from case_workflows.registry import register
 from case_workflows.workflow import Workflow, WorkflowStep
@@ -20,20 +23,114 @@ logger = logging.getLogger(__name__)
 
 TEMPLATE_DIR = Path(__file__).resolve().parent
 
+_SYSTEM_PROMPT = """\
+You are an expert caseworker helping build a fact-based database of corruption \
+cases for Nepal. Your role is to process CIAA Special Court corruption cases and \
+prepare them for the Jawafdehi platform.
+
+Work methodically and thoroughly. The work directory is provided at the start of \
+each task as an absolute path. Always use absolute paths for all file operations, \
+including when calling MCP tools that accept a file_path argument.
+
+Work directory structure:
+- <work_dir>/MEMORY.md           — agent memory: learnings and notes that persist across steps
+- <work_dir>/instructions/      — casework instructions and case draft template
+- <work_dir>/data/              — reference CSVs (ciaa-press-releases.csv, ag_index.csv)
+- <work_dir>/sources/raw/       — downloaded raw source files (PDFs, HTML, etc.)
+- <work_dir>/sources/markdown/  — markdown-converted versions of source documents
+- <work_dir>/logs/              — run summaries and working notes
+
+YOU ARE ONLY ALLOWED TO READ AND WRITE FILES WITHIN THE WORK DIRECTORY. Do not attempt to \
+access files outside the work directory. Always construct absolute file paths based on the provided work directory path. If you need to call an MCP tool that reads or writes files, use the provided work directory as the base path for any file_path arguments.
+
+Always read the instructions in instructions/INSTRUCTIONS.md, as well as the case details in case_details*.md (if it exists).
+
+
+You do NOT require to create empty ".keep" or similar files to keep directories — the system will preserve any directories you create within the work directory, even if they are empty.
+
+Update MEMORY.md in the case folder with any learnings or notes that should persist across steps. This is useful for recording discovered facts, insights, and reminders for later steps. And load MEMORY.md at the start of each step to retain context across steps.
+"""
+
+@tool
+def download_file(url: str, output_path: str) -> str:
+    """Download a file from a URL and save it to disk.
+
+    Args:
+        url: The URL to download from. Supports http and https. Redirects are
+            followed automatically.
+        output_path: Absolute path where the downloaded file will be saved.
+            Parent directories are created if they do not exist.
+
+    Returns:
+        A message reporting the number of bytes written, or an error description.
+    """
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; jawafdehi-caseworker/1.0)"},
+        )
+        with urllib.request.urlopen(req) as response:
+            data = response.read()
+        out = Path(output_path)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
+        return f"Downloaded {len(data):,} bytes to {output_path}"
+    except urllib.error.HTTPError as exc:
+        return f"HTTP error {exc.code} downloading {url}: {exc.reason}"
+    except urllib.error.URLError as exc:
+        return f"URL error downloading {url}: {exc.reason}"
+    except Exception as exc:  # noqa: BLE001
+        return f"Error downloading {url}: {exc}"
+
+
+# MCP stdio server config for fetch tool
+_FETCH_SERVER = {
+    "fetch": {
+        "command": "uvx",
+        "args": ["mcp-server-fetch", "--ignore-robots-txt"],
+        "transport": "stdio",
+    }
+}
+
+def _jawafdehi_server() -> dict:
+    token = os.environ.get("JAWAFDEHI_API_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "JAWAFDEHI_API_TOKEN environment variable is not set. "
+            "Set it to your Jawafdehi API token before running this workflow."
+        )
+
+    env = {"JAWAFDEHI_API_TOKEN": token}
+
+    if "JAWAFDEHI_API_BASE_URL" in os.environ:
+        env["JAWAFDEHI_API_BASE_URL"] = os.environ["JAWAFDEHI_API_BASE_URL"]
+
+    return {
+        "jawafdehi": {
+            "command": "uvx",
+            "args": [
+                "--from",
+                "git+https://github.com/Jawafdehi/jawafdehi-mcp.git",
+                "jawafdehi-mcp"
+            ],
+            "transport": "stdio",
+            "env": env,
+        }
+}
 
 @register
 class CIAACaseworkerWorkflow(Workflow):
     """
     Workflow for processing CIAA Special Court corruption cases.
 
-    Steps (which become ``prd.json`` user stories at runtime):
-
-    1. Initialize casework folder & verify eligibility
-    2. Fetch judicial data (NGM extract, CIAA press release, charge sheet, bolpatra)
-    3. Fetch news articles via web search
-    4. Convert remaining documents to markdown
-    5. Draft the case locally
-    6. Submit the case to Jawafdehi
+    Steps:
+    1. initialize-casework      — verify eligibility, extract NGM case data, setup directories
+    2. fetch-source-documents   — download CIAA press release, charge sheet, bolpatra; convert to markdown
+    3. fetch-news-articles      — web search for news articles
+    4. draft-case               — prepare local case draft
+    5. create-case              — create a basic Jawafdehi case via the API
+    6. create-update-entities   — create or update Jawafdehi entities linked to the case
+    7. update-case-details      — populate remaining case details collected during research
     """
 
     @property
@@ -46,78 +143,200 @@ class CIAACaseworkerWorkflow(Workflow):
 
     @property
     def steps(self) -> List[WorkflowStep]:
+        jawafdehi_server = _jawafdehi_server()
+
         return [
             WorkflowStep(
-                id="US-001",
-                title="Initialize Casework",
-                description=(
-                    "Verifies case is eligible for processing, and setup "
-                    "the necessary casework directories"
-                ),
-                priority=1,
-                acceptance_criteria=[
-                    "Verify the case exists in ngm database",
-                    "Required folders are there and are empty",
-                    "progress.log has marked the workflow is eligible for running",
-                ],
+                name="initialize-casework",
+                prompt_fn=lambda case_dir: f"""\
+The Jawafdehi case ID is: {case_dir.name}
+
+First read {case_dir}/instructions/INSTRUCTIONS.md for detailed caseworker guidance before proceeding.
+
+Verify this case exists in the NGM database and is eligible for processing as a CIAA Special Court corruption case. Use the ngm_extract_case_data MCP tool with file_path={case_dir}/case_details-<court-case-number>.md. Ensure the required directories exist: {case_dir}/sources/raw/, {case_dir}/sources/markdown/, {case_dir}/logs/. Write a brief initialization note to {case_dir}/logs/case-summary.md summarising the case number and some basic case details. For example, note the defendant name(s), registration date (both in BS and in AD), and any other key details you find. This information will be useful for searching for related documents and news articles in later steps.
+""",
+                mcp_servers=jawafdehi_server,
+                mcp_tool_filter=["ngm_extract_case_data"],
+                system_prompt=_SYSTEM_PROMPT,
             ),
             WorkflowStep(
-                id="US-002",
-                title="Fetch Judicial Data",
-                description="Pull the crucial sources and factual data to start the case work.",
-                priority=2,
-                acceptance_criteria=[
-                    "sources/case_<case_number>_<date-time>.md file exists",
-                    "CIAA Press release raw file is downloaded",
-                    "CIAA Press release converted to markdown",
-                    "AG charge sheet raw file is downloaded",
-                    "AG charge sheet converted to markdown",
-                    "Bolpatra downloaded if IFB/RFP/EOI/PQ numbers found",
-                ],
+                name="fetch-source-documents",
+                prompt_fn=lambda case_dir: f"""\
+The Jawafdehi case ID / court case number is: {case_dir.name}
+
+Step 1 — Read {case_dir}/case_details-{case_dir.name}.md to get the defendant name (primary defendant) and registration date.
+
+Step 2 — Find the AG charge sheet URL:
+  Use read_file and/or grep on {case_dir}/data/ag_index.csv. The CSV columns are: case_number,title,filing_date,pdf_url,court_office. Find the row where case_number = {case_dir.name} and read the pdf_url value from that row. Use the download_file tool to download the PDF to {case_dir}/sources/raw/charge-sheet-<case-number>.pdf, then convert to {case_dir}/sources/markdown/charge-sheet-<case-number>.md.
+
+Step 3 — Find the CIAA press release URL:
+  Use read_file and/or grep on {case_dir}/data/ciaa-press-releases.csv. The CSV columns are: press_id,publication_date,title,source_url. Find the row whose title contains the primary defendant name and read the source_url. The source_url is the press release page (e.g. https://ciaa.gov.np/pressrelease/N). Use `fetch` tool to view the page contents, and locate the actual press release (PDF or HTML or .jpg) from the this page. Then use the download_file tool to download the page to {case_dir}/sources/raw/ciaa-press-release-<press-release-id>.pdf, then convert to {case_dir}/sources/markdown/ciaa-press-release-<press-release-id>.md.
+
+Step 4 — If the case details or any downloaded document references an IFB/RFP/EOI/PQ procurement number, download bolpatra documents in the same way to {case_dir}/sources/raw/bolpatra-<number>.pdf and convert them.
+
+YOU MUST DOWNLOAD the original file (.pdf, .doc, etc) to the {case_dir}/sources/raw/ directory first using the download_file tool. Then, use the `convert_to_markdown` MCP tool to convert each downloaded file. Finally, write a brief summary to {case_dir}/logs/fetch-summary.md listing which documents were found, their urls, and which were skipped.
+""",
+                tools=[download_file],
+                mcp_servers={**jawafdehi_server, **_FETCH_SERVER},
+                mcp_tool_filter=["convert_to_markdown", "fetch"],
+                system_prompt=_SYSTEM_PROMPT,
             ),
             WorkflowStep(
-                id="US-003",
-                title="Fetch News Articles",
-                description="Fetch news items from Web search regarding the case.",
-                priority=3,
-                acceptance_criteria=[
-                    "Web search executed",
-                    "Relevant news items fetched",
-                    "News articles saved as markdown",
-                ],
+                name="fetch-news-articles",
+                prompt_fn=lambda case_dir: f"""\
+The Jawafdehi case ID is: {case_dir.name}.
+
+Search the web for news articles about this corruption case.
+Use the instructions in instructions/INSTRUCTIONS.md, the case details in case_details*.md,
+the memory bank in MEMORY.md, and the source documents from *.md files in sources/raw.
+View each news item using the `fetch` tool, then save the markdown directly to
+sources/markdown/news-<source-name>.md using the convert_to_markdown tool.
+Write a summary of all found articles to logs/news-search-summary.md.
+Then update MEMORY.md with any new learnings from the news search to persist for next steps.
+""",
+                tools=[download_file],
+                mcp_servers={**jawafdehi_server, **_FETCH_SERVER},
+                mcp_tool_filter=["fetch", "convert_to_markdown"],
+                system_prompt=_SYSTEM_PROMPT,
+            ),
+            # WorkflowStep(
+            #     name="convert-documents",
+            #     prompt_fn=lambda case_dir: (
+            #         f"The Jawafdehi case ID is: {case_dir.name}\n\n"
+            #         "Check /sources/raw/ for any remaining files that do not yet have "
+            #         "a corresponding markdown version in /sources/markdown/. "
+            #         "Convert each remaining raw file to markdown and save it in "
+            #         "/sources/markdown/ with the same base filename."
+            #     ),
+            #     mcp_tool_filter=["convert_to_markdown"],
+            #     mcp_servers=jawafdehi_server,
+            #     system_prompt=_SYSTEM_PROMPT,
+            # ),
+            WorkflowStep(
+                name="draft-case",
+                prompt_fn=lambda case_dir: f"""\
+The Jawafdehi case ID is: {case_dir.name}
+
+Using all the source markdown documents in {case_dir}/sources/markdown/ as well as places, draft a complete Jawafdehi accountability case.
+
+YOU MUST MATCH the specifications given in {case_dir}/instructions/case-template.md. You must also follow additional instructions in {case_dir}/instructions/INSTRUCTIONS.md, which include guidance on how to extract key information from the source documents and how to structure the case draft. The draft must be saved in Nepali.
+
+Save the draft to {case_dir}/draft.md.
+""",
+                system_prompt=_SYSTEM_PROMPT,
             ),
             WorkflowStep(
-                id="US-004",
-                title="Convert Remaining Documents to Markdown",
-                description="Convert remaining raw files to markdown.",
-                priority=4,
-                acceptance_criteria=[
-                    "All remaining raw files converted to markdown",
-                ],
+                name="review-draft",
+                prompt_fn=lambda case_dir: f"""\
+The Jawafdehi case ID is: {case_dir.name}
+
+You are performing a structured review of the case draft before it is submitted to the API.
+Follow the cross-check methodology from the Jawafdehi Case Reviewer skill.
+
+Step 1 — Load the Jawafdehi Knowledge Share document.
+Download the plain-text export to {case_dir}/data/knowledge-share.txt:
+  URL: https://docs.google.com/document/d/1-AZedWGhcQjRH4E7a6q1CDWpeBcb_CVqa8S_kRLQCx4/export?format=txt
+Read the **Common pitfalls** section and treat every item as an additional validation rule
+for the cross-check below.
+
+Step 2 — Cross-check {case_dir}/draft.md against all source markdown files in
+{case_dir}/sources/markdown/, {case_dir}/instructions/case-template.md, and
+{case_dir}/instructions/INSTRUCTIONS.md across these dimensions:
+
+1. Identity — CIAA case number correctly stated; defendant/entity names match source documents.
+2. Allegations — published allegations match the charge sheet framing; no overstatement or
+   unsupported claims.
+3. Amounts and counts — bigo, loss amounts, contract values, and number of accused match sources.
+4. Timeline:
+   - CRITICAL: final verdict (फैसला) date and outcome — flag as critical if missing.
+   - MODERATE: significant orders (stay, acquittal, conviction, reversal, appeal filing).
+   - GOOD-TO-HAVE: case filing date and named milestone hearings.
+   - Routine procedural dates do not need to be individually verified.
+   - Validate AD/BS date conversions where both calendars appear.
+5. Procedural status — trial / decided / appealed / stayed / otherwise updated.
+6. Sources — each major factual claim is backed by a cited source; flag weak sourcing, dead
+   links, or secondary-only sourcing.
+7. Template compliance — every required field in {case_dir}/instructions/case-template.md is
+   present and correctly formatted.
+8. Common pitfalls — apply every item loaded from {case_dir}/data/knowledge-share.txt.
+
+For each markdown file in the sources folder, record whether it provides confirming facts,
+conflicting facts, or missing support for the published claims. Do not skip any file.
+
+Step 3 — Write findings to {case_dir}/draft-review.md using this severity model:
+  - `critical`: materially false, misleading, or unsupported claims
+  - `major`: important omissions or inconsistencies that must be fixed
+  - `minor`: wording, formatting, or low-risk completeness issues
+
+For each finding include: severity, affected section, what the draft says, what the source
+record indicates, and the revision needed.
+
+End draft-review.md with an overall outcome:
+  `approved` | `approved_with_minor_edits` | `needs_revision` | `blocked`
+""",
+                tools=[download_file],
+                system_prompt=_SYSTEM_PROMPT,
             ),
             WorkflowStep(
-                id="US-005",
-                title="Draft a Case Locally",
-                description=(
-                    "Prepare the information necessary to file a Jawafdehi case."
-                ),
-                priority=5,
-                acceptance_criteria=[
-                    "A local case draft file exists",
-                    "Case draft has all information to submit to Jawafdehi",
-                    "Case draft has gone through AI review",
-                ],
+                name="revise-draft",
+                prompt_fn=lambda case_dir: f"""\
+The Jawafdehi case ID is: {case_dir.name}
+
+Read the review findings at {case_dir}/draft-review.md and the current draft at
+{case_dir}/draft.md.
+
+Address every `critical` and `major` finding. Address `minor` findings where the fix is
+straightforward and does not require additional source research.
+
+Overwrite {case_dir}/draft.md with the revised, improved version.
+
+Finally, append a one-line revision note to {case_dir}/logs/case-summary.md summarising
+which categories of issues were addressed (e.g. "Revised: corrected verdict date, added
+missing bigo amount, fixed template fields").
+""",
+                system_prompt=_SYSTEM_PROMPT,
             ),
             WorkflowStep(
-                id="US-006",
-                title="Submit the case to Jawafdehi",
-                description="Submit the case to the Jawafdehi website.",
-                priority=6,
-                acceptance_criteria=[
-                    "Jawafdehi case is drafted",
-                    "All fields populated",
-                    "Case review passes",
-                ],
+                name="create-case",
+                prompt_fn=lambda case_dir: f"""\
+The Jawafdehi case ID is: {case_dir.name}
+
+Read the case draft at {case_dir}/draft.md and create a basic Jawafdehi case via the API
+using the minimum required fields (title, case type, summary). Record the returned numeric Jawafdehi case ID (1, 2, 3, 4, etc.)
+in {case_dir}/MEMORY.md for use in subsequent steps.
+
+NOTE: along with the case title, you MUST update the Key allegations, Timeline, case start, case end dates.
+""",
+                mcp_servers=jawafdehi_server,
+                system_prompt=_SYSTEM_PROMPT,
+            ),
+            WorkflowStep(
+                name="create-update-entities",
+                prompt_fn=lambda case_dir: f"""\
+The Jawafdehi case ID is: {case_dir.name}
+
+Using the accused entities listed in {case_dir}/draft.md, create or update Jawafdehi entities
+via the API and link them to the case created in the previous step. Record any new entity IDs
+in {case_dir}/MEMORY.md.
+
+Once the Jawaf Entities are created, you must now update the case entities, and also specify the proper relation type as well as the notes about the entities.
+""",
+                mcp_servers=jawafdehi_server,
+                system_prompt=_SYSTEM_PROMPT,
+            ),
+            WorkflowStep(
+                name="update-case-details",
+                prompt_fn=lambda case_dir: f"""\
+The CIAA case number is: {case_dir.name}. The numeric Jawafdehi case id is in MEMORY.md.
+
+Using all collected sources in {case_dir}/sources/markdown/ and the full case draft at
+{case_dir}/draft.md, update the Jawafdehi case with the remaining details: evidence,
+sources with URLs, timeline of events, and amount involved.
+
+NOTE: the search_jawafdehi_cases will NOT work. You must use the case ID from MEMORY.md to update the case you created in the previous step. Do NOT create a new case or update the wrong case.
+""",
+                mcp_servers=jawafdehi_server,
+                system_prompt=_SYSTEM_PROMPT,
             ),
         ]
 
@@ -127,20 +346,14 @@ class CIAACaseworkerWorkflow(Workflow):
 
         A case is eligible if:
         - It is a CORRUPTION case in DRAFT or IN_REVIEW state
-          (CLOSED and PUBLISHED cases are intentionally excluded)
-        - Its title contains one of the known CIAA Special Court case numbers,
-          preventing unrelated CORRUPTION drafts from being picked up
+        - Its title contains one of the known CIAA Special Court case numbers
         - There is no existing completed CaseWorkflowRun for it
-
-        Returns a list of Jawafdehi ``Case.case_id`` strings
-        (e.g. ``["case-abc123", "case-def456"]``).
         """
         from case_workflows.models import CaseWorkflowRun
         from cases.models import Case, CaseState, CaseType
 
         from case_workflows.workflows.ciaa_caseworker.constants import CIAA_CASE_NUMBERS
 
-        # Find already-completed case IDs for this workflow
         completed_case_ids = set(
             CaseWorkflowRun.objects.filter(
                 workflow_id=self.workflow_id,
@@ -148,7 +361,6 @@ class CIAACaseworkerWorkflow(Workflow):
             ).values_list("case_id", flat=True)
         )
 
-        # DRAFT and IN_REVIEW only — CLOSED and PUBLISHED are excluded by design
         rows = (
             Case.objects.filter(
                 case_type=CaseType.CORRUPTION,
@@ -158,8 +370,6 @@ class CIAACaseworkerWorkflow(Workflow):
             .values_list("case_id", "title")
         )
 
-        # Post-filter: only cases whose title contains a known CIAA case number.
-        # Avoids picking up unrelated CORRUPTION drafts that would fail at US-001.
         return [
             case_id
             for case_id, title in rows
@@ -169,52 +379,44 @@ class CIAACaseworkerWorkflow(Workflow):
     def get_template_dir(self) -> Path:
         return TEMPLATE_DIR
 
-    def get_agent_name(self) -> str:
-        return "jawafdehi-caseworker"
-
-    def get_mcp_config_path(self) -> Path | None:
-        candidate = TEMPLATE_DIR / "etc" / "copilot-mcp-config.json"
-        return candidate if candidate.exists() else None
-
-    def on_initialize(self, runner: str) -> None:
-        """
-        Provider-specific setup:
-
-        **kiro**: symlink the agent JSON into ``~/.kiro/agents/`` so kiro
-        can discover the ``jawafdehi-caseworker`` agent.
-        """
-        if runner == "kiro":
-            self._symlink_kiro_agent()
-
-    def _symlink_kiro_agent(self) -> None:
-        """Symlink the agent definition into ~/.kiro/agents/."""
-        agent_src = TEMPLATE_DIR / "agents" / "jawafdehi-caseworker.json"
-        agents_dir = Path.home() / ".kiro" / "agents"
-        agents_dir.mkdir(parents=True, exist_ok=True)
-        agent_dest = agents_dir / "jawafdehi-caseworker.json"
-
-        if agent_dest.is_symlink():
-            if agent_dest.resolve() == agent_src.resolve():
-                logger.debug("kiro agent symlink already correct: %s", agent_dest)
-                return
-            logger.warning("Removing stale kiro agent symlink: %s", agent_dest)
-            agent_dest.unlink()
-        elif agent_dest.exists():
-            logger.warning(
-                "kiro agent file already exists (not a symlink) — leaving in place: %s",
-                agent_dest,
-            )
-            return
-
-        os.symlink(agent_src, agent_dest)
-        logger.info("Symlinked kiro agent: %s → %s", agent_dest, agent_src)
-
     def on_work_dir_created(self, case_dir: Path) -> None:
         """
         CIAA-specific work directory setup:
 
+        - ``MEMORY.md``         — agent memory (learnings persisted across steps)
+        - ``instructions/``     — casework instructions and case draft template
+        - ``data/``             — reference CSVs (CIAA press releases, AG index)
         - ``sources/raw/``      — downloaded raw files (PDFs, HTML, etc.)
         - ``sources/markdown/`` — converted markdown versions
+        - ``logs/``             — run notes and summaries
         """
+        import shutil
+
+        instructions_src = TEMPLATE_DIR / "instructions"
+        if instructions_src.is_dir():
+            shutil.copytree(instructions_src, case_dir / "instructions")
+            logger.info("Copied instructions to %s/instructions/", case_dir)
+
+        data_src = TEMPLATE_DIR / "data"
+        if data_src.is_dir():
+            shutil.copytree(data_src, case_dir / "data")
+            logger.info("Copied data to %s/data/", case_dir)
+
         (case_dir / "sources" / "raw").mkdir(parents=True, exist_ok=True)
         (case_dir / "sources" / "markdown").mkdir(parents=True, exist_ok=True)
+        (case_dir / "logs").mkdir(parents=True, exist_ok=True)
+
+        memory_file = case_dir / "MEMORY.md"
+        if not memory_file.exists():
+            memory_file.write_text("""\
+# Agent Memory
+
+This file is read at the start of every step and can be updated \
+by the agent to record learnings, discovered facts, and notes \
+that should persist across steps.
+
+## Learnings
+
+(none yet)
+""")
+            logger.info("Created MEMORY.md at %s", memory_file)

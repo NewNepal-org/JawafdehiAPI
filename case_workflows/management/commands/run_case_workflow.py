@@ -11,12 +11,47 @@ Usage::
 
     # Run workflow for a specific case
     python manage.py run_case_workflow ciaa_caseworker --case-id case-abc123
+
+    # Use a specific model (any OpenAI-compatible provider)
+    python manage.py run_case_workflow ciaa_caseworker --model openai:gpt-4o
+    python manage.py run_case_workflow ciaa_caseworker --model anthropic:claude-sonnet-4-5
+
+Environment variables (used as defaults when flags are not passed)::
+
+    JAWAFDEHI_CASEWORK_MODEL    — default model (e.g. openai:gpt-4o)
+    JAWAFDEHI_CASEWORK_API_KEY  — API key for the LLM provider
+    JAWAFDEHI_CASEWORK_BASE_URL — base URL for OpenAI-compatible endpoints
 """
+
+import os
+import re
 
 from django.core.management.base import BaseCommand, CommandError
 
 from case_workflows.models import CaseWorkflowRun
+from case_workflows.output import WorkflowPrinter
 from case_workflows.registry import get_workflow, list_workflows
+
+
+def _format_error(exc: Exception) -> str:
+    """
+    Return a human-friendly error string.
+    Detects 429 rate-limit errors and surfaces the retry delay prominently.
+    """
+    msg = str(exc)
+    # 429 RESOURCE_EXHAUSTED — present in openai, langchain-google-genai, anthropic errors
+    if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "rate_limit" in msg.lower() or "RateLimitError" in type(exc).__name__:
+        retry_match = re.search(
+            r"(?:retry[_ ]?in|retryDelay)[^0-9]*([0-9]+h[0-9]+m[0-9.]+s|[0-9]+m[0-9.]+s|[0-9]+s)",
+            msg,
+            re.IGNORECASE,
+        )
+        retry_hint = f" Retry in: {retry_match.group(1)}" if retry_match else ""
+        # Extract quota metric name if present
+        quota_match = re.search(r"generativelanguage\.googleapis\.com/([\w/]+)", msg)
+        quota_hint = f" (quota: {quota_match.group(1)})" if quota_match else ""
+        return f"Rate limit exceeded — you have hit the API quota.{quota_hint}{retry_hint}"
+    return msg
 
 
 class Command(BaseCommand):
@@ -35,11 +70,48 @@ class Command(BaseCommand):
             help="Target a specific Jawafdehi case_id instead of auto-selecting",
         )
         parser.add_argument(
-            "--runner",
+            "--model",
             type=str,
-            choices=["copilot", "kiro"],
-            default="copilot",
-            help="Agent CLI runner to use (default: copilot)",
+            default=None,
+            help=(
+                "LLM model to use, in provider:model format. "
+                "Supports any OpenAI-compatible provider "
+                "(openai, anthropic, google, ollama, etc.). "
+                "Env: JAWAFDEHI_CASEWORK_MODEL (fallback: openai:gpt-4o)."
+            ),
+        )
+        parser.add_argument(
+            "--api-key",
+            type=str,
+            default=None,
+            help=(
+                "API key for the LLM provider. "
+                "Env: JAWAFDEHI_CASEWORK_API_KEY. "
+                "Falls back to the provider's standard env var "
+                "(e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY) if not set."
+            ),
+        )
+        parser.add_argument(
+            "--base-url",
+            type=str,
+            default=None,
+            help=(
+                "Base URL for OpenAI-compatible endpoints "
+                "(e.g. http://localhost:11434/v1 for Ollama). "
+                "Env: JAWAFDEHI_CASEWORK_BASE_URL."
+            ),
+        )
+        parser.add_argument(
+            "--verbose",
+            action="store_true",
+            help="Stream agent events (tool calls, model output) to stdout.",
+        )
+        parser.add_argument(
+            "--recursion-limit",
+            type=int,
+            default=100,
+            dest="recursion_limit",
+            help="LangGraph recursion limit per step (default: 100).",
         )
         parser.add_argument(
             "--list",
@@ -49,16 +121,18 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        printer = WorkflowPrinter()
+
         # ---- List workflows mode ----
         if options["list_workflows"]:
             wids = list_workflows()
             if not wids:
-                self.stderr.write("No workflows registered.")
+                printer.warn("No workflows registered.")
                 return
-            self.stderr.write("Registered workflows:")
+            printer._console.print("Registered workflows:")
             for wid in wids:
                 wf = get_workflow(wid)
-                self.stderr.write(f"  • {wid} — {wf.display_name}")
+                printer._console.print(f"  • [bold]{wid}[/bold] — {wf.display_name}")
             return
 
         # ---- Require workflow_id for execution ----
@@ -73,27 +147,28 @@ class Command(BaseCommand):
         except KeyError as exc:
             raise CommandError(str(exc))
 
-        runner_name = options["runner"]
-        self.stderr.write(f"Workflow: {workflow.display_name} ({workflow_id})")
-        self.stderr.write(f"Runner:   {runner_name}")
+        model = options["model"] or os.environ.get("JAWAFDEHI_CASEWORK_MODEL", "openai:gpt-4o")
+        api_key = options["api_key"] or os.environ.get("JAWAFDEHI_CASEWORK_API_KEY")
+        base_url = options["base_url"] or os.environ.get("JAWAFDEHI_CASEWORK_BASE_URL")
+        verbose = options["verbose"]
+        recursion_limit = options["recursion_limit"]
 
-        # ---- Initialize runner (validates binary + provider-specific setup) ----
-        try:
-            workflow.initialize(runner=runner_name)
-        except (RuntimeError, ValueError) as exc:
-            raise CommandError(f"Initialization failed: {exc}")
+        if verbose:
+            printer.install_logging_handler()
+
+        printer.print_workflow_header(workflow.display_name, workflow_id, model, base_url)
 
         # ---- Determine target cases ----
         specific_case = options["case_id"]
         if specific_case:
             case_ids = [specific_case]
-            self.stderr.write(f"Targeting specific case: {specific_case}")
+            printer._console.print(f"  Targeting specific case: [bold]{specific_case}[/bold]")
         else:
             case_ids = workflow.get_eligible_cases()
-            self.stderr.write(f"Found {len(case_ids)} eligible case(s)")
+            printer._console.print(f"  Found [bold]{len(case_ids)}[/bold] eligible case(s)")
 
         if not case_ids:
-            self.stderr.write("No cases to process. Exiting.")
+            printer.warn("No cases to process. Exiting.")
             return
 
         # ---- Execute workflow for each case ----
@@ -102,51 +177,44 @@ class Command(BaseCommand):
         fail_count = 0
 
         for cid in case_ids:
-            self.stderr.write(f"\n{'=' * 60}")
-            self.stderr.write(f"Processing case: {cid}")
-            self.stderr.write(f"{'=' * 60}")
-
             run, created = CaseWorkflowRun.objects.get_or_create(
                 case_id=cid,
                 workflow_id=workflow_id,
             )
 
             if not created and run.is_complete:
-                self.stderr.write("  ⏭ Skipping — already complete")
+                printer.print_step_skipped(cid)
                 skip_count += 1
                 continue
 
-            self.stderr.write(
-                "  ✦ Created new run" if created else "  ♻ Resuming existing run"
-            )
+            printer.print_case_header(cid, created)
 
             try:
                 workflow.setup_work_dir(run)
-                self.stderr.write(f"  📁 Work dir: {run.work_dir}")
-                workflow.execute(run, runner=runner_name)
+                printer.print_work_dir(run.work_dir)
+                workflow.execute(
+                    run, model=model, api_key=api_key, base_url=base_url,
+                    verbose=verbose, recursion_limit=recursion_limit,
+                    printer=printer,
+                )
             except KeyboardInterrupt:
-                self.stderr.write("  ⚠ Interrupted — stopping")
+                printer.error("Interrupted — stopping")
                 fail_count += 1
                 break
             except Exception as exc:
-                self.stderr.write(f"  ✗ Error: {exc}")
+                printer.error(_format_error(exc))
                 fail_count += 1
                 continue
 
             run.refresh_from_db()
             if run.is_complete:
-                self.stderr.write("  ✓ Completed")
+                printer.print_step_done(cid)
                 success_count += 1
             elif run.has_failed:
-                self.stderr.write(f"  ✗ Failed: {run.error_message}")
+                printer.error(f"Failed: {run.error_message}")
                 fail_count += 1
             else:
-                self.stderr.write("  … Status unclear")
+                printer.warn("Status unclear")
 
         # ---- Summary ----
-        self.stderr.write(f"\n{'=' * 60}")
-        self.stderr.write("Summary:")
-        self.stderr.write(f"  Processed: {len(case_ids)}")
-        self.stderr.write(f"  Succeeded: {success_count}")
-        self.stderr.write(f"  Skipped:   {skip_count}")
-        self.stderr.write(f"  Failed:    {fail_count}")
+        printer.print_summary(len(case_ids), success_count, skip_count, fail_count)

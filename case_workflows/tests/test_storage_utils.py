@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 
 from case_workflows.storage_utils import (
+    _EXCLUDED_DIRS,
     _EXCLUDED_FILENAMES,
     _WORKFLOW_OUTPUTS_PREFIX,
     build_file_record,
@@ -181,6 +182,25 @@ class TestUploadWorkflowOutputs:
             result = upload_workflow_outputs(tmp_path, "case-x")
 
         assert result == {}
+
+    def test_excluded_dirs_are_skipped(self, tmp_path):
+        for dir_name in _EXCLUDED_DIRS:
+            excluded_file = tmp_path / dir_name / "some_file.csv"
+            excluded_file.parent.mkdir(parents=True, exist_ok=True)
+            excluded_file.write_text("data")
+        kept = tmp_path / "logs" / "run.md"
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        kept.write_text("log")
+
+        mock_storage = MagicMock()
+        mock_storage.save.side_effect = lambda name, _fh: name
+
+        with patch("case_workflows.storage_utils.default_storage", mock_storage):
+            result = upload_workflow_outputs(tmp_path, "case-x")
+
+        assert all(k.startswith("logs") for k in result)
+        for dir_name in _EXCLUDED_DIRS:
+            assert not any(k.startswith(dir_name) for k in result)
 
 
 # ---------------------------------------------------------------------------

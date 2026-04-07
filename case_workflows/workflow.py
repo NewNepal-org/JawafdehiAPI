@@ -1,25 +1,22 @@
 """
 Workflow ABC — defines the contract for all case workflow templates,
-and owns the execution logic (formerly in WorkflowRunner).
+and owns the execution logic.
 """
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
-import os
-import re
-import shutil
-import subprocess
-import time
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
+from asgiref.sync import sync_to_async
 from django.conf import settings
 
+from case_workflows.output import WorkflowPrinter
 from case_workflows.storage_utils import (
     download_workflow_outputs,
     upload_workflow_outputs,
@@ -31,6 +28,159 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _patch_gemini_null_properties() -> None:
+    """
+    Patch langchain_google_genai to handle tool schemas that Gemini rejects.
+
+    Root cause: Gemini requires ``type`` to be explicitly ``"object"`` whenever
+    ``properties`` is present.  Valid JSON Schema omits ``type`` when it is
+    implied (e.g. Pydantic v2 model schemas, dereferenced ``$ref`` objects), but
+    Gemini's strict validation rejects that.
+
+    Two patches are applied:
+
+    1. **``_format_json_schema_to_gapic``** — this is the function inside
+       ``langchain_google_genai._function_utils`` that converts raw JSON Schema
+       into the intermediate ``formatted_schema`` dict that
+       ``_dict_to_genai_schema`` then reads.  After conversion, if the result
+       has ``properties`` but no ``type`` (and no ``anyOf``), we add
+       ``"type": "object"``.  Because the function recurses via LOAD_GLOBAL,
+       this fix also covers every nested schema produced by its own recursion
+       (including ``$ref``-expanded sub-schemas).
+
+    2. **``_dict_to_genai_schema``** — kept for the original null-property
+       fix: property slots whose schema converts to ``None`` crash pydantic;
+       return an empty ``Schema()`` instead.
+    """
+    try:
+        import langchain_google_genai._function_utils as _fu
+        from google.genai import types as _genai_types
+
+        # --- patch 1: _format_json_schema_to_gapic ---
+        _orig_format = _fu._format_json_schema_to_gapic
+
+        def _patched_format(schema: Any) -> Any:
+            result = _orig_format(schema)
+            if not isinstance(result, dict):
+                return result
+
+            # Pydantic v2 sometimes emits schemas with BOTH "properties" AND
+            # "anyOf" where anyOf items are pure required-constraint dicts:
+            #   anyOf: [{"required": ["x"]}, {"required": ["y"]}]
+            # These carry no type information and Gemini rejects them with:
+            #   "parameters.any_of[N].required: only allowed for OBJECT type"
+            # Additionally, when anyOf is present alongside properties,
+            # _dict_to_genai_schema intentionally drops "type" (per its comment
+            # "when any_of is used, it must be the only field set"), so the
+            # resulting Schema has properties but no type — also rejected by Gemini.
+            #
+            # Fix: remove anyOf items that are ONLY a required-constraint (no
+            # type, no properties, no anyOf of their own).  If all items are
+            # stripped, delete the anyOf key entirely so that _dict_to_genai_schema
+            # will correctly set type=OBJECT for the parent schema.
+            if "anyOf" in result:
+                kept = [
+                    item
+                    for item in result["anyOf"]
+                    if not (
+                        isinstance(item, dict)
+                        and "required" in item
+                        and "type" not in item
+                        and "properties" not in item
+                        and "anyOf" not in item
+                    )
+                ]
+                if kept:
+                    result["anyOf"] = kept
+                else:
+                    del result["anyOf"]
+
+            # After the cleanup above, if properties are present but type is
+            # absent (and no anyOf remains), add the explicit "object" type that
+            # Gemini requires.
+            if (
+                "properties" in result
+                and "type" not in result
+                and "anyOf" not in result
+            ):
+                result["type"] = "object"
+
+            return result
+
+        _fu._format_json_schema_to_gapic = _patched_format
+
+        # --- patch 2: _dict_to_genai_schema (null-property fix) ---
+        _orig_dict = _fu._dict_to_genai_schema
+
+        def _patched_dict(schema, is_property: bool = False, is_any_of_item: bool = False):
+            result = _orig_dict(schema, is_property=is_property, is_any_of_item=is_any_of_item)
+            if result is None and is_property:
+                return _genai_types.Schema()
+            return result
+
+        _fu._dict_to_genai_schema = _patched_dict
+
+    except ImportError:
+        pass  # langchain_google_genai not installed; skip
+
+
+_patch_gemini_null_properties()
+
+
+def _patch_unicode_file_editing() -> None:
+    """
+    Patch deepagents ``perform_string_replacement`` to handle Unicode normalisation.
+
+    Root cause: The agent (LLM) generates Devanagari text in NFD normalisation
+    while files on disk are stored in NFC (or vice-versa).  The two forms look
+    identical but differ at the byte level, so the bare ``content.count(old_string)``
+    inside ``perform_string_replacement`` reports 0 occurrences and the edit fails
+    with "String not found in file".
+
+    Fix: normalise both the file content AND the search string to NFC before
+    comparing and replacing.  NFC is a canonical normalisation so the resulting
+    file content is semantically identical.
+    """
+    try:
+        import unicodedata
+
+        import deepagents.backends.utils as _dbu
+
+        _orig_replace = _dbu.perform_string_replacement
+
+        def _nfc_replace(
+            content: str,
+            old_string: str,
+            new_string: str,
+            replace_all: bool = False,
+        ):
+            # Normalise all three strings to NFC so that visually identical
+            # Devanagari (and other Unicode) text matches regardless of how it
+            # was generated or stored.
+            content_nfc = unicodedata.normalize("NFC", content)
+            old_nfc = unicodedata.normalize("NFC", old_string)
+            new_nfc = unicodedata.normalize("NFC", new_string)
+            return _orig_replace(content_nfc, old_nfc, new_nfc, replace_all)
+
+        _dbu.perform_string_replacement = _nfc_replace
+
+        # The filesystem backend imports perform_string_replacement at call-time
+        # via module reference, but patch it there too just in case it was
+        # imported directly.
+        try:
+            import deepagents.backends.filesystem as _dbf
+            if hasattr(_dbf, "perform_string_replacement"):
+                _dbf.perform_string_replacement = _nfc_replace
+        except ImportError:
+            pass
+
+    except ImportError:
+        pass  # deepagents not installed; skip
+
+
+_patch_unicode_file_editing()
+
+
 # ---------------------------------------------------------------------------
 # WorkflowStep
 # ---------------------------------------------------------------------------
@@ -40,33 +190,14 @@ logger = logging.getLogger(__name__)
 class WorkflowStep:
     """A single step within a workflow template."""
 
-    id: str
-    title: str
-    description: str
-    priority: int
-    acceptance_criteria: List[str] = field(default_factory=list)
-
-
-# ---------------------------------------------------------------------------
-# Progress
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class Progress:
-    """Tracks execution state for a single workflow step.
-
-    The agent writes to ``progress.json`` updating these fields as it works.
-    The runner back-fills ``log_file_name`` after each iteration.
-    """
-
-    story: str  # User story code, e.g. "US-001"
-    story_title: str  # Human-readable title
-    success: bool = False
-    notes: str = ""  # Multi-line markdown written by the agent
-    started: Optional[str] = None  # ISO 8601 datetime set by the agent
-    completed: Optional[str] = None  # ISO 8601 datetime set by the agent
-    log_file_name: str = ""  # e.g. "001_20260404T094100.log"; set by runner
+    name: str
+    prompt_fn: Callable[[Path], str]
+    skills: List[str] = field(default_factory=list)
+    tools: List[Any] = field(default_factory=list)
+    mcp_servers: dict[str, dict] = field(default_factory=dict)
+    mcp_tool_filter: Optional[List[str]] = None
+    subagents: List[dict] = field(default_factory=list)
+    system_prompt: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -86,9 +217,8 @@ class Workflow(ABC):
     .. code-block:: python
 
         workflow = get_workflow("ciaa_caseworker")
-        workflow.initialize(runner="kiro")
         work_dir = workflow.setup_work_dir(run)
-        workflow.execute(run, runner="kiro")
+        workflow.execute(run, model="openai:gpt-4o")
     """
 
     # ------------------------------------------------------------------
@@ -118,39 +248,8 @@ class Workflow(ABC):
         """
         Return a list of Jawafdehi ``Case.case_id`` strings eligible for
         this workflow (e.g. ``["case-abc123", "case-def456"]``).
-
-        The management command will iterate over these and create / resume
-        a ``CaseWorkflowRun`` for each one.
         """
         ...
-
-    def get_prd(self) -> dict:
-        """Return the PRD dict to seed ``prd.json`` in each work dir.
-
-        Read-only reference for the agent — completion state lives in
-        ``progress.json``, not here.
-        Built dynamically from ``self.steps`` — no static JSON file required.
-        """
-        return {
-            "project": "Jawafdehi",
-            "description": f"Agentic Workflow Plan: {self.display_name}",
-            "userStories": [asdict(step) for step in self.steps],
-        }
-
-    def get_progress_json_template(self) -> dict:
-        """Return the initial ``progress.json`` schema for a new run.
-
-        ``progress`` is an **append-only log** — each agent invocation adds
-        one entry for the story it worked on.  The runner is the sole writer.
-        """
-        return {
-            "is_complete": False,
-            "failed": False,
-            "progress": [],
-            # Keyed by local relative path string; value is a file tracking record
-            # with "backend_path", "size" (bytes), and "checksum" (sha256:<hex>).
-            "files": {},
-        }
 
     # ------------------------------------------------------------------
     # Optional overrides
@@ -164,27 +263,6 @@ class Workflow(ABC):
         """Directory containing instruction files for the agent."""
         return self.get_template_dir() / "instructions"
 
-    def get_agent_name(self) -> str:
-        """Agent name passed to the runner CLI."""
-        return self.workflow_id
-
-    def get_mcp_config_path(self) -> Path | None:
-        """Return path to an MCP config JSON, or ``None`` to skip."""
-        candidate = self.get_template_dir() / "etc" / "copilot-mcp-config.json"
-        return candidate if candidate.exists() else None
-
-    def get_prompt(self, case_dir: Path) -> str:
-        """Return the prompt string passed to the agent CLI.
-
-        Override to customise what the agent is told at invocation time.
-        Default: direct the agent to process the next incomplete story in
-        *case_dir* and stop after exactly one story.
-        """
-        return (
-            f"Process the next incomplete story in {case_dir}. "
-            "Execute exactly one story, then stop."
-        )
-
     def on_work_dir_created(self, case_dir: Path) -> None:
         """
         Called after the base work directory is created.
@@ -193,29 +271,12 @@ class Workflow(ABC):
         Default is a no-op.
         """
 
-    def on_initialize(self, runner: str) -> None:
+    def on_initialize(self) -> None:
         """
-        Called after the runner binary is validated.
+        Called once before execution begins.
 
-        Override to perform provider-specific setup, e.g. symlinking agent
-        config files into the runner's config directory.
-        Default is a no-op.
+        Override to perform any one-time setup. Default is a no-op.
         """
-
-    # ------------------------------------------------------------------
-    # Initialization
-    # ------------------------------------------------------------------
-
-    def initialize(self, runner: str = "copilot") -> None:
-        """
-        Verify the runner is usable and perform any one-time setup.
-
-        Raises ``RuntimeError`` if the runner binary cannot be found.
-        Calls ``on_initialize(runner)`` for template-specific setup.
-        """
-        self._resolve_agent_binary(runner)
-        logger.info("Runner '%s' is available", runner)
-        self.on_initialize(runner)
 
     # ------------------------------------------------------------------
     # Work directory
@@ -236,15 +297,17 @@ class Workflow(ABC):
 
     def setup_work_dir(self, run: CaseWorkflowRun) -> Path:
         """
-        Create the work directory for a run and populate base files.
+        Create the work directory for a run and populate it.
 
         - If the directory already exists, logs a warning and deletes it
-        - Writes ``prd.json`` (read-only spec for the agent)
-        - Writes ``progress.json`` (agent updates this to track completion)
+        - Downloads any previously uploaded files tracked in ``run.case_data``
         - Calls ``on_work_dir_created(case_dir)`` for template-specific setup
+        - Initialises ``run.case_data`` if empty
 
         Persists ``run.work_dir`` and returns the directory path.
         """
+        import shutil
+
         case_dir = self.get_work_dir(run)
 
         if case_dir.is_dir():
@@ -255,26 +318,20 @@ class Workflow(ABC):
 
         case_dir.mkdir(parents=True, exist_ok=True)
 
-        # Static PRD spec (agent reads, never writes)
-        with open(case_dir / "prd.json", "w") as f:
-            json.dump(self.get_prd(), f, indent=2, ensure_ascii=False)
+        # Initialise state in case_data if this is a fresh run
+        if not run.case_data:
+            run.case_data = {"is_complete": False, "steps": {}, "files": {}}
 
-        # Progress tracking (agent writes, runner reads)
-        progress_data = (
-            run.case_data if run.case_data else self.get_progress_json_template()
-        )
-        with open(case_dir / "progress.json", "w") as f:
-            json.dump(progress_data, f, indent=2, ensure_ascii=False)
-
-        # Download existing tracked files if present
-        if progress_data.get("files"):
-            download_workflow_outputs(case_dir, progress_data["files"])
+        # Download existing tracked files if resuming a previous run
+        tracked_files = run.case_data.get("files", {})
+        if tracked_files:
+            download_workflow_outputs(case_dir, tracked_files)
 
         # Template-specific extra setup
         self.on_work_dir_created(case_dir)
 
         run.work_dir = str(case_dir)
-        run.save(update_fields=["work_dir", "updated_at"])
+        run.save(update_fields=["work_dir", "case_data", "updated_at"])
 
         logger.info("Work directory created: %s", case_dir)
         return case_dir
@@ -287,110 +344,204 @@ class Workflow(ABC):
         self,
         run: CaseWorkflowRun,
         *,
-        max_iterations: int = 15,
-        runner: str = "copilot",
+        model: str = "openai:gpt-4o",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        verbose: bool = False,
+        recursion_limit: int = 100,
+        printer: Optional[WorkflowPrinter] = None,
     ) -> None:
         """
-        Main execution loop — two phases per iteration:
+        Run all pending workflow steps in order using a deepagents agent.
 
-        **Phase 1** ``_run_agent``: invoke the agent CLI and capture its output.
-        The agent is forbidden from writing to ``prd.json`` or ``progress.json``;
-        it communicates outcomes exclusively through stdout markers.
+        Each step builds its own agent with the step's tools, MCP servers,
+        system prompt, and subagents.  The agent receives filesystem access
+        to ``case_dir`` via ``FilesystemBackend``.
 
-        **Phase 2** ``_review_and_update_progress``: the runner reads the agent's
-        stdout, writes the iteration log, and is the sole writer of
-        ``progress.json``.
-
-        Updates ``run`` on completion or failure.
+        Step completion is stored in ``run.case_data["steps"]`` and
+        persisted to the database after every step so that interrupted
+        runs can be resumed from the correct point.
         """
+        asyncio.run(
+            self._execute_async(
+                run, model=model, api_key=api_key, base_url=base_url, verbose=verbose,
+                recursion_limit=recursion_limit, printer=printer,
+            )
+        )
+
+    async def _execute_async(
+        self,
+        run: CaseWorkflowRun,
+        *,
+        model: str,
+        api_key: Optional[str],
+        base_url: Optional[str],
+        verbose: bool = False,
+        recursion_limit: int = 100,
+        printer: Optional[WorkflowPrinter] = None,
+    ) -> None:
+        import os
+
+        from deepagents import create_deep_agent
+        from deepagents.backends import FilesystemBackend
+        from langchain.chat_models import init_chat_model
+        from langchain_mcp_adapters.client import MultiServerMCPClient
+
         case_dir = self.get_work_dir(run)
         if not case_dir.is_dir():
             raise RuntimeError(
                 f"Work directory does not exist — call setup_work_dir() first: {case_dir}"
             )
 
-        agent_bin = self._resolve_agent_binary(runner)
+        # Initialise or restore state
+        state: dict = run.case_data or {}
+        if "steps" not in state:
+            state.update({"is_complete": False, "steps": {}, "files": {}})
 
-        run.mark_started()
-        logger.info("Starting workflow loop for %s (runner=%s)", run.case_id, runner)
+        if state.get("is_complete"):
+            await sync_to_async(run.mark_complete)(case_data=state)
+            return
 
-        retry_count = 0
-        iteration_count = 0
+        await sync_to_async(run.mark_started)()
+        self.on_initialize()
 
+        # Build the chat model (supports any OpenAI-compatible provider)
+        model_kwargs: dict[str, Any] = {}
+        if api_key:
+            model_kwargs["api_key"] = api_key
+        if base_url:
+            model_kwargs["base_url"] = base_url
+        chat_model = init_chat_model(model, **model_kwargs)
+
+        # Build Langfuse callback if credentials are present
+        langfuse_callbacks: list[Any] = []
+        if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
+            import uuid
+
+            from langfuse.langchain import CallbackHandler
+            trace_id = uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"jawafdehi/{self.workflow_id}/{run.case_id}",
+            ).hex  # 32 lowercase hex chars
+            langfuse_callbacks = [CallbackHandler(
+                trace_context={"trace_id": trace_id},
+            )]
+            if printer:
+                printer.print_tracing_info("Langfuse")
+            else:
+                logger.info("Langfuse tracing enabled")
+
+        # Pre-connect all unique MCP servers once across all steps so that
+        # uvx only resolves/installs each server a single time.
+        all_mcp_servers: dict[str, dict] = {}
+        for step in self.steps:
+            all_mcp_servers.update(step.mcp_servers)
+
+        mcp_tools_by_server: dict[str, list[Any]] = {}
+        if all_mcp_servers:
+            for server_name, server_config in all_mcp_servers.items():
+                client = MultiServerMCPClient({server_name: server_config})
+                tools = await client.get_tools()
+                for t in tools:
+                    t.handle_tool_error = True
+                mcp_tools_by_server[server_name] = tools
+            if printer:
+                printer.print_mcp_info(list(mcp_tools_by_server))
+            else:
+                logger.info("MCP servers connected: %s", list(mcp_tools_by_server))
+
+        total_steps = len(self.steps)
         try:
-            while iteration_count < max_iterations:
-                # Check progress.json before each iteration (updated by previous Phase 2)
-                progress_data = self._read_progress(case_dir)
-                if progress_data and progress_data.get("is_complete", False):
-                    if progress_data.get("failed", False):
-                        run.mark_failed(
-                            error_message="Workflow marked as failed in progress.json",
-                            case_data=progress_data,
-                        )
-                        logger.warning(
-                            "Workflow %s failed (progress.json flag)", run.case_id
-                        )
+            for idx, step in enumerate(self.steps, start=1):
+                step_state = state["steps"].get(step.name, {})
+                if step_state.get("status") == "complete":
+                    if printer:
+                        printer.print_step_skipped(step.name)
                     else:
-                        run.mark_complete(case_data=progress_data)
-                        logger.info("Workflow %s completed successfully", run.case_id)
-                    return
-
-                iteration_count += 1
-                logger.info(
-                    "Iteration %d/%d | case %s",
-                    iteration_count,
-                    max_iterations,
-                    run.case_id,
-                )
-
-                cmd = self._build_command(agent_bin, runner, case_dir)
-
-                # ── Phase 1: run the agent (reads prd.json + progress.json itself) ─
-                try:
-                    result = self._run_agent(cmd)
-                except KeyboardInterrupt:
-                    logger.warning("Workflow interrupted by user")
-                    run.mark_failed(error_message="Interrupted by user")
-                    raise  # propagate so the caller can break cleanly
-
-                if result.returncode == 130:
-                    logger.warning("Workflow interrupted (exit 130)")
-                    run.mark_failed(error_message="Interrupted (exit 130)")
-                    raise KeyboardInterrupt()  # agent exited from SIGINT; surface to caller
-
-                # ── Phase 2: review stdout and append to progress.json ──────
-                self._review_and_update_progress(case_dir, run, result, iteration_count)
-
-                if result.returncode != 0:
-                    retry_count += 1
-                    if retry_count > 3:
-                        msg = f"{runner} CLI failed {retry_count} times consecutively"
-                        logger.error(msg)
-                        run.mark_failed(error_message=msg)
-                        return
-
-                    logger.warning(
-                        "%s CLI exited %d — retry %d/3 in 10s",
-                        runner,
-                        result.returncode,
-                        retry_count,
-                    )
-                    time.sleep(10)
+                        logger.info("Skipping completed step: %s", step.name)
                     continue
 
-                retry_count = 0
-                time.sleep(2)
+                if printer:
+                    printer.print_step_header(step.name, idx, total_steps)
+                else:
+                    logger.info("Running step: %s", step.name)
 
-            # Exhausted iterations
-            progress_data = self._read_progress(case_dir) or {}
-            run.mark_failed(
-                error_message=f"Reached max iterations ({max_iterations})",
-                case_data=progress_data,
-            )
-            logger.warning("Max iterations reached for %s", run.case_id)
+                # Gather pre-connected MCP tools for this step's servers
+                mcp_tools: list[Any] = []
+                for server_name in step.mcp_servers:
+                    mcp_tools.extend(mcp_tools_by_server.get(server_name, []))
+                if step.mcp_tool_filter is not None:
+                    allowed = set(step.mcp_tool_filter)
+                    mcp_tools = [t for t in mcp_tools if t.name in allowed]
+
+                all_tools = mcp_tools + step.tools
+
+                # Pass MEMORY.md as agent memory so it is injected into the
+                # system prompt at startup and the agent can write back to it
+                # with `edit_file` to record learnings across steps.
+                memory_file = case_dir / "MEMORY.md"
+                memory_paths = [str(memory_file)] if memory_file.is_file() else None
+
+                agent = create_deep_agent(
+                    model=chat_model,
+                    tools=all_tools,
+                    system_prompt=step.system_prompt,
+                    subagents=step.subagents or None,
+                    backend=FilesystemBackend(
+                        root_dir=str(case_dir), virtual_mode=False
+                    ),
+                    memory=memory_paths,
+                )
+
+                invocation = {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": step.prompt_fn(case_dir),
+                        }
+                    ]
+                }
+                run_config = {
+                    "callbacks": langfuse_callbacks,
+                    "run_name": step.name,
+                    "recursion_limit": recursion_limit,
+                }
+
+                if verbose:
+                    async for event in agent.astream_events(
+                        invocation, config=run_config, version="v2"
+                    ):
+                        if printer:
+                            printer.handle_agent_event(event)
+                else:
+                    await agent.ainvoke(
+                        invocation, config=run_config
+                    )
+
+                # Mark step complete and persist
+                state["steps"][step.name] = {
+                    "status": "complete",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+                previous_files = state.get("files", {})
+                uploaded = self._upload_outputs(case_dir, run.case_id, previous_files)
+                state.setdefault("files", {}).update(uploaded)
+
+                run.case_data = state
+                await sync_to_async(run.save)(update_fields=["case_data", "updated_at"])
+                if printer:
+                    printer.print_step_done(step.name)
+                else:
+                    logger.info("Step completed: %s", step.name)
+
+            # All steps done
+            state["is_complete"] = True
+            await sync_to_async(run.mark_complete)(case_data=state)
+            logger.info("Workflow completed for %s", run.case_id)
 
         except Exception as exc:
-            run.mark_failed(error_message=str(exc))
+            await sync_to_async(run.mark_failed)(error_message=str(exc))
             logger.exception("Workflow execution error for %s", run.case_id)
             raise
 
@@ -402,295 +553,9 @@ class Workflow(ABC):
     def _upload_outputs(
         case_dir: Path, case_id: str, previous_files: dict[str, dict] | None = None
     ) -> dict[str, dict]:
-        """Upload all non-excluded files in *case_dir* to ``default_storage``.
-
-        Returns the dictionary of file records from storage_utils.
-        """
+        """Upload all non-excluded files in *case_dir* to ``default_storage``."""
         try:
             return upload_workflow_outputs(case_dir, case_id, previous_files)
         except Exception as exc:  # noqa: BLE001
-            # Upload failures must never crash the workflow run record.
             logger.error("Failed to upload workflow outputs for %s: %s", case_id, exc)
             return {}
-
-    def _resolve_agent_binary(self, runner: str) -> str:
-        """Locate the agent CLI binary on PATH. Raises ``RuntimeError`` if missing."""
-        if runner == "copilot":
-            codespaces = "/home/codespace/.local/bin/copilot"
-            if os.path.isfile(codespaces):
-                return codespaces
-            found = shutil.which("copilot")
-            if not found:
-                raise RuntimeError(
-                    "'copilot' not found on PATH. Install GitHub Copilot CLI first."
-                )
-            return found
-        elif runner == "kiro":
-            found = shutil.which("kiro-cli")
-            if not found:
-                raise RuntimeError("'kiro-cli' not found on PATH.")
-            return found
-        else:
-            raise ValueError(f"Unknown runner: {runner!r}")
-
-    def _build_command(self, agent_bin: str, runner: str, case_dir: Path) -> list[str]:
-        """Assemble the agent CLI invocation."""
-        prompt = self.get_prompt(case_dir)
-        if runner == "copilot":
-            cmd = [
-                agent_bin,
-                "--allow-all",
-                "--agent",
-                self.get_agent_name(),
-            ]
-            mcp_config = self.get_mcp_config_path()
-            if mcp_config and mcp_config.exists():
-                cmd += ["--additional-mcp-config", f"@{mcp_config}"]
-            cmd += ["-p", prompt]
-            return cmd
-        else:  # kiro
-            return [
-                agent_bin,
-                "chat",
-                "--agent",
-                self.get_agent_name(),
-                "--no-interactive",
-                "--require-mcp-startup",
-                prompt,
-            ]
-
-    @staticmethod
-    def _run_agent(cmd: list[str]) -> subprocess.CompletedProcess:
-        """Phase 1 — execute the agent CLI, streaming output in real time.
-
-        stdout and stderr are merged into a single stream so interleaved
-        output (e.g. agent reasoning + tool errors) appears in order.
-        Each line is printed immediately; the full output is also collected
-        and returned as ``result.stdout`` so Phase 2 is unchanged.
-
-        KeyboardInterrupt is caught internally: the process is terminated
-        and partial output is returned with returncode 130, so Phase 2
-        (log writing) still runs before the caller exits.
-
-        The agent must NOT write to ``prd.json`` or ``progress.json``.
-        All progress is communicated through stdout markers (see
-        ``_parse_progress_from_stdout``).
-        """
-        output_lines: list[str] = []
-        returncode = -1
-
-        with subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # merge stderr into stdout
-            text=True,
-            bufsize=1,  # line-buffered
-        ) as proc:
-            try:
-                for line in proc.stdout:  # type: ignore[union-attr]
-                    print(line, end="", flush=True)
-                    output_lines.append(line)
-                proc.wait()  # ensure returncode is populated after stdout is drained
-                returncode = proc.returncode
-            except KeyboardInterrupt:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                returncode = 130
-
-        return subprocess.CompletedProcess(
-            args=cmd,
-            returncode=returncode,
-            stdout="".join(output_lines),
-            stderr="",
-        )
-
-    def _review_and_update_progress(
-        self,
-        case_dir: Path,
-        run: CaseWorkflowRun,
-        result: subprocess.CompletedProcess,
-        iteration: int,
-    ) -> None:
-        """Phase 2 — sole writer of ``progress.json``.
-
-        1. Writes the iteration log to ``logs/``.
-        2. Parses stdout for a ``WORKFLOW_PROGRESS`` marker emitted by the agent.
-           The agent is responsible for reading ``prd.json`` and ``progress.json``
-           to decide which story it worked on; the runner does not impose this.
-        3. **Appends** the new ``Progress`` entry to the log if a marker was found.
-           If the agent emits no marker, logs a warning and skips appending.
-        4. Infers ``is_complete`` when every step id has a ``success: true``
-           entry anywhere in the log.
-        5. Checks for ``WORKFLOW_FAILED`` to short-circuit the loop.
-        """
-        log_filename = self._write_iteration_log(
-            case_dir, iteration, result.stdout, result.stderr
-        )
-
-        data = self._read_progress(case_dir)
-        if not data:
-            logger.warning("progress.json missing — cannot apply updates")
-            return
-
-        # Parse the single WORKFLOW_PROGRESS marker from stdout
-        updates = self._parse_progress_from_stdout(result.stdout)
-        if not updates:
-            logger.warning(
-                "Iteration %d: no WORKFLOW_PROGRESS marker in stdout — nothing appended",
-                iteration,
-            )
-        else:
-            raw = updates[0]  # agent works on exactly one story per run
-            new_entry = asdict(
-                Progress(
-                    story=raw.get("story", ""),
-                    story_title=raw.get("story_title", ""),
-                    success=bool(raw.get("success", False)),
-                    notes=raw.get("notes", ""),
-                    started=raw.get("started"),
-                    completed=raw.get("completed"),
-                    log_file_name=log_filename,
-                )
-            )
-            data["progress"].append(new_entry)
-
-        # Check for workflow failure signal
-        failure_reason = self._parse_failure_from_stdout(result.stdout)
-        if failure_reason:
-            data["failed"] = True
-            data["is_complete"] = True
-            logger.warning("Agent signalled workflow failure: %s", failure_reason)
-
-        # Infer completion when every defined step has a success=true entry
-        if not data.get("is_complete"):
-            succeeded = {e["story"] for e in data["progress"] if e.get("success")}
-            if all(step.id in succeeded for step in self.steps):
-                data["is_complete"] = True
-
-        # Upload workflow outputs and merge into files dictionary
-        previous_files = data.get("files", {})
-        uploaded_records = self._upload_outputs(case_dir, run.case_id, previous_files)
-        if "files" not in data:
-            data["files"] = {}
-        data["files"].update(uploaded_records)
-
-        try:
-            with open(case_dir / "progress.json", "w") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
-            run.case_data = data
-            run.save(update_fields=["case_data", "updated_at"])
-        except OSError as exc:
-            logger.warning("Could not write progress.json: %s", exc)
-
-    @classmethod
-    def _normalize_marker_line(cls, line: str) -> str:
-        """Strip ANSI codes and runner-specific prefixes before checking for markers.
-
-        kiro colorises its output and prefixes every agent output line with
-        ``> ``, so the raw line looks like
-        ``\x1b[...]> \x1b[...]WORKFLOW_PROGRESS: {...}``.  ANSI codes must be
-        removed before the ``>`` prefix check, otherwise ``startswith(">")
-        `` never matches.
-        """
-        # Remove ANSI escape sequences first, then strip surrounding whitespace
-        stripped = cls._strip_ansi(line).strip()
-        # Strip a single leading "> " (kiro streaming prefix)
-        if stripped.startswith(">"):
-            stripped = stripped[1:].strip()
-        return stripped
-
-    @staticmethod
-    def _parse_progress_from_stdout(stdout: str) -> list[dict]:
-        """Scan stdout for ``WORKFLOW_PROGRESS: <json>`` lines.
-
-        The agent must emit one such line per completed step, e.g.::
-
-            WORKFLOW_PROGRESS: {"story": "US-001", "success": true,
-                                "notes": "Done.", "started": "...",
-                                "completed": "..."}
-
-        Handles runner-specific line prefixes (e.g. kiro emits ``> `` before
-        each agent output line).
-        """
-        updates = []
-        for line in stdout.splitlines():
-            stripped = Workflow._normalize_marker_line(line)
-            if stripped.startswith("WORKFLOW_PROGRESS:"):
-                payload = stripped[len("WORKFLOW_PROGRESS:") :].strip()
-                try:
-                    updates.append(json.loads(payload))
-                except json.JSONDecodeError:
-                    logger.warning("Malformed WORKFLOW_PROGRESS line: %s", stripped)
-        return updates
-
-    @staticmethod
-    def _parse_failure_from_stdout(stdout: str) -> str | None:
-        """Scan stdout for a ``WORKFLOW_FAILED: <reason>`` line.
-
-        The agent emits this to signal an unrecoverable failure, e.g.::
-
-            WORKFLOW_FAILED: Could not download required source documents.
-
-        Handles runner-specific line prefixes (e.g. kiro emits ``> `` before
-        each agent output line).
-        """
-        for line in stdout.splitlines():
-            stripped = Workflow._normalize_marker_line(line)
-            if stripped.startswith("WORKFLOW_FAILED:"):
-                return stripped[len("WORKFLOW_FAILED:") :].strip()
-        return None
-
-    @staticmethod
-    def _read_progress(case_dir: Path) -> dict | None:
-        """Read and parse ``progress.json`` from the work directory."""
-        progress_file = case_dir / "progress.json"
-        if not progress_file.exists():
-            return None
-        try:
-            with open(progress_file) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Could not read progress.json: %s", exc)
-            return None
-
-    # ANSI CSI escape sequences: ESC [ ... (letter)  plus lone ESC sequences.
-    # Includes private-use parameter bytes like '?' (e.g. \x1b[?25l cursor hide).
-    _ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-9;?]*[A-Za-z]|[^\[])")
-
-    @classmethod
-    def _strip_ansi(cls, text: str) -> str:
-        """Remove ANSI terminal escape codes from *text*."""
-        return cls._ANSI_ESCAPE.sub("", text)
-
-    @staticmethod
-    def _write_iteration_log(
-        case_dir: Path,
-        iteration: int,
-        stdout: str,
-        stderr: str,
-    ) -> str:
-        """Write captured agent output to ``logs/run-summary-<timestamp>.stdout.md``.
-
-        ANSI escape codes are stripped so logs are plain text.
-        stderr is empty when stdout+stderr were merged by ``_run_agent``.
-        Returns the bare filename so it can be stored in ``progress.json`` entries.
-        """
-        logs_dir = case_dir / "logs"
-        logs_dir.mkdir(exist_ok=True)
-
-        timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%S")
-        log_filename = f"run-summary-{timestamp}.stdout.md"
-
-        parts = []
-        if stdout:
-            parts.append(Workflow._strip_ansi(stdout))
-        if stderr:
-            parts.append("--- STDERR ---\n" + Workflow._strip_ansi(stderr))
-
-        (logs_dir / log_filename).write_text("\n".join(parts))
-        logger.debug("Iteration log written: %s", log_filename)
-        return log_filename

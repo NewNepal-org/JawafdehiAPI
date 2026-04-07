@@ -18,7 +18,7 @@ The workflow runner reads this marker to record progress and will invoke you aga
 
 **IMPORTANT:** Do **NOT** write to `progress.json` or `prd.json`. These files are managed exclusively by the workflow runner. You may only read them.
 
-## US-001: Casework Folder Structure
+## Casework Folder Structure
 
 Your working environment for each case is isolated within a unique case folder located at `casework/<case_number>`. This folder contains the following structure:
 
@@ -32,7 +32,7 @@ Your working environment for each case is isolated within a unique case folder l
 Any temporary files, drafts, or exported evidence for the case should be generated within this `casework/<case_number>` directory to keep the workspace organized.
 
 
-## US-002: Collecting important information
+## Collecting important information
 
 ### Case data
 
@@ -54,7 +54,7 @@ Sample dates:
 
 To download the file, use `curl` or equivalent tools.
 
-> NOTE: CIAA press releases are also available in .agents/caseworker/data/ciaa-press-releases.csv. It might be easier to get the press release URL.
+> NOTE: CIAA press releases are also available in `data/ciaa-press-releases.csv` (columns: press_id, publication_date, title, source_url). Use `read_file` to read the CSV — do NOT use grep, as grep only returns file paths and not the matching line content. Find the row whose title contains the defendant name and read the source_url field.
 
 Once you find the URL, check for .doc, .docx, or .pdf files in the web page. Use this url to download the file.
 
@@ -68,7 +68,7 @@ Save it to sources/raw/charge-sheet-<case-number>.pdf
 
 The publication date is usually when CIAA publishes the press release; it's also the same date when the Special court case is registered.
 
-> NOTE: AG charge sheets are also available in `.agents/caseworker/data/ag_index.csv`. It might be easier to get the charge sheet PDF URL from this index.
+> NOTE: AG charge sheets are also available in `data/ag_index.csv` (columns: case_number, title, filing_date, pdf_url, court_office). Use `read_file` to read the CSV — do NOT use grep, as grep only returns file paths and not the matching line content. Find the row where case_number matches your case number and read the pdf_url field.
 
 Once you identify the year and month, you can use a curl like this to download the charge sheet:
 
@@ -156,7 +156,7 @@ Then document this in the progress log and continue with the next user story. No
 
 
 
-## US-003: Fetching news items from Web search
+## Fetching news items from Web search
 
 Use the web search tool to find and fetch relevant news items regarding the case from Web search. This helps build out the context and details of the allegations. Ensure you search using case details like case number, defendants' names, and the relevant court. Try searching near the court case registration date or the CIAA press release date.
 
@@ -165,14 +165,26 @@ If you are unable to discover any news items that's also fine. Just note it in y
 Also, for checkpoint, after every 10 or so web searches, keep updating the search results in sources/markdown/news-search-progress.md and note progress in your run summary.
 
 
-## US-005: Preparing the Case Draft Locally
+## Preparing the Case Draft Locally
 We'll create a markdown file called case-draft in the casework folder. It will follow the template added in `instructions/case-template.md` in the casework folder.
 
 Use the jawafdehi-caseworker skill to review this case draft. NOTE explicitly that we won't have a case in Jawafdehi.org, so we will have to make do with the local files that we have. The review should be saved in the usual location, naming it review-<CIAA-case-number>-<date-time>.md.
 
-## US-006: Uploading the Case Draft to Jawafdehi
+## Creating a Basic Jawafdehi Case
 
 TODO.
 
-For now, Update the PRD, Let's mark the workflow as a failure (set is_complete=true, and failed=true). Tell the user this isn't implemented yet.
+For now, mark the workflow as a failure (set is_complete=true, and failed=true). Tell the user this isn't implemented yet.
+
+## Creating / Updating Jawafdehi Entities
+
+TODO.
+
+For now, mark the workflow as a failure (set is_complete=true, and failed=true). Tell the user this isn't implemented yet.
+
+## Updating Remaining Case Details
+
+TODO.
+
+For now, mark the workflow as a failure (set is_complete=true, and failed=true). Tell the user this isn't implemented yet.
 

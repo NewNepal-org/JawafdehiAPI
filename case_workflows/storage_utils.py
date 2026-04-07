@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 # Files that must never be uploaded — they are internal runner state.
 _EXCLUDED_FILENAMES = frozenset({"prd.json", "progress.json"})
 
+# Top-level directories that are skipped entirely — they contain template
+# files re-copied fresh on every run and do not need to be persisted.
+_EXCLUDED_DIRS = frozenset({"instructions", "data"})
+
 # Storage prefix for workflow output files.
 _WORKFLOW_OUTPUTS_PREFIX = "workflow-outputs"
 
@@ -87,6 +91,9 @@ def upload_workflow_outputs(
             continue
 
         rel_path = abs_path.relative_to(case_dir)
+        if rel_path.parts[0] in _EXCLUDED_DIRS:
+            logger.debug("Skipping excluded directory: %s", rel_path.parts[0])
+            continue
         rel_str = str(rel_path)
 
         if rel_str in previous_files:
