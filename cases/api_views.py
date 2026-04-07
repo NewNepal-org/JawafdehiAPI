@@ -4,6 +4,7 @@ API ViewSets for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
+import jsonpatch
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import connection, transaction
@@ -16,13 +17,13 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.authentication import TokenAuthentication
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
-import jsonpatch
 
 from .admin import CaseAdminForm
 from .caseworker_serializers import (
@@ -38,11 +39,7 @@ from .models import (
     JawafEntity,
     RelationshipType,
 )
-from .rules.predicates import (
-    can_change_case,
-    can_transition_case_state,
-    can_view_case,
-)
+from .rules.predicates import can_change_case, can_transition_case_state, can_view_case
 from .serializers import (
     CaseDetailSerializer,
     CaseSerializer,
@@ -535,21 +532,59 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         """,
         tags=["sources"],
     ),
+    create=extend_schema(
+        summary="Create a new document source",
+        description="""
+        Create a new document source with an optional file upload.
+        
+        Requires authentication. Accepts multipart form data.
+        """,
+        tags=["sources"],
+    ),
 )
-class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
+class DocumentSourceViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
     """
-    Public read-only API for DocumentSources.
+    Public API for DocumentSources.
 
     Provides:
     - List endpoint: GET /api/sources/
     - Retrieve endpoint: GET /api/sources/{id_or_source_id}/
+    - Create endpoint: POST /api/sources/
 
     The retrieve endpoint accepts either the database id or the source_id.
     Only sources associated with published or in-review cases are accessible.
     """
 
-    serializer_class = DocumentSourceSerializer
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     lookup_field = "pk"
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            from .serializers import DocumentSourceCreateSerializer
+
+            return DocumentSourceCreateSerializer
+        return DocumentSourceSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        # Return response using the read serializer
+        read_serializer = DocumentSourceSerializer(
+            serializer.instance, context=self.get_serializer_context()
+        )
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
 
     def get_queryset(self):
         """
@@ -650,14 +685,29 @@ class DocumentSourceViewSet(viewsets.ReadOnlyModelViewSet):
         """,
         tags=["entities"],
     ),
+    create=extend_schema(
+        summary="Create an entity",
+        description="""
+        Create a new JawafEntity.
+        
+        Requires authentication.
+        """,
+        tags=["entities"],
+    ),
 )
-class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
+class JawafEntityViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    viewsets.GenericViewSet,
+):
     """
-    Public read-only API for JawafEntities.
+    Public API for JawafEntities.
 
     Provides:
     - List endpoint: GET /api/entities/ (filtered by case association)
     - Retrieve endpoint: GET /api/entities/{id}/
+    - Create endpoint: POST /api/entities/
 
     Search:
     - Full-text search across nes_id and display_name
@@ -666,9 +716,31 @@ class JawafEntityViewSet(viewsets.ReadOnlyModelViewSet):
     Entities must appear in alleged_entities or related_entities (not locations).
     """
 
-    serializer_class = JawafEntitySerializer
     filter_backends = [filters.SearchFilter]
     search_fields = ["nes_id", "display_name"]
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            from .serializers import JawafEntityCreateSerializer
+
+            return JawafEntityCreateSerializer
+        return JawafEntitySerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        # Return response using the read serializer
+        read_serializer = JawafEntitySerializer(
+            serializer.instance, context=self.get_serializer_context()
+        )
+        return Response(read_serializer.data, status=status.HTTP_201_CREATED)
 
     def get_queryset(self):
         """
@@ -793,11 +865,18 @@ class FeedbackRateThrottle(AnonRateThrottle):
     summary="Submit platform feedback",
     description="""
     Submit feedback, bug reports, feature requests, or general comments about the platform.
-    
+
     Rate limited to 5 submissions per IP address per hour.
     Contact information is optional - anonymous submissions are welcome.
+
+    An optional file attachment may be included (max 10 MB). Submit as
+    ``multipart/form-data`` when attaching a file; use ``application/json``
+    for text-only submissions.
     """,
-    request=FeedbackSerializer,
+    request={
+        "application/json": FeedbackSerializer,
+        "multipart/form-data": FeedbackSerializer,
+    },
     responses={
         201: FeedbackSerializer,
         400: OpenApiTypes.OBJECT,
@@ -833,6 +912,7 @@ class FeedbackView(APIView):
     """API view for submitting platform feedback."""
 
     throttle_classes = [FeedbackRateThrottle]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def post(self, request):
         """Handle feedback submission."""

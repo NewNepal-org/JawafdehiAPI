@@ -5,16 +5,18 @@ See: .kiro/specs/accountability-platform-core/design.md
 """
 
 import logging
-from rest_framework import serializers
-from drf_spectacular.utils import extend_schema_field, inline_serializer
+
 from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field, inline_serializer
+from rest_framework import serializers
+
 from .models import (
     Case,
-    DocumentSource,
-    JawafEntity,
-    CaseState,
-    Feedback,
     CaseEntityRelationship,
+    CaseState,
+    DocumentSource,
+    Feedback,
+    JawafEntity,
 )
 
 logger = logging.getLogger(__name__)
@@ -390,6 +392,8 @@ class ContactInfoSerializer(serializers.Serializer):
 class FeedbackSerializer(serializers.ModelSerializer):
     """Serializer for Feedback model."""
 
+    ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+
     feedbackType = serializers.CharField(
         source="feedback_type", help_text="Type of feedback"
     )
@@ -407,6 +411,11 @@ class FeedbackSerializer(serializers.ModelSerializer):
         read_only=True,
         help_text="Timestamp when feedback was submitted",
     )
+    attachment = serializers.FileField(
+        required=False,
+        allow_null=True,
+        help_text="Optional file attachment (max 10 MB)",
+    )
 
     class Meta:
         model = Feedback
@@ -417,6 +426,7 @@ class FeedbackSerializer(serializers.ModelSerializer):
             "description",
             "relatedPage",
             "contactInfo",
+            "attachment",
             "status",
             "submittedAt",
         ]
@@ -430,6 +440,16 @@ class FeedbackSerializer(serializers.ModelSerializer):
         if value not in valid_types:
             raise serializers.ValidationError(
                 f"Invalid feedback type. Must be one of: {', '.join(valid_types)}"
+            )
+        return value
+
+    def validate_attachment(self, value):
+        """Validate attachment file size (max 10 MB)."""
+        if value is None:
+            return value
+        if value.size > self.ATTACHMENT_MAX_BYTES:
+            raise serializers.ValidationError(
+                f"File size must not exceed 10 MB. Received: {value.size / (1024 * 1024):.1f} MB."
             )
         return value
 
@@ -469,3 +489,51 @@ class FeedbackSerializer(serializers.ModelSerializer):
             "submittedAt": data["submittedAt"],
             "message": "Thank you for your feedback! We will review it and get back to you if needed.",
         }
+
+
+class JawafEntityCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating JawafEntity records via API."""
+
+    class Meta:
+        model = JawafEntity
+        fields = ["id", "nes_id", "display_name"]
+        read_only_fields = ["id"]
+
+    def validate(self, attrs):
+        if "nes_id" in attrs:
+            val = attrs.get("nes_id")
+            attrs["nes_id"] = val.strip() if val and val.strip() else None
+
+        if "display_name" in attrs:
+            val = attrs.get("display_name")
+            attrs["display_name"] = val.strip() if val and val.strip() else None
+
+        has_nes_id = bool(attrs.get("nes_id"))
+        has_display_name = bool(attrs.get("display_name"))
+
+        if not has_nes_id and not has_display_name:
+            raise serializers.ValidationError(
+                "Entity must have either nes_id or display_name"
+            )
+        return attrs
+
+
+class DocumentSourceCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating DocumentSource records with file uploads via API."""
+
+    class Meta:
+        model = DocumentSource
+        fields = [
+            "id",
+            "source_id",
+            "title",
+            "description",
+            "source_type",
+            "uploaded_file",
+        ]
+        read_only_fields = ["id", "source_id"]
+
+    def validate_title(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("Title is required and cannot be empty")
+        return value.strip()
