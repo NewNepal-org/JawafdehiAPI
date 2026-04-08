@@ -400,6 +400,10 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 "key_allegations",
                 "timeline",
                 "evidence",
+                "slug",
+                "court_cases",
+                "missing_details",
+                "bigo",
             ]
         )
 
@@ -485,6 +489,10 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                     relationship_type=RelationshipType.RELATED
                 ).values_list("entity_id", flat=True)
             ),
+            "slug": case.slug,
+            "court_cases": list(case.court_cases) if case.court_cases else [],
+            "missing_details": case.missing_details,
+            "bigo": case.bigo,
         }
 
 
