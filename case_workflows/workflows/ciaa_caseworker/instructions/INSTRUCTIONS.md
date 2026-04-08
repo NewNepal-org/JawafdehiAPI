@@ -154,7 +154,46 @@ If:
 
 Then document this in the progress log and continue with the next user story. Not all corruption cases involve procurement.
 
+### Court Orders (Faisala)
 
+Get the court order (faisala) document for the case if available.
+
+Use `court_identifier` and `case_number` from the existing case details file.
+
+#### Step 1: Try Direct URL First (fast path)
+
+Try these URLs first using `<court_identifier>` and `<case_number>`:
+
+- `https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/<case_number>.1.doc`
+- `https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/<case_number>.1.docx`
+- `https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/<case_number>.1.pdf`
+
+If none exist, also try `.2` variants.
+
+#### Step 2: Use Index Traversal Only If Direct URL Fails (fallback)
+
+Start from:
+`https://ngm-store.jawafdehi.org/index-v2.json`
+
+Find `court-orders` and follow `$ref`, then traverse:
+
+1. `court-orders`
+2. `<court_identifier>`
+3. year node (usually first 3 digits from case number)
+4. exact case node
+5. use `manuscripts[].url` as the exact file URL
+
+#### Step 3: Save and Convert
+
+Save raw file to:
+- `sources/raw/court-order-<case-number>.<ext>`
+
+Convert and save markdown to:
+- `sources/markdown/court-order-<case-number>.md`
+
+#### Step 4: If Not Found
+
+If both direct URL and index fallback fail, note this in the run summary and continue.
 
 ## Fetching news items from Web search
 

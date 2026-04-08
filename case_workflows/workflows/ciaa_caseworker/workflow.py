@@ -51,6 +51,7 @@ You do NOT require to create empty ".keep" or similar files to keep directories 
 Update MEMORY.md in the case folder with any learnings or notes that should persist across steps. This is useful for recording discovered facts, insights, and reminders for later steps. And load MEMORY.md at the start of each step to retain context across steps.
 """
 
+
 @tool
 def download_file(url: str, output_path: str) -> str:
     """Download a file from a URL and save it to disk.
@@ -67,7 +68,9 @@ def download_file(url: str, output_path: str) -> str:
     try:
         req = urllib.request.Request(
             url,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; jawafdehi-caseworker/1.0)"},
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; jawafdehi-caseworker/1.0)"
+            },
         )
         with urllib.request.urlopen(req) as response:
             data = response.read()
@@ -92,6 +95,7 @@ _FETCH_SERVER = {
     }
 }
 
+
 def _jawafdehi_server() -> dict:
     token = os.environ.get("JAWAFDEHI_API_TOKEN")
     if not token:
@@ -111,12 +115,13 @@ def _jawafdehi_server() -> dict:
             "args": [
                 "--from",
                 "git+https://github.com/Jawafdehi/jawafdehi-mcp.git",
-                "jawafdehi-mcp"
+                "jawafdehi-mcp",
             ],
             "transport": "stdio",
             "env": env,
         }
-}
+    }
+
 
 @register
 class CIAACaseworkerWorkflow(Workflow):
@@ -173,6 +178,18 @@ Step 3 — Find the CIAA press release URL:
   Use read_file and/or grep on {case_dir}/data/ciaa-press-releases.csv. The CSV columns are: press_id,publication_date,title,source_url. Find the row whose title contains the primary defendant name and read the source_url. The source_url is the press release page (e.g. https://ciaa.gov.np/pressrelease/N). Use `fetch` tool to view the page contents, and locate the actual press release (PDF or HTML or .jpg) from the this page. Then use the download_file tool to download the page to {case_dir}/sources/raw/ciaa-press-release-<press-release-id>.pdf, then convert to {case_dir}/sources/markdown/ciaa-press-release-<press-release-id>.md.
 
 Step 4 — If the case details or any downloaded document references an IFB/RFP/EOI/PQ procurement number, download bolpatra documents in the same way to {case_dir}/sources/raw/bolpatra-<number>.pdf and convert them.
+
+Step 5 — Fetch court order (faisala):
+  Read court_identifier from {case_dir}/case_details-{case_dir.name}.md.
+  Try direct URLs first:
+  https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/{case_dir.name}.1.doc
+  https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/{case_dir.name}.1.docx
+  https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/{case_dir.name}.1.pdf
+  Then try .2 variants if needed.
+  If not found, use index fallback:
+  https://ngm-store.jawafdehi.org/index-v2.json -> court-orders -> <court_identifier> -> year (first 3 digits) -> {case_dir.name} -> manuscripts[].url.
+  Save as {case_dir}/sources/raw/court-order-{case_dir.name}-<n>.<ext> and convert to {case_dir}/sources/markdown/court-order-{case_dir.name}-<n>.md.
+  If court_identifier is missing, try special then supreme and record what was used in {case_dir}/logs/fetch-summary.md.
 
 YOU MUST DOWNLOAD the original file (.pdf, .doc, etc) to the {case_dir}/sources/raw/ directory first using the download_file tool. Then, use the `convert_to_markdown` MCP tool to convert each downloaded file. Finally, write a brief summary to {case_dir}/logs/fetch-summary.md listing which documents were found, their urls, and which were skipped.
 """,
