@@ -363,7 +363,7 @@ class CaseAdmin(admin.ModelAdmin):
         css = {"all": ("admin/css/case_admin.css",)}
 
     list_display = [
-        "slug_link",
+        "link",
         "title",
         "case_type",
         "state_badge",
@@ -427,19 +427,12 @@ class CaseAdmin(admin.ModelAdmin):
                     "description",
                     "tags",
                     "court_cases",
-                )
-            },
-        ),
-        ("Evidence", {"fields": ("evidence",)}),
-        (
-            "Internal Notes",
-            {
-                "fields": (
                     "missing_details",
                     "notes",
                 )
             },
         ),
+        ("Evidence", {"fields": ("evidence",)}),
         ("Assignment", {"fields": ("contributors",)}),
         (
             "Metadata",
@@ -500,7 +493,7 @@ class CaseAdmin(admin.ModelAdmin):
 
     version_info_display.short_description = "Version Info"
 
-    def slug_link(self, obj):
+    def link(self, obj):
         """Display slug as a clickable link to jawafdehi.org, or fallback to case_id."""
         if obj.slug:
             url = f"https://jawafdehi.org/case/{obj.slug}"
@@ -513,8 +506,8 @@ class CaseAdmin(admin.ModelAdmin):
             # Fallback to case_id in plain text when slug is not set
             return obj.case_id
 
-    slug_link.short_description = "Slug"
-    slug_link.admin_order_field = "slug"  # Allow sorting by slug
+    link.short_description = "Slug"
+    link.admin_order_field = "slug"  # Allow sorting by slug
 
     def get_queryset(self, request):
         """
@@ -583,24 +576,8 @@ class CaseAdmin(admin.ModelAdmin):
         return FormWithRequest
 
     def get_fieldsets(self, request, obj=None):
-        """Remove sensitive fields from fieldsets for contributors (admin/moderator only)."""
-        fieldsets = super().get_fieldsets(request, obj)
-        if is_contributor(request.user) and not is_admin_or_moderator(request.user):
-            # Fields that should be hidden from contributors
-            hidden_fields = {"notes", "court_cases", "missing_details", "bigo"}
-            return [
-                (
-                    name,
-                    {
-                        **options,
-                        "fields": tuple(
-                            f for f in options["fields"] if f not in hidden_fields
-                        ),
-                    },
-                )
-                for name, options in fieldsets
-            ]
-        return fieldsets
+        """Return fieldsets for fieldsets for the admin form. All fields are visible to all roles."""
+        return super().get_fieldsets(request, obj)
 
     def save_related(self, request, form, formsets, change):
         """
