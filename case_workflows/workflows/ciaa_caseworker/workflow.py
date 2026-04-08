@@ -179,18 +179,19 @@ Step 3 — Find the CIAA press release URL:
 
 Step 4 — If the case details or any downloaded document references an IFB/RFP/EOI/PQ procurement number, download bolpatra documents in the same way to {case_dir}/sources/raw/bolpatra-<number>.pdf and convert them.
 
-Step 5 — Fetch court order (faisala):
-  Read court_identifier from {case_dir}/case_details-{case_dir.name}.md.
-  Try direct URLs first:
-  https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/{case_dir.name}.1.doc
-  https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/{case_dir.name}.1.docx
-  https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/{case_dir.name}.1.pdf
-  Then try .2 variants if needed.
-  If not found, use index fallback:
-  https://ngm-store.jawafdehi.org/index-v2.json -> court-orders -> <court_identifier> -> year (first 3 digits) -> {case_dir.name} -> manuscripts[].url.
-  Save as {case_dir}/sources/raw/court-order-{case_dir.name}-<n>.<ext> and convert to {case_dir}/sources/markdown/court-order-{case_dir.name}-<n>.md.
-  If court_identifier is missing, try special then supreme and record what was used in {case_dir}/logs/fetch-summary.md.
 
+Step 5 — Fetch court order (faisala):
+ Red court_identifier from {case_dir}/case_details-{case_dir.name}.md.
+ Try direct URLs first for {case_dir.name} under <court_identifier> using suffix .1, then .2, and extensions in this order: .doc, .docx, .pdf, .jpg, .jpeg.
+ Pattern: https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/{case_dir.name}.<suffix>.<extension>
+ Example: https://ngm-store.jawafdehi.org/uploads/court-orders/special/081-CR-0046.1.doc
+ If not found, use index fallback:
+ https://ngm-store.jawafdehi.org/index-v2.json -> court-orders -> <court_identifier> -> year (first 3 digits) -> {case_dir.name} -> manuscripts[].url.
+ The expected case number pattern is: a 3-digit BS year, a hyphen, a case type (like CR, OA, WH), another hyphen, and a serial (e.g., 081-CR-0046).
+ If the case number does not start with a 3-digit BS year, the code falls back to using the registration_date_bs and applies fiscal year logic: months 1-3 → year-1, months 4-12 → year, then uses the last 3 digits of the year(e.g 2068 → 068) as the year part of the court order URL pattern.
+ 
+ Save as {case_dir}/sources/raw/court-order-{case_dir.name}-<n>.<ext> and convert to {case_dir}/sources/markdown/court-order-{case_dir.name}-<n>.md.
+ If court_identifier is missing, try special then supreme and record what was used in {case_dir}/logs/fetch-summary.md.
 YOU MUST DOWNLOAD the original file (.pdf, .doc, etc) to the {case_dir}/sources/raw/ directory first using the download_file tool. Then, use the `convert_to_markdown` MCP tool to convert each downloaded file. Finally, write a brief summary to {case_dir}/logs/fetch-summary.md listing which documents were found, their urls, and which were skipped.
 """,
                 tools=[download_file],

@@ -179,7 +179,10 @@ Find `court-orders` and follow `$ref`, then traverse:
 
 1. `court-orders`
 2. `<court_identifier>`
-3. year node (usually first 3 digits from case number)
+3. year node:
+   - If case number starts with a 3-digit BS year (e.g., `081-CR-0046`), use that as the year node (`081`).
+   - Otherwise, derive year from `registration_date_bs`: months 1-3 → year-1, months 4-12 → year; use last 3 digits (e.g., `2081-09-22` → `081`).
+   - If still not found, try adjacent years (year-1, year+1), then scan available year nodes for a match.
 4. exact case node
 5. use `manuscripts[].url` as the exact file URL
 
