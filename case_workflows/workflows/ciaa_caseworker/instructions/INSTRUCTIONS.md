@@ -244,6 +244,9 @@ Use the jawafdehi-caseworker skill to review this case draft. NOTE explicitly th
 Use the `create_jawafdehi_case` MCP tool with at minimum `title` and `case_type` (`CORRUPTION`).
 You should also pass `short_description` if available.
 
+**Title format:** The title must be in Nepali and end with the CIAA/Special Court case number in parentheses, e.g.:
+> नागार्जुन नगरपालिकाका नगर प्रमुख मोहन बहादुर बस्नेतविरुद्ध घुस रिसवत र सम्पत्ति शुद्धीकरण सम्बन्धी भ्रष्टाचार केस (081-CR-0123)
+
 The tool returns a JSON object. Record the integer `id` field (e.g. `42`) in `MEMORY.md` as the
 **numeric Jawafdehi case ID**. This ID is required for all subsequent patch and upload operations.
 

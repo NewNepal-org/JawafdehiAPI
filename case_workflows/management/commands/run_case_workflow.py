@@ -25,6 +25,8 @@ Environment variables (used as defaults when flags are not passed)::
 
 import os
 import re
+from datetime import datetime, timezone
+from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
@@ -116,9 +118,9 @@ class Command(BaseCommand):
         parser.add_argument(
             "--recursion-limit",
             type=int,
-            default=100,
+            default=200,
             dest="recursion_limit",
-            help="LangGraph recursion limit per step (default: 100).",
+            help="LangGraph recursion limit per step (default: 200).",
         )
         parser.add_argument(
             "--list",
@@ -207,6 +209,17 @@ class Command(BaseCommand):
             try:
                 workflow.setup_work_dir(run)
                 printer.print_work_dir(run.work_dir)
+                log_path = (
+                    Path(run.work_dir)
+                    / "logs"
+                    / f"run-{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H%M%S')}.log"
+                )
+                printer.enable_file_logging(log_path)
+                try:
+                    rel_log = log_path.relative_to(Path.cwd())
+                except ValueError:
+                    rel_log = log_path
+                printer._console.print(f"  [dim]📝 Log: {rel_log}[/dim]")
                 workflow.execute(
                     run,
                     model=model,

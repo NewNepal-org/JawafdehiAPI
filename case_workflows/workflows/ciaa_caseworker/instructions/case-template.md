@@ -10,7 +10,7 @@
 
 - **Case Type:** CORRUPTION  <!-- CORRUPTION | OTHER -->
 - **State:** DRAFT  <!-- DRAFT | IN_REVIEW -->
-- **Title:** <!-- Nepali title, e.g. "राष्ट्रिय सूचना प्रविधि केन्द्रमा High Compute Infrastructure खरिदमा भ्रष्टाचार" -->
+- **Title:** <!-- Nepali title with the CIAA/Special Court case number as a suffix in parentheses, e.g. "राष्ट्रिय सूचना प्रविधि केन्द्रमा High Compute Infrastructure खरिदमा भ्रष्टाचार (081-CR-0123)" -->
 - **Case Start Date:** <!-- AD date (YYYY-MM-DD) — typically the CIAA decision/filing date -->
 - **Case End Date:** <!-- AD date if closed; leave blank if still active -->
 - **Bigo Amount:** <!-- Integer NPR amount of disputed/embezzled funds (बिगो), e.g. 15880000. Leave blank if unknown. -->

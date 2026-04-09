@@ -353,7 +353,7 @@ class Workflow(ABC):
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         verbose: bool = False,
-        recursion_limit: int = 100,
+        recursion_limit: int = 200,
         printer: Optional[WorkflowPrinter] = None,
     ) -> None:
         """
@@ -387,7 +387,7 @@ class Workflow(ABC):
         api_key: Optional[str],
         base_url: Optional[str],
         verbose: bool = False,
-        recursion_limit: int = 100,
+        recursion_limit: int = 200,
         printer: Optional[WorkflowPrinter] = None,
     ) -> None:
         import os
@@ -395,7 +395,28 @@ class Workflow(ABC):
         from deepagents import create_deep_agent
         from deepagents.backends import FilesystemBackend
         from langchain.chat_models import init_chat_model
+        from langchain_core.callbacks import BaseCallbackHandler
         from langchain_mcp_adapters.client import MultiServerMCPClient
+
+        class _UsageCallbackHandler(BaseCallbackHandler):
+            """Accumulate LLM token usage across all steps."""
+
+            def __init__(self) -> None:
+                super().__init__()
+                self.input_tokens: int = 0
+                self.output_tokens: int = 0
+
+            @property
+            def total_tokens(self) -> int:
+                return self.input_tokens + self.output_tokens
+
+            def on_llm_end(self, response: Any, **kwargs: Any) -> None:  # type: ignore[override]
+                for row in response.generations:
+                    for gen in row:
+                        meta = getattr(getattr(gen, "message", None), "usage_metadata", None)
+                        if meta:
+                            self.input_tokens += meta.get("input_tokens", 0)
+                            self.output_tokens += meta.get("output_tokens", 0)
 
         case_dir = self.get_work_dir(run)
         if not case_dir.is_dir():
@@ -451,6 +472,8 @@ class Workflow(ABC):
         all_mcp_servers: dict[str, dict] = {}
         for step in self.steps:
             all_mcp_servers.update(step.mcp_servers)
+
+        usage_tracker = _UsageCallbackHandler()
 
         mcp_tools_by_server: dict[str, list[Any]] = {}
         if all_mcp_servers:
@@ -517,7 +540,7 @@ class Workflow(ABC):
                     ]
                 }
                 run_config = {
-                    "callbacks": langfuse_callbacks,
+                    "callbacks": langfuse_callbacks + [usage_tracker],
                     "run_name": step.name,
                     "recursion_limit": recursion_limit,
                 }
@@ -552,6 +575,18 @@ class Workflow(ABC):
             state["is_complete"] = True
             await sync_to_async(run.mark_complete)(case_data=state)
             logger.info("Workflow completed for %s", run.case_id)
+
+            if printer:
+                printer.print_usage_summary(
+                    usage_tracker.input_tokens, usage_tracker.output_tokens
+                )
+            else:
+                logger.info(
+                    "Token usage — input: %d, output: %d, total: %d",
+                    usage_tracker.input_tokens,
+                    usage_tracker.output_tokens,
+                    usage_tracker.total_tokens,
+                )
 
         except Exception as exc:
             await sync_to_async(run.mark_failed)(error_message=str(exc))

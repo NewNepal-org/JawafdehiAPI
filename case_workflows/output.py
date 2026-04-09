@@ -48,6 +48,33 @@ def _truncate(text: str, max_len: int) -> str:
     return text[:max_len] + "…"
 
 
+class _TeeConsole:
+    """
+    Thin proxy that forwards every ``print`` / ``print_exception`` call to
+    both a terminal ``Console`` and a plain-text file ``Console``.
+
+    Used by ``WorkflowPrinter.enable_file_logging`` so that all output is
+    mirrored to disk without touching individual call-sites.
+    """
+
+    def __init__(self, terminal: Console, file: Console) -> None:
+        self._terminal = terminal
+        self._file = file
+
+    def print(self, *args, **kwargs) -> None:  # noqa: A003
+        self._terminal.print(*args, **kwargs)
+        self._file.print(*args, **kwargs)
+
+    def print_exception(self, **kwargs) -> None:
+        self._terminal.print_exception(**kwargs)
+        self._file.print_exception(**kwargs)
+
+    def __getattr__(self, name: str):
+        # Fall through to the terminal console for any attribute not defined
+        # above (e.g. ``highlight``, ``width``, internal Rich state).
+        return getattr(self._terminal, name)
+
+
 # ---------------------------------------------------------------------------
 # WorkflowPrinter
 # ---------------------------------------------------------------------------
@@ -69,6 +96,33 @@ class WorkflowPrinter:
         # printing duplicate "thinking…" lines for back-to-back start events.
         self._model_active: bool = False
         self._streamed_content: bool = False  # did we output any streaming text?
+
+    def enable_file_logging(self, path: Path) -> None:
+        """
+        Mirror all subsequent console output to a plain-text log file.
+
+        Wraps ``_console`` and ``_err_console`` with :class:`_TeeConsole` so
+        that every ``print`` call goes to both the terminal and *path*.
+        Any :class:`_WorkflowRichHandler` that was already installed via
+        :meth:`install_logging_handler` is updated in-place so that log
+        records are also captured.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._log_fh = open(path, "w", encoding="utf-8")  # noqa: SIM115
+        file_console = Console(
+            file=self._log_fh,
+            force_terminal=False,
+            no_color=True,
+            highlight=False,
+            width=200,
+        )
+        self._console = _TeeConsole(self._console, file_console)
+        self._err_console = _TeeConsole(self._err_console, file_console)
+        # Patch already-installed logging handlers so their log records tee too.
+        for handler in logging.getLogger("case_workflows").handlers:
+            if isinstance(handler, _WorkflowRichHandler):
+                handler._console = self._console
+                handler._err_console = self._err_console
 
     # ------------------------------------------------------------------
     # Structured output helpers
@@ -151,6 +205,29 @@ class WorkflowPrinter:
         )
         table.add_row(str(total), str(succeeded), str(skipped), str(failed))
         self._console.print(table)
+        self._console.print()
+
+    def print_usage_summary(self, input_tokens: int, output_tokens: int) -> None:
+        self._console.print()
+        self._console.print(Rule("[bold]Token Usage[/bold]", style="dim"))
+        total = input_tokens + output_tokens
+        if total == 0:
+            self._console.print(
+                f"  [{_SKIP_COLOR}]No usage data available (model did not report tokens)[/{_SKIP_COLOR}]"
+            )
+        else:
+            table = Table(
+                box=None, pad_edge=False, show_header=True, header_style="bold"
+            )
+            table.add_column("Input Tokens", justify="right")
+            table.add_column("Output Tokens", justify="right")
+            table.add_column("Total Tokens", justify="right", style="bold")
+            table.add_row(
+                f"{input_tokens:,}",
+                f"{output_tokens:,}",
+                f"{total:,}",
+            )
+            self._console.print(table)
         self._console.print()
 
     def error(self, msg: str) -> None:
