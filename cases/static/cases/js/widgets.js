@@ -73,7 +73,14 @@ class MultiWidgetManager {
     addRow() {
         const row = document.createElement('div');
         row.className = this.config.rowClass || 'input-row';
-        row.innerHTML = this.config.rowTemplate;
+        
+        // Handle rowTemplate as either string or function
+        if (typeof this.config.rowTemplate === 'function') {
+            row.innerHTML = this.config.rowTemplate(this.config.courtChoices);
+        } else {
+            row.innerHTML = this.config.rowTemplate;
+        }
+        
         row.draggable = true;
         
         if (this.config.rowStyles) {
@@ -254,11 +261,54 @@ window.MultiWidgetConfigs = {
                 select.addEventListener('change', updateViewButton);
             }
         }
+    },
+    
+    courtCase: {
+        inputClass: 'court-case-number',  // Changed from 'court-case-input' to match the textarea class
+        rowClass: 'input-row',
+        getValues: (container) => {
+            return Array.from(container.querySelectorAll('.input-row')).map(row => {
+                const courtSelect = row.querySelector('.court-select');
+                const caseNumber = row.querySelector('.court-case-number');
+                
+                if (!courtSelect || !caseNumber) return null;
+                
+                const court = courtSelect.value.trim();
+                const number = caseNumber.value.trim();
+                
+                if (!court || !number) return null;
+                
+                return `${court}:${number}`;
+            }).filter(v => v);
+        },
+        setupRowCallback: (row, manager) => {
+            // Setup listener for court select only
+            // Note: Input listeners for .court-case-number are already handled by MultiWidgetManager.setupRow()
+            const courtSelect = row.querySelector('.court-select');
+            
+            if (courtSelect) {
+                courtSelect.addEventListener('change', () => manager.updateHidden());
+            }
+        }
     }
 };
 
 // Initialize widget
 window.initMultiWidget = function(containerId, hiddenInputId, widgetType, extraConfig = {}) {
     const config = { ...window.MultiWidgetConfigs[widgetType], ...extraConfig };
+    new MultiWidgetManager(containerId, hiddenInputId, config);
+};
+
+// Initialize court case widget with court choices
+window.initMultiCourtCaseWidget = function(containerId, hiddenInputId, courtChoices, extraConfig = {}) {
+    const config = { 
+        ...window.MultiWidgetConfigs.courtCase, 
+        ...extraConfig,
+        courtChoices: courtChoices
+    };
+    
+    // Don't call the function here - let addRow() handle it
+    // Just pass the function and courtChoices to the config
+    
     new MultiWidgetManager(containerId, hiddenInputId, config);
 };

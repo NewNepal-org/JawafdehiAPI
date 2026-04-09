@@ -320,3 +320,86 @@ def test_notes_field_stores_markdown():
     )
     case.refresh_from_db()
     assert case.notes == markdown_content
+
+
+# ============================================================================
+# Slug auto-generation during validation
+# ============================================================================
+
+
+@pytest.mark.django_db
+def test_slug_auto_generated_during_validation_for_published_cases():
+    """
+    For any case in PUBLISHED state with empty slug, validate() should
+    auto-generate a slug that starts with a letter and stays within 50 characters.
+    """
+    # Create a case with a numeric-leading title
+    case = create_case_with_entities(
+        title="2078 Corruption Case Investigation",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 1"],
+        description="Test description",
+        case_type=CaseType.CORRUPTION,
+    )
+
+    # Set state to PUBLISHED without setting slug
+    case.state = CaseState.PUBLISHED
+    assert not case.slug or not case.slug.strip(), "Slug should be empty initially"
+
+    # Validate should not raise and should auto-generate slug
+    case.validate()
+
+    assert case.slug, "Slug should be auto-generated during validation"
+    assert len(case.slug) > 0, "Generated slug should not be empty"
+    assert len(case.slug) <= 50, "Generated slug should not exceed 50 characters"
+    assert case.slug[0].isalpha(), "Generated slug must start with a letter"
+    assert "-" in case.slug, "Generated slug should contain hyphen separator"
+
+
+@pytest.mark.django_db
+def test_multiple_drafts_without_slug_no_collision():
+    """
+    Multiple draft cases without slugs should not cause unique constraint violations.
+    Empty/whitespace slugs should be normalized to None.
+    """
+    # Create first draft without slug
+    draft1 = create_case_with_entities(
+        title="Draft Case 1",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 1"],
+        description="Test description",
+        case_type=CaseType.CORRUPTION,
+    )
+    draft1.state = CaseState.DRAFT
+    draft1.slug = ""  # Explicitly set to empty string
+    draft1.save()
+    draft1.refresh_from_db()
+    assert draft1.slug is None, "Empty slug should be normalized to None"
+
+    # Create second draft without slug - should not raise uniqueness error
+    draft2 = create_case_with_entities(
+        title="Draft Case 2",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 2"],
+        description="Test description 2",
+        case_type=CaseType.CORRUPTION,
+    )
+    draft2.state = CaseState.DRAFT
+    draft2.slug = "   "  # Whitespace-only slug
+    draft2.save()
+    draft2.refresh_from_db()
+    assert draft2.slug is None, "Whitespace slug should be normalized to None"
+
+    # Create third draft without slug
+    draft3 = create_case_with_entities(
+        title="Draft Case 3",
+        alleged_entities=["entity:person/test-person"],
+        key_allegations=["Allegation 3"],
+        description="Test description 3",
+        case_type=CaseType.CORRUPTION,
+    )
+    draft3.state = CaseState.DRAFT
+    # Don't set slug at all
+    draft3.save()
+    draft3.refresh_from_db()
+    assert draft3.slug is None, "Unset slug should remain None"

@@ -242,3 +242,70 @@ class MultiURLField(Field):
                     validator(normalized)
                 except ValidationError as err:
                     raise ValidationError(f"Invalid URL: {url}") from err
+
+
+class MultiCourtCaseWidget(BaseMultiWidget):
+    template_name = "cases/widgets/multi_court_case_widget.html"
+
+    def __init__(self, attrs=None, button_label=None, court_choices=None):
+        super().__init__(attrs)
+        self.button_label = button_label or "Add Court Case"
+        self.court_choices = court_choices or []
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        context["button_label"] = self.button_label
+        context["court_choices"] = self.court_choices
+
+        # JSON-encode court_choices for JavaScript
+        context["court_choices_json"] = json.dumps(self.court_choices)
+
+        # Parse court case values into structured format for template
+        # Use context["values"] (normalized by BaseMultiWidget) instead of raw value parameter
+        parsed_values = []
+        if context["values"]:
+            for item in context["values"]:
+                if isinstance(item, str) and ":" in item:
+                    court_id, case_number = item.split(":", 1)
+                    parsed_values.append(
+                        {
+                            "court_id": court_id,
+                            "case_number": case_number,
+                            "full_value": item,
+                        }
+                    )
+
+        context["parsed_values"] = parsed_values
+        return context
+
+
+class MultiCourtCaseField(Field):
+    def __init__(
+        self, *args, button_label="Add Court Case", court_choices=None, **kwargs
+    ):
+        self.button_label = button_label
+        self.court_choices = court_choices or []
+        super().__init__(*args, **kwargs)
+        self.widget = MultiCourtCaseWidget(
+            button_label=button_label, court_choices=court_choices
+        )
+
+    def to_python(self, value):
+        if value in self.empty_values:
+            return []
+        if isinstance(value, list):
+            return value
+        try:
+            return json.loads(value) if value else []
+        except (JSONDecodeError, TypeError, ValueError):
+            return []
+
+    def validate(self, value):
+        super().validate(value)
+        # Import here to avoid circular dependency
+        from .validators import validate_court_cases
+
+        try:
+            validate_court_cases(value)
+        except ValidationError:
+            raise

@@ -191,6 +191,12 @@ class CaseSerializer(serializers.ModelSerializer):
             )
             raise
 
+    court_cases = serializers.ListField(
+        child=serializers.CharField(),
+        allow_null=True,
+        required=False,
+        help_text="List of court case references in format <court_identifier>:<case_number>",
+    )
     tags = serializers.ListField(
         child=serializers.CharField(),
         help_text="List of tags for categorization (e.g., 'land-encroachment', 'national-interest')",
@@ -221,6 +227,7 @@ class CaseSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "case_id",
+            "slug",
             "case_type",
             "state",
             "title",
@@ -236,6 +243,9 @@ class CaseSerializer(serializers.ModelSerializer):
             "timeline",
             "evidence",
             "notes",
+            "court_cases",
+            "missing_details",
+            "bigo",
             "versionInfo",
             "created_at",
             "updated_at",
