@@ -26,6 +26,7 @@ from .widgets import (
     MultiTimelineField,
     MultiEvidenceField,
     MultiURLField,
+    MultiCourtCaseField,
 )
 from .rules.predicates import (
     is_admin,
@@ -65,6 +66,17 @@ class CaseAdminForm(forms.ModelForm):
         button_label="Add Tag",
         label="Tags",
         help_text="Tags for categorization",
+    )
+
+    court_cases = MultiCourtCaseField(
+        required=False,
+        button_label="Add Court Case",
+        label="Court Cases",
+        help_text="Court case references in format {court_identifier}:{case_number}",
+        court_choices=[
+            ("supreme", "Supreme Court"),
+            ("special", "Special Court"),
+        ],
     )
 
     timeline = MultiTimelineField(
@@ -203,6 +215,16 @@ class CaseAdminForm(forms.ModelForm):
         """
         cleaned_data = super().clean()
         errors = {}
+
+        # Validate slug format explicitly with better error message
+        slug = cleaned_data.get("slug")
+        if slug:
+            try:
+                from .validators import validate_slug
+
+                validate_slug(slug)
+            except ValidationError as e:
+                errors["slug"] = e.message
 
         # For new cases, enforce DRAFT state
         if not self.instance.pk:
@@ -359,8 +381,8 @@ class CaseAdmin(admin.ModelAdmin):
     inlines = [CaseEntityRelationshipInline]
 
     class Media:
-        js = ("admin/js/case_admin.js",)
-        css = {"all": ("admin/css/case_admin.css",)}
+        js = ("cases/js/widgets.js", "admin/js/case_admin.js")
+        css = {"all": ("cases/css/widgets.css", "admin/css/case_admin.css")}
 
     list_display = [
         "link",
