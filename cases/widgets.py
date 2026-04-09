@@ -261,9 +261,10 @@ class MultiCourtCaseWidget(BaseMultiWidget):
         context["court_choices_json"] = json.dumps(self.court_choices)
 
         # Parse court case values into structured format for template
+        # Use context["values"] (normalized by BaseMultiWidget) instead of raw value parameter
         parsed_values = []
-        if value:
-            for item in value:
+        if context["values"]:
+            for item in context["values"]:
                 if isinstance(item, str) and ":" in item:
                     court_id, case_number = item.split(":", 1)
                     parsed_values.append(

@@ -224,7 +224,10 @@ class CaseAdminForm(forms.ModelForm):
 
                 validate_slug(slug)
             except ValidationError as e:
-                errors["slug"] = e.message
+                # Defensively extract error message to handle both list and string formats
+                errors["slug"] = (
+                    e.messages[0] if hasattr(e, "messages") and e.messages else str(e)
+                )
 
         # For new cases, enforce DRAFT state
         if not self.instance.pk:

@@ -576,8 +576,13 @@ class Case(models.Model):
             self.slug = self._generate_unique_slug()
 
         # Enforce slug immutability (use cached original value to avoid extra query)
+        # Allow slug modification for DRAFT cases
         if self.pk and hasattr(self, "_original_slug"):
-            if self._original_slug and self._original_slug != self.slug:
+            if (
+                self._original_slug
+                and self._original_slug != self.slug
+                and self.state != CaseState.DRAFT
+            ):
                 raise ValidationError("Slug cannot be modified once set")
 
         super().save(*args, **kwargs)

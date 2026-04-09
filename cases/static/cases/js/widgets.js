@@ -282,16 +282,12 @@ window.MultiWidgetConfigs = {
             }).filter(v => v);
         },
         setupRowCallback: (row, manager) => {
-            // Setup listeners for both select and textarea
+            // Setup listener for court select only
+            // Note: Input listeners for .court-case-number are already handled by MultiWidgetManager.setupRow()
             const courtSelect = row.querySelector('.court-select');
-            const caseNumber = row.querySelector('.court-case-number');
             
             if (courtSelect) {
                 courtSelect.addEventListener('change', () => manager.updateHidden());
-            }
-            if (caseNumber) {
-                caseNumber.addEventListener('input', () => manager.updateHidden());
-                caseNumber.addEventListener('input', () => manager.autoResize(caseNumber));
             }
         }
     }
