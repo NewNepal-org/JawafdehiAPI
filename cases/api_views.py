@@ -352,6 +352,13 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                     status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 )
 
+            # Check if slug is being modified when case is not in DRAFT state
+            if (path == "/slug" or path.startswith("/slug/")) and case.state != CaseState.DRAFT:
+                return Response(
+                    {"detail": f"Patching path '{path}' is not allowed. Slug can only be modified when case is in DRAFT state."},
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+
             for blocked in BLOCKED_PATH_PREFIXES:
                 if path == blocked or path.startswith(blocked + "/"):
                     return Response(

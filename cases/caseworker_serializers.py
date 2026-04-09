@@ -18,6 +18,7 @@ from .validators import validate_slug, validate_court_cases
 
 # Paths that callers are not permitted to target in a patch operation.
 # The view rejects any op whose `path` equals or is prefixed by one of these.
+# Note: /slug is conditionally blocked based on case state (see api_views.py)
 BLOCKED_PATH_PREFIXES = frozenset(
     [
         "/id",
@@ -28,7 +29,6 @@ BLOCKED_PATH_PREFIXES = frozenset(
         "/created_at",
         "/updated_at",
         "/versionInfo",
-        "/slug",  # Slug is immutable once set
     ]
 )
 

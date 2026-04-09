@@ -553,11 +553,14 @@ class CaseAdmin(admin.ModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         """
-        Make slug editable only when it hasn't been set yet.
-        Once set, slug becomes read-only to prevent breaking external links.
+        Make slug editable when:
+        - It hasn't been set yet, OR
+        - The case is in DRAFT state
+        
+        Once set and case is not DRAFT, slug becomes read-only to prevent breaking external links.
         """
         readonly = list(super().get_readonly_fields(request, obj))
-        if obj and obj.slug:
+        if obj and obj.slug and obj.state != CaseState.DRAFT:
             if "slug" not in readonly:
                 readonly.append("slug")
         return readonly
