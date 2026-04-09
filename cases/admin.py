@@ -556,7 +556,7 @@ class CaseAdmin(admin.ModelAdmin):
         Make slug editable when:
         - It hasn't been set yet, OR
         - The case is in DRAFT state
-        
+
         Once set and case is not DRAFT, slug becomes read-only to prevent breaking external links.
         """
         readonly = list(super().get_readonly_fields(request, obj))

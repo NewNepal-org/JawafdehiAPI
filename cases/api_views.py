@@ -353,9 +353,13 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 )
 
             # Check if slug is being modified when case is not in DRAFT state
-            if (path == "/slug" or path.startswith("/slug/")) and case.state != CaseState.DRAFT:
+            if (
+                path == "/slug" or path.startswith("/slug/")
+            ) and case.state != CaseState.DRAFT:
                 return Response(
-                    {"detail": f"Patching path '{path}' is not allowed. Slug can only be modified when case is in DRAFT state."},
+                    {
+                        "detail": f"Patching path '{path}' is not allowed. Slug can only be modified when case is in DRAFT state."
+                    },
                     status=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 )
 
