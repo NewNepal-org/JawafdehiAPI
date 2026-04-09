@@ -2,8 +2,6 @@
 Tests for workflow registry and ABC contract.
 """
 
-from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 

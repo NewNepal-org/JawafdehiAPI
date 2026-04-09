@@ -200,11 +200,38 @@ If both direct URL and index fallback fail, note this in the run summary and con
 
 ## Fetching news items from Web search
 
-Use the web search tool to find and fetch relevant news items regarding the case from Web search. This helps build out the context and details of the allegations. Ensure you search using case details like case number, defendants' names, and the relevant court. Try searching near the court case registration date or the CIAA press release date.
+Use the `search` MCP tool to find relevant news articles about the case. This builds context and detail around the allegations.
 
-If you are unable to discover any news items that's also fine. Just note it in your run summary and move on to the next user story. But please write a file called sources/markdown/news-search-results.md in the casework folder.
+### Search strategy
 
-Also, for checkpoint, after every 10 or so web searches, keep updating the search results in sources/markdown/news-search-progress.md and note progress in your run summary.
+For each query, call `search` with `engines: ["duckduckgo", "bing", "brave"]` to run all three engines in a single parallel call. Run multiple query variations in parallel where possible.
+
+**Rate limiting:** If you receive rate-limit errors (HTTP 429 or consistently empty results from engines that were previously productive), stop parallel searching, pause briefly, and switch to single-engine queries with a few seconds between calls. Resume parallel mode once errors clear.
+
+### Queries to run
+
+For each case, run at least these variations:
+
+- CIAA court case number alone, e.g. `081-CR-0123 Nepal`
+- Primary defendant name(s) in Nepali + `भ्रष्टाचार` or `विशेष अदालत`
+- Defendant name(s) in romanised form + `CIAA corruption Nepal`
+- Project or organisation name from the charge sheet + `Nepal`
+
+Appending `Nepal` or `नेपाल` to each query helps surface Nepali-language and Nepal-focused results since the `search` tool has no native region parameter.
+
+### Fetching and saving each article
+
+1. Call `search` with `engines: ["duckduckgo", "bing", "brave"]` and your query.
+2. For each relevant result URL, call `fetchWebContent` (or `fetch`) to retrieve the full page.
+3. Call `convert_to_markdown` to save to `sources/markdown/news-<source-name>.md`.
+
+### Progress checkpointing
+
+After every ~10 searches, write or update `sources/markdown/news-search-progress.md` with the queries run, articles found, and any issues encountered.
+
+If no news items can be found at all, note it in your run summary, write a brief `sources/markdown/news-search-results.md` explaining what was tried, and continue.
+
+Write a final summary of all found articles to `logs/news-search-summary.md` and update `MEMORY.md` with key learnings for later steps.
 
 
 ## Preparing the Case Draft Locally
@@ -292,6 +319,9 @@ is missing from `draft.md`:
 - `/tags` — list of English tags
 - `/key_allegations` — list of allegations
 - `/case_start_date`, `/case_end_date` — ISO 8601 dates
+- `/court_cases` — list of strings in `"{court_identifier}:{case_number}"` format, e.g. `["special:081-CR-0123"]`. Read `court_identifier` and the case number from the NGM case data file (`case_details-*.md`). Omit if `court_identifier` is unknown.
+- `/bigo` — integer NPR amount from the **Bigo Amount** field in `draft.md`. Must be a plain integer (no commas or currency symbols), e.g. `15880000`. Omit if blank or unknown.
+- `/missing_details` — freetext string compiled from the unchecked items in the **Missing Details** section of `draft.md`. Omit if all items are checked or the section is empty.
 
 Combine all field updates into a single `patch_jawafdehi_case` call.
 

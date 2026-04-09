@@ -77,9 +77,7 @@ class EligibleCasesView(APIView):
                     "workflow_id": workflow.workflow_id,
                     "display_name": workflow.display_name,
                     "cases": [
-                        cases_by_id[cid]
-                        for cid in eligible_ids
-                        if cid in cases_by_id
+                        cases_by_id[cid] for cid in eligible_ids if cid in cases_by_id
                     ],
                 }
             )

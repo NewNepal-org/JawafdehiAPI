@@ -3,7 +3,7 @@ Tests for Workflow execution methods (setup_work_dir, execute).
 """
 
 import shutil
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -143,7 +143,9 @@ class TestWorkflowExecute:
         run.save()
 
         # Patch _execute_async with AsyncMock so asyncio.run can properly await it
-        with patch.object(workflow, "_execute_async", new_callable=AsyncMock) as mock_async:
+        with patch.object(
+            workflow, "_execute_async", new_callable=AsyncMock
+        ) as mock_async:
             workflow.execute(run, model="openai:gpt-4o")
             mock_async.assert_called_once()
 
@@ -157,8 +159,12 @@ class TestWorkflowExecute:
         workflow.setup_work_dir(run)
 
         # Patch _execute_async with AsyncMock so asyncio.run can properly await it
-        with patch.object(workflow, "_execute_async", new_callable=AsyncMock) as mock_async:
-            workflow.execute(run, model="anthropic:claude-3-5-sonnet", api_key="test-key")
+        with patch.object(
+            workflow, "_execute_async", new_callable=AsyncMock
+        ) as mock_async:
+            workflow.execute(
+                run, model="anthropic:claude-3-5-sonnet", api_key="test-key"
+            )
             mock_async.assert_called_once_with(
                 run,
                 model="anthropic:claude-3-5-sonnet",

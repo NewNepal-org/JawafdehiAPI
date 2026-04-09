@@ -16,12 +16,9 @@ from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
-from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
-from rich.text import Text
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -85,21 +82,27 @@ class WorkflowPrinter:
         base_url: Optional[str] = None,
     ) -> None:
         self._console.print()
-        self._console.print(f"[bold]Workflow:[/bold] {display_name} [dim]({workflow_id})[/dim]")
+        self._console.print(
+            f"[bold]Workflow:[/bold] {display_name} [dim]({workflow_id})[/dim]"
+        )
         self._console.print(f"[bold]Model:   [/bold] {model}")
         if base_url:
             self._console.print(f"[bold]Base URL:[/bold] {base_url}")
 
     def print_case_header(self, case_id: str, created: bool) -> None:
-        status = "[green]✦ New run[/green]" if created else "[yellow]♻ Resuming[/yellow]"
+        status = (
+            "[green]✦ New run[/green]" if created else "[yellow]♻ Resuming[/yellow]"
+        )
         self._console.print()
-        self._console.print(Panel(
-            f"  {status}",
-            title=f"[bold]Case: {case_id}[/bold]",
-            title_align="left",
-            expand=False,
-            padding=(0, 1),
-        ))
+        self._console.print(
+            Panel(
+                f"  {status}",
+                title=f"[bold]Case: {case_id}[/bold]",
+                title_align="left",
+                expand=False,
+                padding=(0, 1),
+            )
+        )
 
     def print_work_dir(self, work_dir: str) -> None:
         self._work_dir = work_dir
@@ -119,16 +122,20 @@ class WorkflowPrinter:
 
     def print_step_header(self, name: str, index: int, total: int) -> None:
         self._console.print()
-        self._console.print(Rule(
-            f"[{_STEP_COLOR}]Step {index}/{total}: {name}[/{_STEP_COLOR}]",
-            style="dim",
-        ))
+        self._console.print(
+            Rule(
+                f"[{_STEP_COLOR}]Step {index}/{total}: {name}[/{_STEP_COLOR}]",
+                style="dim",
+            )
+        )
 
     def print_step_done(self, name: str) -> None:
         self._console.print(f"  [{_OK_COLOR}]✓ {name}[/{_OK_COLOR}]")
 
     def print_step_skipped(self, name: str) -> None:
-        self._console.print(f"  [{_SKIP_COLOR}]⏭ {name} — already complete[/{_SKIP_COLOR}]")
+        self._console.print(
+            f"  [{_SKIP_COLOR}]⏭ {name} — already complete[/{_SKIP_COLOR}]"
+        )
 
     def print_summary(
         self, total: int, succeeded: int, skipped: int, failed: int
@@ -139,7 +146,9 @@ class WorkflowPrinter:
         table.add_column("Processed", justify="center")
         table.add_column("Succeeded", justify="center", style=_OK_COLOR)
         table.add_column("Skipped", justify="center", style=_SKIP_COLOR)
-        table.add_column("Failed", justify="center", style=_ERR_COLOR if failed else _SKIP_COLOR)
+        table.add_column(
+            "Failed", justify="center", style=_ERR_COLOR if failed else _SKIP_COLOR
+        )
         table.add_row(str(total), str(succeeded), str(skipped), str(failed))
         self._console.print(table)
         self._console.print()

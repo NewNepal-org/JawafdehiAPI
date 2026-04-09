@@ -112,8 +112,12 @@ def _patch_gemini_null_properties() -> None:
         # --- patch 2: _dict_to_genai_schema (null-property fix) ---
         _orig_dict = _fu._dict_to_genai_schema
 
-        def _patched_dict(schema, is_property: bool = False, is_any_of_item: bool = False):
-            result = _orig_dict(schema, is_property=is_property, is_any_of_item=is_any_of_item)
+        def _patched_dict(
+            schema, is_property: bool = False, is_any_of_item: bool = False
+        ):
+            result = _orig_dict(
+                schema, is_property=is_property, is_any_of_item=is_any_of_item
+            )
             if result is None and is_property:
                 return _genai_types.Schema()
             return result
@@ -169,6 +173,7 @@ def _patch_unicode_file_editing() -> None:
         # imported directly.
         try:
             import deepagents.backends.filesystem as _dbf
+
             if hasattr(_dbf, "perform_string_replacement"):
                 _dbf.perform_string_replacement = _nfc_replace
         except ImportError:
@@ -364,8 +369,13 @@ class Workflow(ABC):
         """
         asyncio.run(
             self._execute_async(
-                run, model=model, api_key=api_key, base_url=base_url, verbose=verbose,
-                recursion_limit=recursion_limit, printer=printer,
+                run,
+                model=model,
+                api_key=api_key,
+                base_url=base_url,
+                verbose=verbose,
+                recursion_limit=recursion_limit,
+                printer=printer,
             )
         )
 
@@ -415,17 +425,22 @@ class Workflow(ABC):
 
         # Build Langfuse callback if credentials are present
         langfuse_callbacks: list[Any] = []
-        if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get("LANGFUSE_SECRET_KEY"):
+        if os.environ.get("LANGFUSE_PUBLIC_KEY") and os.environ.get(
+            "LANGFUSE_SECRET_KEY"
+        ):
             import uuid
 
             from langfuse.langchain import CallbackHandler
+
             trace_id = uuid.uuid5(
                 uuid.NAMESPACE_URL,
                 f"jawafdehi/{self.workflow_id}/{run.case_id}",
             ).hex  # 32 lowercase hex chars
-            langfuse_callbacks = [CallbackHandler(
-                trace_context={"trace_id": trace_id},
-            )]
+            langfuse_callbacks = [
+                CallbackHandler(
+                    trace_context={"trace_id": trace_id},
+                )
+            ]
             if printer:
                 printer.print_tracing_info("Langfuse")
             else:
@@ -514,9 +529,7 @@ class Workflow(ABC):
                         if printer:
                             printer.handle_agent_event(event)
                 else:
-                    await agent.ainvoke(
-                        invocation, config=run_config
-                    )
+                    await agent.ainvoke(invocation, config=run_config)
 
                 # Mark step complete and persist
                 state["steps"][step.name] = {

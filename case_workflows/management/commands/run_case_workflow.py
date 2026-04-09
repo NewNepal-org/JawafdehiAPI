@@ -40,7 +40,12 @@ def _format_error(exc: Exception) -> str:
     """
     msg = str(exc)
     # 429 RESOURCE_EXHAUSTED — present in openai, langchain-google-genai, anthropic errors
-    if "429" in msg or "RESOURCE_EXHAUSTED" in msg or "rate_limit" in msg.lower() or "RateLimitError" in type(exc).__name__:
+    if (
+        "429" in msg
+        or "RESOURCE_EXHAUSTED" in msg
+        or "rate_limit" in msg.lower()
+        or "RateLimitError" in type(exc).__name__
+    ):
         retry_match = re.search(
             r"(?:retry[_ ]?in|retryDelay)[^0-9]*([0-9]+h[0-9]+m[0-9.]+s|[0-9]+m[0-9.]+s|[0-9]+s)",
             msg,
@@ -50,7 +55,9 @@ def _format_error(exc: Exception) -> str:
         # Extract quota metric name if present
         quota_match = re.search(r"generativelanguage\.googleapis\.com/([\w/]+)", msg)
         quota_hint = f" (quota: {quota_match.group(1)})" if quota_match else ""
-        return f"Rate limit exceeded — you have hit the API quota.{quota_hint}{retry_hint}"
+        return (
+            f"Rate limit exceeded — you have hit the API quota.{quota_hint}{retry_hint}"
+        )
     return msg
 
 
@@ -147,7 +154,9 @@ class Command(BaseCommand):
         except KeyError as exc:
             raise CommandError(str(exc))
 
-        model = options["model"] or os.environ.get("JAWAFDEHI_CASEWORK_MODEL", "openai:gpt-4o")
+        model = options["model"] or os.environ.get(
+            "JAWAFDEHI_CASEWORK_MODEL", "openai:gpt-4o"
+        )
         api_key = options["api_key"] or os.environ.get("JAWAFDEHI_CASEWORK_API_KEY")
         base_url = options["base_url"] or os.environ.get("JAWAFDEHI_CASEWORK_BASE_URL")
         verbose = options["verbose"]
@@ -156,16 +165,22 @@ class Command(BaseCommand):
         if verbose:
             printer.install_logging_handler()
 
-        printer.print_workflow_header(workflow.display_name, workflow_id, model, base_url)
+        printer.print_workflow_header(
+            workflow.display_name, workflow_id, model, base_url
+        )
 
         # ---- Determine target cases ----
         specific_case = options["case_id"]
         if specific_case:
             case_ids = [specific_case]
-            printer._console.print(f"  Targeting specific case: [bold]{specific_case}[/bold]")
+            printer._console.print(
+                f"  Targeting specific case: [bold]{specific_case}[/bold]"
+            )
         else:
             case_ids = workflow.get_eligible_cases()
-            printer._console.print(f"  Found [bold]{len(case_ids)}[/bold] eligible case(s)")
+            printer._console.print(
+                f"  Found [bold]{len(case_ids)}[/bold] eligible case(s)"
+            )
 
         if not case_ids:
             printer.warn("No cases to process. Exiting.")
@@ -193,8 +208,12 @@ class Command(BaseCommand):
                 workflow.setup_work_dir(run)
                 printer.print_work_dir(run.work_dir)
                 workflow.execute(
-                    run, model=model, api_key=api_key, base_url=base_url,
-                    verbose=verbose, recursion_limit=recursion_limit,
+                    run,
+                    model=model,
+                    api_key=api_key,
+                    base_url=base_url,
+                    verbose=verbose,
+                    recursion_limit=recursion_limit,
                     printer=printer,
                 )
             except KeyboardInterrupt:

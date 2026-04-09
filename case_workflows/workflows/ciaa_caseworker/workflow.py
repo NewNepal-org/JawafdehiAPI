@@ -95,6 +95,16 @@ _FETCH_SERVER = {
     }
 }
 
+# MCP stdio server config for open-websearch (multi-engine news search)
+_OPEN_WEBSEARCH_SERVER = {
+    "open-websearch": {
+        "command": "npx",
+        "args": ["-y", "open-websearch@latest"],
+        "transport": "stdio",
+        "env": {"MODE": "stdio", "DEFAULT_SEARCH_ENGINE": "duckduckgo"},
+    }
+}
+
 
 def _jawafdehi_server() -> dict:
     token = os.environ.get("JAWAFDEHI_API_TOKEN")
@@ -205,16 +215,29 @@ YOU MUST DOWNLOAD the original file (.pdf, .doc, etc) to the {case_dir}/sources/
 The Jawafdehi case ID is: {case_dir.name}.
 
 Search the web for news articles about this corruption case.
-Use the instructions in instructions/INSTRUCTIONS.md, the case details in case_details*.md,
-the memory bank in MEMORY.md, and the source documents from *.md files in sources/raw.
-View each news item using the `fetch` tool, then save the markdown directly to
-sources/markdown/news-<source-name>.md using the convert_to_markdown tool.
-Write a summary of all found articles to logs/news-search-summary.md.
-Then update MEMORY.md with any new learnings from the news search to persist for next steps.
+Read {case_dir}/instructions/INSTRUCTIONS.md for full guidance. Also read case_details*.md,
+MEMORY.md, and any source markdown files already in {case_dir}/sources/markdown/.
+
+Use the `search` MCP tool with engines ["duckduckgo", "bing", "brave"] for each query
+to run a parallel multi-engine search. Run multiple query variations in parallel where
+possible. If you encounter rate-limit errors (HTTP 429 or repeatedly empty results),
+switch to single-engine queries and pause a few seconds between calls.
+
+For each relevant result, use `fetchWebContent` (or `fetch`) to retrieve the full page,
+then use `convert_to_markdown` to save it to {case_dir}/sources/markdown/news-<source-name>.md.
+
+After every ~10 searches update {case_dir}/sources/markdown/news-search-progress.md.
+Write a final summary to {case_dir}/logs/news-search-summary.md.
+Update MEMORY.md with any key learnings for later steps.
 """,
                 tools=[download_file],
-                mcp_servers={**jawafdehi_server, **_FETCH_SERVER},
-                mcp_tool_filter=["fetch", "convert_to_markdown"],
+                mcp_servers={**jawafdehi_server, **_FETCH_SERVER, **_OPEN_WEBSEARCH_SERVER},
+                mcp_tool_filter=[
+                    "fetch",
+                    "fetchWebContent",
+                    "search",
+                    "convert_to_markdown",
+                ],
                 system_prompt=_SYSTEM_PROMPT,
             ),
             # WorkflowStep(
@@ -418,6 +441,14 @@ Then patch missing or incomplete fields from {case_dir}/draft.md:
   - /tags: list of English tags
   - /key_allegations: list of allegations
   - /case_start_date and /case_end_date: ISO 8601 dates
+  - /court_cases: list of strings in "court_identifier:case_number" format, e.g. ["special:081-CR-0123"].
+      Read court_identifier and case number from {case_dir}/case_details-{case_dir.name}.md (NGM case data).
+      Omit if court_identifier is unknown.
+  - /bigo: integer NPR amount from the Bigo Amount field in {case_dir}/draft.md.
+      Must be a plain integer (no commas, no currency symbols), e.g. 15880000.
+      Omit if blank or unknown.
+  - /missing_details: plain text string compiled from unchecked items in the Missing Details
+      section of {case_dir}/draft.md. Omit if all items are checked or the section is empty.
 
 All patch operations for these fields can be combined into a single patch_jawafdehi_case call.
 """,
