@@ -214,19 +214,84 @@ Use the jawafdehi-caseworker skill to review this case draft. NOTE explicitly th
 
 ## Creating a Basic Jawafdehi Case
 
-TODO.
+Use the `create_jawafdehi_case` MCP tool with at minimum `title` and `case_type` (`CORRUPTION`).
+You should also pass `short_description` if available.
 
-For now, mark the workflow as a failure (set is_complete=true, and failed=true). Tell the user this isn't implemented yet.
+The tool returns a JSON object. Record the integer `id` field (e.g. `42`) in `MEMORY.md` as the
+**numeric Jawafdehi case ID**. This ID is required for all subsequent patch and upload operations.
+
+After creating, immediately patch the case with `patch_jawafdehi_case` to set `key_allegations`,
+`timeline`, `case_start_date`, and `case_end_date` from the draft.
 
 ## Creating / Updating Jawafdehi Entities
 
-TODO.
+Use the entity MCP tools to link accused and related parties to the case. For each entity in
+the draft (accused, organizations, locations):
 
-For now, mark the workflow as a failure (set is_complete=true, and failed=true). Tell the user this isn't implemented yet.
+1. **Search first** — call `search_jawaf_entities` with the entity's name. If a result matches,
+   use its integer `id` and skip creation.
+
+2. **Create if missing** — call `create_jawaf_entity` with either:
+   - `nes_id`: the NES entity identifier (e.g. `entity:person/ram-prasad-sharma`) if known
+   - `display_name`: a plain name string when no NES record exists
+   Record the returned `id` in `MEMORY.md`.
+
+3. **Link to the case** — call `patch_jawafdehi_case` with a JSON Patch `add` operation:
+   ```json
+   {"op": "add", "path": "/entities/-", "value": {"entity": <id>, "relationship_type": "<TYPE>", "notes": "<notes>"}}
+   ```
+   Relationship types: `ACCUSED` (main defendants), `ALLEGED` (named but unconfirmed),
+   `RELATED` (organizations / third parties), `WITNESS`, `VICTIM`, `LOCATION`.
+
+4. **Confirm** — call `get_jawaf_entity` with the entity ID and verify `related_cases` includes
+   this case.
 
 ## Updating Remaining Case Details
 
-TODO.
+### Step 1 — Upload source documents
 
-For now, mark the workflow as a failure (set is_complete=true, and failed=true). Tell the user this isn't implemented yet.
+Use `upload_document_source` to create a `DocumentSource` for each raw file. The tool reads the
+file directly from disk — pass an absolute `file_path`, not base64 content.
+
+**Supported extensions for raw sources**: `.pdf`, `.doc`, `.docx`, `.jpg`, `.jpeg`
+
+For each file in `sources/raw/` with one of those extensions, call `upload_document_source`:
+
+| filename prefix         | `source_type`        | `description` required? |
+|-------------------------|----------------------|-------------------------|
+| `ciaa-press-release-*`  | `OFFICIAL_GOVERNMENT`| Yes                     |
+| `charge-sheet-*`        | `LEGAL_PROCEDURAL`   | Yes                     |
+| `court-order-*`         | `LEGAL_COURT_ORDER`  | Yes                     |
+| `bolpatra-*`            | `OFFICIAL_GOVERNMENT`| Yes                     |
+
+Also upload every `sources/markdown/news-*.md` file with `source_type=MEDIA_NEWS`.
+
+Example `description` for a charge sheet:
+> "CIAA Charge Sheet — Case 081-CR-0123 filed on 2081-05-15 against Ram Prasad Sharma"
+
+Record every returned `source_id` and its description in `MEMORY.md`.
+
+### Step 2 — Attach evidence to the case
+
+After all uploads, call `patch_jawafdehi_case` with one RFC 6902 `add` operation per source:
+
+```json
+{"op": "add", "path": "/evidence/-", "value": {"source_id": "<source_id>", "description": "<description>"}}
+```
+
+Combine all evidence `add` ops into a single `patch_jawafdehi_case` call.
+
+### Step 3 — Update remaining case fields
+
+Call `get_jawafdehi_case` first to see which fields are already populated. Then patch whatever
+is missing from `draft.md`:
+
+- `/timeline` — list of `{"date": "<ISO date AD>", "title": "...", "description": "..."}` objects
+- `/short_description` — one-sentence teaser
+- `/description` — full Nepali HTML description
+- `/tags` — list of English tags
+- `/key_allegations` — list of allegations
+- `/case_start_date`, `/case_end_date` — ISO 8601 dates
+
+Combine all field updates into a single `patch_jawafdehi_case` call.
 

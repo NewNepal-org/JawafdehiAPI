@@ -51,13 +51,15 @@ def validate_url_list(value):
 
 
 # File upload configuration
-ALLOWED_UPLOAD_EXTENSIONS = ["pdf", "doc", "docx", "jpg", "jpeg", "png"]
+ALLOWED_UPLOAD_EXTENSIONS = ["pdf", "doc", "docx", "jpg", "jpeg", "png", "md", "txt"]
 ALLOWED_UPLOAD_MIMETYPES = [
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "image/jpeg",
     "image/png",
+    "text/plain",
+    "text/markdown",
 ]
 MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024  # 10 MB in bytes
 

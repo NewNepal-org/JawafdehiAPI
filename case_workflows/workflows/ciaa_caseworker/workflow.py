@@ -331,29 +331,103 @@ NOTE: along with the case title, you MUST update the Key allegations, Timeline, 
             WorkflowStep(
                 name="create-update-entities",
                 prompt_fn=lambda case_dir: f"""\
-The Jawafdehi case ID is: {case_dir.name}
+The Jawafdehi case ID is: {case_dir.name}. The numeric Jawafdehi case ID is in {case_dir}/MEMORY.md.
 
-Using the accused entities listed in {case_dir}/draft.md, create or update Jawafdehi entities
-via the API and link them to the case created in the previous step. Record any new entity IDs
-in {case_dir}/MEMORY.md.
+For each accused, defendant, and related entity listed in {case_dir}/draft.md, link them to the
+Jawafdehi case. Follow these steps for each entity:
 
-Once the Jawaf Entities are created, you must now update the case entities, and also specify the proper relation type as well as the notes about the entities.
+Step 1 — Check if the entity already exists.
+  Call search_jawaf_entities with the entity name as the search query.
+  If a match is returned, note its integer ID — do not create a duplicate.
+
+Step 2 — Create the entity only if it does not already exist.
+  Call create_jawaf_entity with either nes_id (if you have an NES ID from the draft or sources)
+  or display_name (if no NES record is known). Record the new entity ID in {case_dir}/MEMORY.md.
+
+Step 3 — Link the entity to the case.
+  Call patch_jawafdehi_case with the numeric Jawafdehi case ID from MEMORY.md.
+  Use a JSON Patch add operation:
+    {{"op": "add", "path": "/entities/-", "value": {{"entity": <entity_id>, "relationship_type": "<TYPE>", "notes": "<notes>"}}}}
+  Relationship types: ACCUSED (main defendants), ALLEGED (named but unconfirmed), RELATED
+  (organizations or third parties), WITNESS, VICTIM, LOCATION. LOCATION is a special relation type for places.
+
+  Set notes to the role the entity played as described in the draft.
+
+Step 4 — Confirm the link.
+  Call get_jawaf_entity with the entity ID and verify the returned related_cases field.
+
+Record all entity IDs created or linked in {case_dir}/MEMORY.md.
 """,
                 mcp_servers=jawafdehi_server,
+                mcp_tool_filter=[
+                    "search_jawaf_entities",
+                    "get_jawaf_entity",
+                    "create_jawaf_entity",
+                    "patch_jawafdehi_case",
+                    "get_jawafdehi_case",
+                ],
                 system_prompt=_SYSTEM_PROMPT,
             ),
             WorkflowStep(
                 name="update-case-details",
                 prompt_fn=lambda case_dir: f"""\
-The CIAA case number is: {case_dir.name}. The numeric Jawafdehi case id is in MEMORY.md.
+The CIAA case number is: {case_dir.name}. The numeric Jawafdehi case ID is in {case_dir}/MEMORY.md.
+Read MEMORY.md first — do NOT call search_jawafdehi_cases; use the stored ID only.
 
-Using all collected sources in {case_dir}/sources/markdown/ and the full case draft at
-{case_dir}/draft.md, update the Jawafdehi case with the remaining details: evidence,
-sources with URLs, timeline of events, and amount involved.
+--- STEP 1: Upload source documents ---
 
-NOTE: the search_jawafdehi_cases will NOT work. You must use the case ID from MEMORY.md to update the case you created in the previous step. Do NOT create a new case or update the wrong case.
+Upload each primary source file as a DocumentSource.
+For every file in {case_dir}/sources/raw/ with extension .pdf, .doc, .docx, .jpg, or .jpeg,
+call upload_document_source with:
+  - file_path: the absolute path to the file
+  - title: a descriptive title (e.g. "CIAA Press Release – {case_dir.name}", "Charge Sheet – {case_dir.name}")
+  - description (REQUIRED for legal/official docs): concise description of the document, e.g.
+      "CIAA Charge Sheet — Case {case_dir.name} filed on 2081-05-15 against Ram Prasad Sharma"
+  - source_type from this mapping:
+      ciaa-press-release-*  →  OFFICIAL_GOVERNMENT
+      charge-sheet-*        →  LEGAL_PROCEDURAL
+      court-order-*         →  LEGAL_COURT_ORDER
+      bolpatra-*            →  OFFICIAL_GOVERNMENT
+
+Also upload news markdown files from {case_dir}/sources/markdown/. For every file matching
+news-*.md, call upload_document_source with:
+  - file_path: the absolute path to the .md file
+  - title: a descriptive title for the article
+  - description: optional brief summary of the article's relevance
+  - source_type: MEDIA_NEWS
+
+Record every returned source_id along with a short description in {case_dir}/MEMORY.md.
+
+--- STEP 2: Attach evidence to the case ---
+
+After all uploads, call patch_jawafdehi_case with a single RFC 6902 JSON Patch request
+containing one add operation per evidence entry:
+  {{"op": "add", "path": "/evidence/-", "value": {{"source_id": "<source_id>", "description": "<description>"}}}}
+
+Use clear, factual descriptions for each piece of evidence, e.g.:
+  "CIAA charge sheet confirming procurement fraud allegation and bigo amount"
+  "Special Court verdict dated 2081-09-12 — convicted, sentenced to 3 years"
+
+--- STEP 3: Update remaining case fields ---
+
+First call get_jawafdehi_case with the numeric case ID to see which fields are already set.
+Then patch missing or incomplete fields from {case_dir}/draft.md:
+  - /timeline: list of {{"date": "<ISO date AD>", "title": "<title>", "description": "<description>"}} objects
+  - /short_description: one-sentence teaser (if not yet set)
+  - /description: full Nepali HTML description (if not yet set)
+  - /tags: list of English tags
+  - /key_allegations: list of allegations
+  - /case_start_date and /case_end_date: ISO 8601 dates
+
+All patch operations for these fields can be combined into a single patch_jawafdehi_case call.
 """,
                 mcp_servers=jawafdehi_server,
+                mcp_tool_filter=[
+                    "upload_document_source",
+                    "patch_jawafdehi_case",
+                    "get_jawafdehi_case",
+                    "get_jawaf_entity",
+                ],
                 system_prompt=_SYSTEM_PROMPT,
             ),
         ]
