@@ -202,6 +202,23 @@ class TestUploadWorkflowOutputs:
         for dir_name in _EXCLUDED_DIRS:
             assert not any(k.startswith(dir_name) for k in result)
 
+    def test_existing_file_is_deleted_before_save(self, tmp_path):
+        """Re-running a workflow should overwrite the existing backend file, not suffix it."""
+        f = tmp_path / "draft.md"
+        f.write_text("updated content")
+
+        mock_storage = MagicMock()
+        mock_storage.exists.return_value = True
+        mock_storage.save.side_effect = lambda name, _fh: name
+
+        with patch("case_workflows.storage_utils.default_storage", mock_storage):
+            result = upload_workflow_outputs(tmp_path, "case-abc123")
+
+        expected_path = f"{_WORKFLOW_OUTPUTS_PREFIX}/case-abc123/draft.md"
+        mock_storage.delete.assert_called_once_with(expected_path)
+        mock_storage.save.assert_called_once()
+        assert "draft.md" in result
+
 
 # ---------------------------------------------------------------------------
 # record_downloaded_files

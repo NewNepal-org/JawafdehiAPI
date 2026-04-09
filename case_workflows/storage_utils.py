@@ -108,6 +108,8 @@ def upload_workflow_outputs(
         storage_name = f"{_WORKFLOW_OUTPUTS_PREFIX}/{case_id}/{rel_path.as_posix()}"
 
         try:
+            if default_storage.exists(storage_name):
+                default_storage.delete(storage_name)
             with open(abs_path, "rb") as fh:
                 saved_name = default_storage.save(storage_name, File(fh))
             record = build_file_record(abs_path, saved_name)
