@@ -62,7 +62,7 @@ def test_public_api_only_shows_published_cases(case_data, state):
     # Check if case appears in results
     case_ids_in_response = [c.get("case_id") for c in response.data.get("results", [])]
 
-    # List endpoint only shows PUBLISHED cases
+    # Unauthenticated list endpoint only shows PUBLISHED cases. IN_REVIEW is NOT shown.
     should_appear = state == CaseState.PUBLISHED
 
     if should_appear:

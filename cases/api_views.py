@@ -17,13 +17,15 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
+from django.db.models import Q
 from rest_framework import filters, mixins, status, viewsets
-from rest_framework.authentication import TokenAuthentication
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .admin import CaseAdminForm
 from .caseworker_serializers import (
@@ -39,7 +41,7 @@ from .models import (
     JawafEntity,
     RelationshipType,
 )
-from .rules.predicates import can_change_case, can_transition_case_state, can_view_case
+from .rules.predicates import can_change_case, can_transition_case_state, can_view_case, is_admin_or_moderator
 from .serializers import (
     CaseDetailSerializer,
     CaseSerializer,
@@ -65,9 +67,14 @@ from .serializers import (
     list=extend_schema(
         summary="List published cases",
         description="""
-        Retrieve a paginated list of published accountability cases.
-        
-        Only cases with state=PUBLISHED are returned (regardless of authorization).
+        Retrieve a paginated list of accountability cases.
+
+        **Visibility rules:**
+        - Unauthenticated requests: only PUBLISHED cases.
+        - Admin / Moderator: all non-CLOSED cases (PUBLISHED + IN_REVIEW + DRAFT).
+        - Authenticated contributor/other: PUBLISHED cases + any DRAFT or IN_REVIEW cases
+          they are explicitly assigned to as contributors.
+
         Results are ordered by creation date (newest first).
         
         **Filtering:**
@@ -157,15 +164,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["case_type"]
     search_fields = ["title", "description", "key_allegations"]
-    authentication_classes = [TokenAuthentication]
-
-    def get_permissions(self):
-        """
-        Allow POST/PATCH for authenticated users, read-only for everyone else.
-        """
-        if self.action in {"create", "partial_update"}:
-            return [IsAuthenticated()]
-        return super().get_permissions()
+    authentication_classes = [JWTAuthentication, TokenAuthentication, SessionAuthentication]
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -200,8 +199,18 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                     state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
                 )
         else:
-            # List endpoint: only published cases (regardless of authorization)
-            queryset = Case.objects.filter(state=CaseState.PUBLISHED)
+            # List endpoint: visibility depends on authentication/role.
+            # - Unauthenticated: PUBLISHED only
+            # - Admin/Moderator: all non-CLOSED cases
+            # - Other authenticated (contributor): PUBLISHED + cases they are assigned to
+            if not (self.request.user and self.request.user.is_authenticated):
+                queryset = Case.objects.filter(state=CaseState.PUBLISHED)
+            elif is_admin_or_moderator(self.request.user):
+                queryset = Case.objects.exclude(state=CaseState.CLOSED)
+            else:
+                queryset = Case.objects.exclude(state=CaseState.CLOSED).filter(
+                    Q(state=CaseState.PUBLISHED) | Q(contributors=self.request.user)
+                ).distinct()
 
         # Apply tag filtering if provided
         tags_param = self.request.query_params.get("tags", None)
