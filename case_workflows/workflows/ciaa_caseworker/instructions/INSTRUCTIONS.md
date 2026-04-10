@@ -219,11 +219,57 @@ For each case, run at least these variations:
 
 Appending `Nepal` or `नेपाल` to each query helps surface Nepali-language and Nepal-focused results since the `search` tool has no native region parameter.
 
-### Fetching and saving each article
+### Fetching, saving, and cleaning each article
+
+Repeat the following numbered steps **for every article** before moving on to the next one.
 
 1. Call `search` with `engines: ["duckduckgo", "bing", "brave"]` and your query.
+
 2. For each relevant result URL, call `fetchWebContent` (or `fetch`) to retrieve the full page.
+
 3. Call `convert_to_markdown` to save to `sources/markdown/news-<source-name>.md`.
+
+4. **Immediately record metadata in MEMORY.md** — before any other step, append a new row to the
+   `## News Articles` table in `MEMORY.md`. Use the **original search-result URL** (not any URL
+   scraped from inside the converted file). If a publication date is visible in the page content,
+   record it; otherwise write `unknown`.
+
+   The table must have this exact format:
+   ```
+   ## News Articles
+   | filename | original_url | publication_date | title |
+   |---|---|---|---|
+   | news-ekantipur.md | https://ekantipur.com/... | 2025-05-11 | सब-इन्जिनियरविरुद्ध... |
+   | news-beemapost.md | https://www.beemapost.com/... | unknown | सव-इन्जिनियरद्वारा... |
+   ```
+
+5. **Clean the saved markdown** — edit the file in-place to remove all website chrome:
+   navigation menus, site headers and footers, logo images, social sharing buttons
+   (Facebook, Twitter, Viber, etc.), advertising banners/GIFs, related-article blocks,
+   subscribe/login prompts, weather widgets, trending-topics bars, and any other content
+   that is not part of the article itself. Keep only: the article headline, dateline/byline,
+   and the full article body.
+
+   **Verify the cleaning**: read back the first 5 lines of the file. If any line contains a
+   logo or icon `<img`/`![` tag, a nav link list, "Sign In", a social-media button, or a
+   subscription prompt — the file is not clean yet; edit again. A clean file's first line must
+   be the article headline or dateline (e.g., `# सब-इन्जिनियरविरुद्ध भ्रष्टाचार मुद्दा दायर`
+   or `**२७ चैत्र २०८२**`), not a logo or nav element.
+
+   If the publication date was recorded as `unknown` in step 4, re-read the now-clean
+   dateline and update the MEMORY.md table row with the correct date.
+
+6. **Identify case-relevant images** — scan the cleaned body text for `![` or `<img` tags
+   that appear *inside* the article body (skip logos, icons, and ads). For each image that
+   is directly relevant to the case — photos of the accused or co-defendants, official CIAA
+   or court document photos, property or crime-scene photos — append an entry to `MEMORY.md`
+   under a `## Images` section:
+   ```
+   ## Images
+   - ![Kumar Paudyal](https://example.com/paudyal.jpg) — accused sub-engineer, from ekantipur article
+   - ![CIAA press conference](https://example.com/ciaa-press.jpg) — CIAA press conference photo, from onlinekhabar article
+   ```
+   Skip this step if no relevant images are found in the article.
 
 ### Progress checkpointing
 
@@ -273,6 +319,11 @@ the draft (accused, organizations, locations):
    Relationship types: `ACCUSED` (main defendants), `ALLEGED` (named but unconfirmed),
    `RELATED` (organizations / third parties), `WITNESS`, `VICTIM`, `LOCATION`.
 
+   > **System note — LOCATION entities:** In this system, locations are not stored in a
+   > separate location model. They are saved as regular Jawaf Entities (just like people and
+   > organizations) and linked to the case using `relationship_type: "LOCATION"`. This is a
+   > deliberate design choice in the Jawafdehi platform.
+
 4. **Confirm** — call `get_jawaf_entity` with the entity ID and verify `related_cases` includes
    this case.
 
@@ -283,21 +334,43 @@ the draft (accused, organizations, locations):
 Use `upload_document_source` to create a `DocumentSource` for each raw file. The tool reads the
 file directly from disk — pass an absolute `file_path`, not base64 content.
 
+> **Source description vs evidence description:**
+> - `description` passed to `upload_document_source` is the **source description** — it describes
+>   what the underlying document *is* (its content, origin, and key metadata).
+> - `description` in the evidence JSON Patch operation (Step 2) is the **evidence description** —
+>   it explains *how* this particular source connects to and supports this specific case.
+>
+> **Language:** Both descriptions must be written in **Nepali**. Technical terms, proper nouns,
+> case numbers, URLs, and numeric values may remain in English or their original form.
+>
+> Example for a charge sheet:
+> - Source description: `"अख्तियार दुरुपयोग अनुसन्धान आयोगद्वारा विशेष अदालतमा दायर गरिएको अभियोग पत्र — मुद्दा 081-CR-0123, मिति २०८१-०५-१५, प्रतिवादी Ram Prasad Sharma"`
+> - Evidence description: `"यो अभियोग पत्रले घुसखोरीको आरोप र रु. ९.२२ करोडको बिगो रकम पुष्टि गर्दछ।"`
+
 **Supported extensions for raw sources**: `.pdf`, `.doc`, `.docx`, `.jpg`, `.jpeg`
 
 For each file in `sources/raw/` with one of those extensions, call `upload_document_source`:
 
-| filename prefix         | `source_type`        | `description` required? |
-|-------------------------|----------------------|-------------------------|
-| `ciaa-press-release-*`  | `OFFICIAL_GOVERNMENT`| Yes                     |
-| `charge-sheet-*`        | `LEGAL_PROCEDURAL`   | Yes                     |
-| `court-order-*`         | `LEGAL_COURT_ORDER`  | Yes                     |
-| `bolpatra-*`            | `OFFICIAL_GOVERNMENT`| Yes                     |
+| filename prefix         | `source_type`        | `description` required? | `publication_date` required? |
+|-------------------------|----------------------|-------------------------|------------------------------|
+| `ciaa-press-release-*`  | `OFFICIAL_GOVERNMENT`| Yes                     | No                           |
+| `charge-sheet-*`        | `LEGAL_PROCEDURAL`   | Yes                     | No                           |
+| `court-order-*`         | `LEGAL_COURT_ORDER`  | Yes                     | No                           |
+| `bolpatra-*`            | `OFFICIAL_GOVERNMENT`| Yes                     | No                           |
 
-Also upload every `sources/markdown/news-*.md` file with `source_type=MEDIA_NEWS`.
-
-Example `description` for a charge sheet:
-> "CIAA Charge Sheet — Case 081-CR-0123 filed on 2081-05-15 against Ram Prasad Sharma"
+For news articles (`sources/markdown/news-*.md`), call `upload_document_source` with:
+- `source_type`: `MEDIA_NEWS`
+- `file_path`: absolute path to the cleaned `.md` file
+- `url`: `["<original_article_url>"]` — use the URL recorded in `MEMORY.md ## News Articles`
+  for this file. **Do NOT scrape URLs from inside the markdown file itself** (they will be
+  logo or navigation links, not the article URL).
+- `publication_date`: `YYYY-MM-DD` — use the date recorded in `MEMORY.md ## News Articles`.
+  If it was recorded as `unknown`, re-read the first 10 lines of the cleaned file and extract
+  the dateline. **Do not substitute the case filing date** when the real date is unknown — leave
+  the field blank instead.
+- `description`: summarise the article's specific claim about this case in one sentence, **in
+  Nepali**. To do this, read the first 200 words of the cleaned article body. Example:
+  `"Ekantipur (२०८२-०१-२८) ले सव-इन्जिनियर कुमार पौड्यालविरुद्ध रु. ३.६३ करोडको अकुत सम्पत्ति आर्जन सम्बन्धी अख्तियारको मुद्दाबारे समाचार प्रकाशित गरेको।"`
 
 Record every returned `source_id` and its description in `MEMORY.md`.
 
@@ -308,6 +381,16 @@ After all uploads, call `patch_jawafdehi_case` with one RFC 6902 `add` operation
 ```json
 {"op": "add", "path": "/evidence/-", "value": {"source_id": "<source_id>", "description": "<description>"}}
 ```
+
+**Every uploaded source must be added as an evidence entry** — including all news articles,
+official documents, and court orders. Do not selectively attach only a subset.
+
+For **official documents** (charge sheet, press release, court order), the evidence description
+should state specifically which allegation(s) or facts the document proves, **in Nepali**.
+
+For **news articles**, the evidence description should name the outlet, publication date, and
+which allegation(s) the article corroborates, **in Nepali**. Example:
+`"Ekantipur (२०८२-०१-२८) ले अभियोग दायरी र रु. ३.६३ करोडको बिगो रकम पुष्टि गर्दछ।"`
 
 Combine all evidence `add` ops into a single `patch_jawafdehi_case` call.
 
@@ -327,4 +410,15 @@ is missing from `draft.md`:
 - `/missing_details` — freetext string compiled from the unchecked items in the **Missing Details** section of `draft.md`. Omit if all items are checked or the section is empty.
 
 Combine all field updates into a single `patch_jawafdehi_case` call.
+
+### Step 4 — Patch case notes with images
+
+If `MEMORY.md` contains a `## Images` section with at least one entry, patch the case notes
+field with the collected image list:
+
+```json
+{"op": "replace", "path": "/notes", "value": "## Relevant Images\n\n- ![Caption](url) — context\n..."}
+```
+
+Skip this step if no images were recorded in `MEMORY.md ## Images`.
 

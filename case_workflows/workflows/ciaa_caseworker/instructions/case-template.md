@@ -40,6 +40,10 @@ Entity types:
 
 ### Locations
 
+<!-- Locations are linked to the case as Jawaf Entities with relationship_type LOCATION.
+     This is a system-specific design: the platform stores locations as regular entities
+     (same model as people and organizations), not in a separate location table. -->
+
 | Name |
 |------|
 |  |
@@ -85,20 +89,24 @@ Significant events in chronological order. Include both AD and BS dates where kn
 
 ## Evidence / Sources
 
-Each source should note its type: `OFFICIAL_GOVERNMENT`, `MEDIA_NEWS`, `COURT_DOCUMENT`, or `OTHER`.
-For primary evidence (CIAA docs, charge sheets, court records) include a description. For news articles the title alone is sufficient.
+Each **source** has two distinct description fields:
+- **Source description** — describes what the document *is*: its content, origin, and key metadata. Set when uploading via `upload_document_source`.
+- **Evidence description** — explains *how* this source connects to and supports this specific case. Set when attaching the source to the case via the evidence patch operation.
 
 ### 1. [Document Title]
 
 - **Type:** OFFICIAL_GOVERNMENT
-- **Description:** <!-- What this document is and why it is relevant -->
+- **Source Description:** <!-- Nepali. What this document is: e.g. "अख्तियारद्वारा विशेष अदालतमा दायर गरिएको अभियोग पत्र — मुद्दा 081-CR-0123, मिति २०८१-०५-१५, प्रतिवादी Ram Prasad Sharma" -->
+- **Evidence Description:** <!-- Nepali. How it supports this case: e.g. "यो अभियोग पत्रले घुसखोरीको आरोप र रु. ९.२२ करोडको बिगो रकम पुष्टि गर्दछ।" -->
 - **URL:** <!-- https://s3.jawafdehi.org/case_uploads/... or web URL -->
 
 ### 2. [Document Title]
 
 - **Type:** MEDIA_NEWS
-- **Description:** <!-- Optional for news -->
-- **URL:**
+- **Publication Date:** <!-- YYYY-MM-DD — required for all news sources -->
+- **Source Description:** <!-- Nepali. What the article reports -->
+- **Evidence Description:** <!-- Nepali. How this article relates to the case -->
+- **URL:** <!-- Original newspaper article URL -->
 
 ---
 
@@ -128,3 +136,12 @@ List any information that could not be found or verified at the time of drafting
 Internal working notes — not published. Include caseworker name and date drafted.
 
 <!-- Case drafted by [Name]. [Date]. -->
+
+---
+
+## Images
+
+Case-relevant images identified during news research (photos of accused, co-defendants, official press conference photos, property/crime-scene photos). Populated from `MEMORY.md ## Images` by the caseworker.
+
+- <!-- ![Caption](url) — context, source outlet -->
+

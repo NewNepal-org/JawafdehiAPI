@@ -545,6 +545,15 @@ class Workflow(ABC):
                     "recursion_limit": recursion_limit,
                 }
 
+                # Record step start time and persist before running
+                step_started_at = datetime.now(timezone.utc).isoformat()
+                state["steps"][step.name] = {
+                    "status": "in_progress",
+                    "started_at": step_started_at,
+                }
+                run.case_data = state
+                await sync_to_async(run.save)(update_fields=["case_data", "updated_at"])
+
                 if verbose:
                     async for event in agent.astream_events(
                         invocation, config=run_config, version="v2"
@@ -557,6 +566,7 @@ class Workflow(ABC):
                 # Mark step complete and persist
                 state["steps"][step.name] = {
                     "status": "complete",
+                    "started_at": step_started_at,
                     "completed_at": datetime.now(timezone.utc).isoformat(),
                 }
 

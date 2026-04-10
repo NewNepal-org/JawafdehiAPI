@@ -792,6 +792,13 @@ class DocumentSource(models.Model):
         help_text="Contributors assigned to manage this source",
     )
 
+    # Publication date (for media/news sources)
+    publication_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Publication date of the source (required for news/media sources)",
+    )
+
     # Soft deletion
     is_deleted = models.BooleanField(
         default=False, db_index=True, help_text="Soft deletion flag"
