@@ -548,7 +548,8 @@ class Workflow(ABC):
                 }
 
                 # Record step start time and persist before running
-                step_started_at = datetime.now(timezone.utc).isoformat()
+                step_started_dt = datetime.now(timezone.utc)
+                step_started_at = step_started_dt.isoformat()
                 state["steps"][step.name] = {
                     "status": "in_progress",
                     "started_at": step_started_at,
@@ -566,10 +567,13 @@ class Workflow(ABC):
                     await agent.ainvoke(invocation, config=run_config)
 
                 # Mark step complete and persist
+                step_completed_dt = datetime.now(timezone.utc)
+                elapsed_seconds = (step_completed_dt - step_started_dt).total_seconds()
                 state["steps"][step.name] = {
                     "status": "complete",
                     "started_at": step_started_at,
-                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "completed_at": step_completed_dt.isoformat(),
+                    "duration_seconds": round(elapsed_seconds, 3),
                 }
 
                 previous_files = state.get("files", {})
@@ -579,9 +583,11 @@ class Workflow(ABC):
                 run.case_data = state
                 await sync_to_async(run.save)(update_fields=["case_data", "updated_at"])
                 if printer:
-                    printer.print_step_done(step.name)
+                    printer.print_step_done(step.name, elapsed_seconds)
                 else:
-                    logger.info("Step completed: %s", step.name)
+                    logger.info(
+                        "Step completed: %s (%.2fs)", step.name, elapsed_seconds
+                    )
 
             # All steps done
             state["is_complete"] = True

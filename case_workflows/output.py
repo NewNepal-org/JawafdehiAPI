@@ -33,6 +33,18 @@ _WARN_COLOR = "yellow"
 _ERR_COLOR = "red"
 
 
+def _format_duration(seconds: float) -> str:
+    """Return a compact human-readable duration string."""
+    total = max(0, int(round(seconds)))
+    mins, secs = divmod(total, 60)
+    hours, mins = divmod(mins, 60)
+    if hours:
+        return f"{hours}h {mins}m {secs}s"
+    if mins:
+        return f"{mins}m {secs}s"
+    return f"{secs}s"
+
+
 def _compress_paths(text: str, work_dir: Optional[str]) -> str:
     """Replace the work-dir absolute prefix with '…/' for brevity."""
     if not work_dir:
@@ -183,8 +195,14 @@ class WorkflowPrinter:
             )
         )
 
-    def print_step_done(self, name: str) -> None:
-        self._console.print(f"  [{_OK_COLOR}]✓ {name}[/{_OK_COLOR}]")
+    def print_step_done(self, name: str, elapsed_seconds: Optional[float] = None) -> None:
+        if elapsed_seconds is None:
+            self._console.print(f"  [{_OK_COLOR}]✓ {name}[/{_OK_COLOR}]")
+            return
+        duration = _format_duration(elapsed_seconds)
+        self._console.print(
+            f"  [{_OK_COLOR}]✓ {name} [dim]({duration})[/dim][/{_OK_COLOR}]"
+        )
 
     def print_step_skipped(self, name: str) -> None:
         self._console.print(
