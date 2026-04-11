@@ -314,14 +314,25 @@ the draft (accused, organizations, locations):
 
 3. **Link to the case** — call `patch_jawafdehi_case` with a JSON Patch `add` operation:
    ```json
-   {"op": "add", "path": "/entities/-", "value": {"entity": <id>, "relationship_type": "<TYPE>", "notes": "<notes>"}}
+   {"op": "add", "path": "/entities/-", "value": {"entity": <id>, "relationship_type": "<type>", "notes": "<notes>"}}
    ```
-   Relationship types: `ACCUSED` (main defendants), `ALLEGED` (named but unconfirmed),
-   `RELATED` (organizations / third parties), `WITNESS`, `VICTIM`, `LOCATION`.
+   Valid `relationship_type` values (always lowercase):
+
+   | Value | Use for |
+   |---|---|
+   | `accused` | Main defendants / confirmed perpetrators |
+   | `alleged` | Named but unconfirmed involvement |
+   | `related` | Organizations, third parties, context |
+   | `witness` | Witnesses |
+   | `victim` | Victims |
+   | `opposition` | Opposing parties |
+   | `location` | Geographic locations where the case occurred |
+
+   The `notes` field is optional.
 
    > **System note — LOCATION entities:** In this system, locations are not stored in a
    > separate location model. They are saved as regular Jawaf Entities (just like people and
-   > organizations) and linked to the case using `relationship_type: "LOCATION"`. This is a
+   > organizations) and linked to the case using `relationship_type: "location"`. This is a
    > deliberate design choice in the Jawafdehi platform.
 
 4. **Confirm** — call `get_jawaf_entity` with the entity ID and verify `related_cases` includes

@@ -231,7 +231,11 @@ Write a final summary to {case_dir}/logs/news-search-summary.md.
 Update MEMORY.md with any key learnings for later steps.
 """,
                 tools=[download_file],
-                mcp_servers={**jawafdehi_server, **_FETCH_SERVER, **_OPEN_WEBSEARCH_SERVER},
+                mcp_servers={
+                    **jawafdehi_server,
+                    **_FETCH_SERVER,
+                    **_OPEN_WEBSEARCH_SERVER,
+                },
                 mcp_tool_filter=[
                     "fetch",
                     "fetchWebContent",

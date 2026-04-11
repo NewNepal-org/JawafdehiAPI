@@ -413,7 +413,9 @@ class Workflow(ABC):
             def on_llm_end(self, response: Any, **kwargs: Any) -> None:  # type: ignore[override]
                 for row in response.generations:
                     for gen in row:
-                        meta = getattr(getattr(gen, "message", None), "usage_metadata", None)
+                        meta = getattr(
+                            getattr(gen, "message", None), "usage_metadata", None
+                        )
                         if meta:
                             self.input_tokens += meta.get("input_tokens", 0)
                             self.output_tokens += meta.get("output_tokens", 0)

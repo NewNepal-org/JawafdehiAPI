@@ -14,9 +14,8 @@ Validates: Requirements 1.5, 3.1, 6.1
 import pytest
 from rest_framework.test import APIClient
 
-from cases.models import Case, CaseState, CaseType
+from cases.models import CaseState, CaseType
 from tests.conftest import create_case_with_entities, create_user_with_role
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

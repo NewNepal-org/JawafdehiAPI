@@ -2,7 +2,6 @@
 Tests for workflow registry and ABC contract.
 """
 
-
 import pytest
 
 from case_workflows.registry import get_workflow, list_workflows

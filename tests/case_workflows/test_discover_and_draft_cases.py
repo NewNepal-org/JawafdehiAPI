@@ -18,6 +18,9 @@ from django.core.management import call_command
 from case_workflows.workflows.ciaa_caseworker.constants import CIAA_CASE_NUMBERS
 from cases.models import Case, CaseState, CaseType
 
+UNIQUE_CIAA_CASE_NUMBERS = sorted(set(CIAA_CASE_NUMBERS))
+DUPLICATE_CIAA_CASE_COUNT = len(CIAA_CASE_NUMBERS) - len(UNIQUE_CIAA_CASE_NUMBERS)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -52,11 +55,11 @@ class TestDiscoverAndDraftCasesCreation:
         assert case.case_id.startswith("case-")
 
     @pytest.mark.django_db
-    def test_all_19_cases_created_from_empty_db(self):
-        """Starting from an empty DB, exactly 19 cases are created."""
+    def test_all_unique_cases_created_from_empty_db(self):
+        """Starting from an empty DB, one case is created per unique case number."""
         _run()
-        assert Case.objects.count() == len(CIAA_CASE_NUMBERS)
-        for number in CIAA_CASE_NUMBERS:
+        assert Case.objects.count() == len(UNIQUE_CIAA_CASE_NUMBERS)
+        for number in UNIQUE_CIAA_CASE_NUMBERS:
             assert Case.objects.filter(
                 title__icontains=number
             ).exists(), f"Expected a case with '{number}' in title"
@@ -103,15 +106,17 @@ class TestDiscoverAndDraftCasesIdempotency:
         _run()
         count_after_first = Case.objects.count()
         _run()
-        assert Case.objects.count() == count_after_first == len(CIAA_CASE_NUMBERS)
+        assert Case.objects.count() == count_after_first == len(
+            UNIQUE_CIAA_CASE_NUMBERS
+        )
 
     @pytest.mark.django_db
     def test_partial_existing_creates_only_missing(self):
-        """Pre-creating 3 cases means the command creates the remaining 16."""
+        """Pre-creating 3 cases means the command creates only missing unique cases."""
         for number in ["081-CR-0022", "081-CR-0087", "081-CR-0097"]:
             _make_case(f"CIAA Special Court Case {number}")
         _run()
-        assert Case.objects.count() == len(CIAA_CASE_NUMBERS)
+        assert Case.objects.count() == len(UNIQUE_CIAA_CASE_NUMBERS)
 
 
 # ---------------------------------------------------------------------------
@@ -122,24 +127,24 @@ class TestDiscoverAndDraftCasesIdempotency:
 class TestDiscoverAndDraftCasesOutput:
     @pytest.mark.django_db
     def test_summary_shows_all_created(self):
-        """First run from empty DB: summary shows 19 created, 0 skipped."""
+        """First run from empty DB: summary reflects unique creations and duplicate skips."""
         output = _run()
-        assert "19 created" in output
-        assert "0 skipped" in output
+        assert f"{len(UNIQUE_CIAA_CASE_NUMBERS)} created" in output
+        assert f"{DUPLICATE_CIAA_CASE_COUNT} skipped" in output
 
     @pytest.mark.django_db
     def test_summary_shows_all_skipped_on_rerun(self):
-        """Second run: summary shows 0 created, 19 skipped."""
+        """Second run: all configured case numbers are skipped."""
         _run()
         output = _run()
         assert "0 created" in output
-        assert "19 skipped" in output
+        assert f"{len(CIAA_CASE_NUMBERS)} skipped" in output
 
     @pytest.mark.django_db
     def test_created_lines_logged(self):
         """Each new case produces a [CREATED] line."""
         output = _run()
-        assert output.count("[CREATED]") == len(CIAA_CASE_NUMBERS)
+        assert output.count("[CREATED]") == len(UNIQUE_CIAA_CASE_NUMBERS)
 
     @pytest.mark.django_db
     def test_skip_lines_logged(self):

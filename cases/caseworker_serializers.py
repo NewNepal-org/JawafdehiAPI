@@ -13,6 +13,7 @@ from .models import (
     CaseState,
     CaseType,
     JawafEntity,
+    RelationshipType,
 )
 from .validators import validate_slug, validate_court_cases
 
@@ -68,13 +69,20 @@ class EvidenceItemSerializer(serializers.Serializer):
         return value
 
 
+class EntityPatchItemSerializer(serializers.Serializer):
+    entity = serializers.IntegerField()
+    relationship_type = serializers.ChoiceField(choices=RelationshipType.choices)
+    notes = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, default=""
+    )
+
+    def validate_entity(self, value):
+        if not JawafEntity.objects.filter(id=value).exists():
+            raise serializers.ValidationError(f"Entity ID not found: {value}")
+        return value
+
+
 class CaseEntityValidationMixin:
-    def validate_alleged_entity_ids(self, value):
-        return self._validate_entity_ids(value)
-
-    def validate_related_entity_ids(self, value):
-        return self._validate_entity_ids(value)
-
     def validate_alleged_entities(self, value):
         return self._validate_entity_ids(value)
 
@@ -161,7 +169,7 @@ class CaseCreateSerializer(CaseEntityValidationMixin, serializers.Serializer):
         return value
 
 
-class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
+class CasePatchSerializer(serializers.Serializer):
     state = serializers.ChoiceField(choices=CaseState.choices, required=False)
     title = serializers.CharField(max_length=200)
     short_description = serializers.CharField(required=False, allow_blank=True)
@@ -179,12 +187,7 @@ class CasePatchSerializer(CaseEntityValidationMixin, serializers.Serializer):
     )
     timeline = TimelineItemSerializer(many=True, required=False)
     evidence = EvidenceItemSerializer(many=True, required=False)
-    alleged_entity_ids = serializers.ListField(
-        child=serializers.IntegerField(), required=False
-    )
-    related_entity_ids = serializers.ListField(
-        child=serializers.IntegerField(), required=False
-    )
+    entities = EntityPatchItemSerializer(many=True, required=False)
     slug = serializers.SlugField(
         max_length=50,
         required=False,

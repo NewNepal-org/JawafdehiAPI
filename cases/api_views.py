@@ -41,7 +41,12 @@ from .models import (
     JawafEntity,
     RelationshipType,
 )
-from .rules.predicates import can_change_case, can_transition_case_state, can_view_case, is_admin_or_moderator
+from .rules.predicates import (
+    can_change_case,
+    can_transition_case_state,
+    can_view_case,
+    is_admin_or_moderator,
+)
 from .serializers import (
     CaseDetailSerializer,
     CaseSerializer,
@@ -164,7 +169,16 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["case_type"]
     search_fields = ["title", "description", "key_allegations"]
-    authentication_classes = [JWTAuthentication, TokenAuthentication, SessionAuthentication]
+    authentication_classes = [
+        JWTAuthentication,
+        TokenAuthentication,
+        SessionAuthentication,
+    ]
+
+    def get_permissions(self):
+        if self.action in ("create", "partial_update"):
+            return [IsAuthenticated()]
+        return super().get_permissions()
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -208,9 +222,13 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             elif is_admin_or_moderator(self.request.user):
                 queryset = Case.objects.exclude(state=CaseState.CLOSED)
             else:
-                queryset = Case.objects.exclude(state=CaseState.CLOSED).filter(
-                    Q(state=CaseState.PUBLISHED) | Q(contributors=self.request.user)
-                ).distinct()
+                queryset = (
+                    Case.objects.exclude(state=CaseState.CLOSED)
+                    .filter(
+                        Q(state=CaseState.PUBLISHED) | Q(contributors=self.request.user)
+                    )
+                    .distinct()
+                )
 
         # Apply tag filtering if provided
         tags_param = self.request.query_params.get("tags", None)
@@ -437,25 +455,14 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
             # Persist entity relationship changes
             case.refresh_from_db()
-            if "alleged_entity_ids" in validated:
-                case.entity_relationships.filter(
-                    relationship_type=RelationshipType.ACCUSED
-                ).delete()
-                for entity_id in validated["alleged_entity_ids"]:
+            if "entities" in validated:
+                case.entity_relationships.all().delete()
+                for item in validated["entities"]:
                     CaseEntityRelationship.objects.create(
                         case=case,
-                        entity_id=entity_id,
-                        relationship_type=RelationshipType.ACCUSED,
-                    )
-            if "related_entity_ids" in validated:
-                case.entity_relationships.filter(
-                    relationship_type=RelationshipType.RELATED
-                ).delete()
-                for entity_id in validated["related_entity_ids"]:
-                    CaseEntityRelationship.objects.create(
-                        case=case,
-                        entity_id=entity_id,
-                        relationship_type=RelationshipType.RELATED,
+                        entity_id=item["entity"],
+                        relationship_type=item["relationship_type"],
+                        notes=item.get("notes") or "",
                     )
 
             case.refresh_from_db()
@@ -499,16 +506,14 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             ),
             "timeline": list(case.timeline) if case.timeline else [],
             "evidence": list(case.evidence) if case.evidence else [],
-            "alleged_entity_ids": list(
-                case.entity_relationships.filter(
-                    relationship_type=RelationshipType.ACCUSED
-                ).values_list("entity_id", flat=True)
-            ),
-            "related_entity_ids": list(
-                case.entity_relationships.filter(
-                    relationship_type=RelationshipType.RELATED
-                ).values_list("entity_id", flat=True)
-            ),
+            "entities": [
+                {
+                    "entity": rel.entity_id,
+                    "relationship_type": rel.relationship_type,
+                    "notes": rel.notes or "",
+                }
+                for rel in case.entity_relationships.all()
+            ],
             "slug": case.slug,
             "court_cases": list(case.court_cases) if case.court_cases else [],
             "missing_details": case.missing_details,

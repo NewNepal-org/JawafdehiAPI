@@ -171,5 +171,6 @@ class TestWorkflowExecute:
                 api_key="test-key",
                 base_url=None,
                 verbose=False,
-                recursion_limit=100,
+                recursion_limit=200,
+                printer=None,
             )
