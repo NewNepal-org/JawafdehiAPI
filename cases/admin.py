@@ -5,7 +5,9 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 from django import forms
 from django.db import models
+from django.urls import reverse
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.forms.models import BaseInlineFormSet
 from django.template.response import TemplateResponse
@@ -388,7 +390,7 @@ class CaseAdmin(admin.ModelAdmin):
         css = {"all": ("cases/css/widgets.css", "admin/css/case_admin.css")}
 
     list_display = [
-        "link",
+        "case_actions",
         "title",
         "case_type",
         "state_badge",
@@ -407,6 +409,8 @@ class CaseAdmin(admin.ModelAdmin):
         "title",
         "description",
     ]
+
+    list_display_links = ["title"]
 
     readonly_fields = [
         "case_id",
@@ -493,6 +497,55 @@ class CaseAdmin(admin.ModelAdmin):
 
     state_badge.short_description = "State"
 
+    def case_actions(self, obj):
+        """
+        Display Edit and View on Site action buttons for each case row.
+        
+        Edit button: Always active, navigates to admin edit page
+        View on Site button: Only active for PUBLISHED cases, opens public URL
+        """
+        # Generate edit URL
+        edit_url = reverse('admin:cases_case_change', args=[obj.pk])
+        
+        # Edit button (always active)
+        edit_button = (
+            f'<a href="{edit_url}" '
+            f'class="button" '
+            f'style="padding: 5px 10px; margin-right: 5px; text-decoration: none; '
+            f'background-color: #417690; color: white; border-radius: 4px; '
+            f'display: inline-block; font-size: 13px;">'
+            f'Edit</a>'
+        )
+        
+        # View on Site button (conditional)
+        if obj.state == CaseState.PUBLISHED and obj.slug:
+            public_url = f"https://jawafdehi.org/case/{obj.slug}"
+            view_button = (
+                f'<a href="{public_url}" '
+                f'target="_blank" '
+                f'rel="noopener noreferrer" '
+                f'class="button" '
+                f'style="padding: 5px 10px; text-decoration: none; '
+                f'background-color: #28a745; color: white; border-radius: 4px; '
+                f'display: inline-block; font-size: 13px;">'
+                f'View on Site</a>'
+            )
+        else:
+            # Disabled button with tooltip
+            view_button = (
+                f'<span '
+                f'class="button" '
+                f'title="Only published cases can be viewed publicly" '
+                f'style="padding: 5px 10px; text-decoration: none; '
+                f'background-color: #cccccc; color: #666666; border-radius: 4px; '
+                f'display: inline-block; font-size: 13px; cursor: not-allowed;">'
+                f'View on Site</span>'
+            )
+        
+        return mark_safe(edit_button + view_button)
+
+    case_actions.short_description = "Actions"
+
     def version_info_display(self, obj):
         """Display version info in a readable format."""
         if not obj.versionInfo:
@@ -517,22 +570,6 @@ class CaseAdmin(admin.ModelAdmin):
         return format_html(html)
 
     version_info_display.short_description = "Version Info"
-
-    def link(self, obj):
-        """Display slug as a clickable link to jawafdehi.org, or fallback to case_id."""
-        if obj.slug:
-            url = f"https://jawafdehi.org/case/{obj.slug}"
-            return format_html(
-                '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>',
-                url,
-                obj.slug,
-            )
-        else:
-            # Fallback to case_id in plain text when slug is not set
-            return obj.case_id
-
-    link.short_description = "Slug"
-    link.admin_order_field = "slug"  # Allow sorting by slug
 
     def get_queryset(self, request):
         """
