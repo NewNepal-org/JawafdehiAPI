@@ -500,23 +500,23 @@ class CaseAdmin(admin.ModelAdmin):
     def case_actions(self, obj):
         """
         Display Edit and View on Site action buttons for each case row.
-        
+
         Edit button: Always active, navigates to admin edit page
         View on Site button: Only active for PUBLISHED cases, opens public URL
         """
         # Generate edit URL
-        edit_url = reverse('admin:cases_case_change', args=[obj.pk])
-        
+        edit_url = reverse("admin:cases_case_change", args=[obj.pk])
+
         # Edit button (always active)
         edit_button = (
             f'<a href="{edit_url}" '
             f'class="button" '
             f'style="padding: 5px 10px; margin-right: 5px; text-decoration: none; '
-            f'background-color: #417690; color: white; border-radius: 4px; '
+            f"background-color: #417690; color: white; border-radius: 4px; "
             f'display: inline-block; font-size: 13px;">'
-            f'Edit</a>'
+            f"Edit</a>"
         )
-        
+
         # View on Site button (conditional)
         if obj.state == CaseState.PUBLISHED and obj.slug:
             public_url = f"https://jawafdehi.org/case/{obj.slug}"
@@ -526,22 +526,22 @@ class CaseAdmin(admin.ModelAdmin):
                 f'rel="noopener noreferrer" '
                 f'class="button" '
                 f'style="padding: 5px 10px; text-decoration: none; '
-                f'background-color: #28a745; color: white; border-radius: 4px; '
+                f"background-color: #28a745; color: white; border-radius: 4px; "
                 f'display: inline-block; font-size: 13px;">'
-                f'View on Site</a>'
+                f"View on Site</a>"
             )
         else:
             # Disabled button with tooltip
             view_button = (
-                f'<span '
-                f'class="button" '
-                f'title="Only published cases can be viewed publicly" '
-                f'style="padding: 5px 10px; text-decoration: none; '
-                f'background-color: #cccccc; color: #666666; border-radius: 4px; '
-                f'display: inline-block; font-size: 13px; cursor: not-allowed;">'
-                f'View on Site</span>'
+                "<span "
+                'class="button" '
+                'title="Only published cases can be viewed publicly" '
+                'style="padding: 5px 10px; text-decoration: none; '
+                "background-color: #cccccc; color: #666666; border-radius: 4px; "
+                'display: inline-block; font-size: 13px; cursor: not-allowed;">'
+                "View on Site</span>"
             )
-        
+
         return mark_safe(edit_button + view_button)
 
     case_actions.short_description = "Actions"
