@@ -27,22 +27,64 @@ from cases.models import (
 
 User = get_user_model()
 
-# Configure Hypothesis settings globally
+
+def _is_ci() -> bool:
+    """Return True when running in CI."""
+    return os.environ.get("CI", "").lower() in ("true", "1", "yes")
+
+# ---------------------------------------------------------------------------
+# Hypothesis profiles
+# ---------------------------------------------------------------------------
+# "default"  — used locally; generous deadline, standard example count.
+# "ci"       — activated when CI=true; keeps example count low to stay within
+#              the PR build budget.  Full rigor is preserved in nightly/full
+#              runs by explicitly loading the "default" profile.
+# ---------------------------------------------------------------------------
 hypothesis_settings.register_profile(
     "default",
-    deadline=400,  # 400ms instead of default 200ms
+    deadline=400,  # 400 ms instead of the library default 200 ms
 )
-hypothesis_settings.load_profile("default")
+hypothesis_settings.register_profile(
+    "ci",
+    deadline=800,   # slightly more forgiving on shared CI runners
+    max_examples=10,  # reduce per-test cost; full nightly runs use "default"
+)
+
+# Auto-activate the ci profile when running inside GitHub Actions (or any
+# environment that sets CI=true / CI=1 / CI=yes).
+if _is_ci():
+    hypothesis_settings.load_profile("ci")
+else:
+    hypothesis_settings.load_profile("default")
 
 
-@pytest.fixture(autouse=True)
-def configure_test_settings(settings):
+def pytest_collection_modifyitems(config, items):
     """
-    Configure stable test settings for each test run.
+    Mark NESQ tests as integration.
+
+    This preserves full-suite execution while still allowing marker-based
+    selection when needed.
     """
-    # Disable static file manifest checking for tests
-    # This prevents errors when static files haven't been collected
-    settings.STORAGES = {
+    for item in items:
+        normalized_path = str(item.fspath).replace("\\", "/")
+        if "/tests/nesq/" in normalized_path:
+            item.add_marker(pytest.mark.integration)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def configure_test_settings():
+    """
+    Configure stable test settings once per session.
+
+    Uses session scope to avoid repeating the same settings mutation for every
+    test function — the storage backends we override here never change between
+    tests so a single setup is safe and significantly faster.
+    """
+    from django.conf import settings as django_settings
+
+    # Disable static file manifest checking for tests.
+    # This prevents errors when static files haven't been collected.
+    django_settings.STORAGES = {
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
         },
@@ -50,6 +92,12 @@ def configure_test_settings(settings):
             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
     }
+
+    # Speed up auth-related tests dramatically and avoid timeout-induced
+    # Hypothesis flakiness when creating many users.
+    django_settings.PASSWORD_HASHERS = [
+        "django.contrib.auth.hashers.MD5PasswordHasher",
+    ]
 
 
 @pytest.fixture
@@ -81,22 +129,27 @@ def create_entities_from_ids(entity_ids):
     """
     Helper function to create JawafEntity objects from entity ID strings.
 
+    Uses bulk_create + a single filter query instead of N individual
+    get_or_create calls, keeping the same semantics at a fraction of the
+    database round-trips.
+
     Args:
         entity_ids: List of entity ID strings (e.g., ['entity:person/test'])
 
     Returns:
-        List of JawafEntity objects
+        List of JawafEntity objects in the same order as entity_ids
     """
     if not entity_ids:
         return []
 
-    entities = []
-    for nes_id in entity_ids:
-        # Get or create entity with this nes_id
-        entity, _ = JawafEntity.objects.get_or_create(nes_id=nes_id)
-        entities.append(entity)
-
-    return entities
+    # Insert any missing entities in one batch, ignoring already-existing ones.
+    JawafEntity.objects.bulk_create(
+        [JawafEntity(nes_id=nid) for nid in entity_ids],
+        ignore_conflicts=True,
+    )
+    # Fetch all requested entities in a single query and preserve order.
+    by_id = {e.nes_id: e for e in JawafEntity.objects.filter(nes_id__in=entity_ids)}
+    return [by_id[nid] for nid in entity_ids]
 
 
 def create_case_with_entities(**kwargs):
@@ -187,6 +240,23 @@ def create_user_with_role(username, email, role, password="testpass123"):
     Returns:
         User object with role assigned
     """
+    # Hypothesis examples can occasionally reuse generated usernames within the
+    # same test transaction. Ensure uniqueness here to avoid IntegrityError
+    # flakiness from auth_user.username constraints.
+    normalize_username = User.objects.model.normalize_username
+    base_username = normalize_username(username)
+    username = base_username
+    if "@" in email:
+        email_local, email_domain = email.split("@", 1)
+    else:
+        email_local, email_domain = email, "example.com"
+
+    suffix = 0
+    while User.objects.filter(username=username).exists():
+        suffix += 1
+        username = normalize_username(f"{base_username}_{suffix}")
+        email = f"{email_local}_{suffix}@{email_domain}"
+
     user = User.objects.create_user(username=username, email=email, password=password)
 
     # Create or get the role group
@@ -203,62 +273,26 @@ def create_user_with_role(username, email, role, password="testpass123"):
         user.is_superuser = True
         user.save()
 
-    # Add necessary permissions for the role
-    content_type = ContentType.objects.get_for_model(Case)
-    user_content_type = ContentType.objects.get_for_model(User)
+    # Fetch all required permissions in two batched queries instead of 8+
+    # individual get_or_create calls.  Django creates standard model permissions
+    # during migrations so filter() is sufficient here.
+    case_ct = ContentType.objects.get_for_model(Case)
+    user_ct = ContentType.objects.get_for_model(User)
 
-    # Get or create Case permissions
-    view_perm, _ = Permission.objects.get_or_create(
-        codename="view_case",
-        content_type=content_type,
-        defaults={"name": "Can view case"},
+    case_perms = Permission.objects.filter(
+        codename__in=["view_case", "change_case", "add_case", "delete_case"],
+        content_type=case_ct,
     )
-    change_perm, _ = Permission.objects.get_or_create(
-        codename="change_case",
-        content_type=content_type,
-        defaults={"name": "Can change case"},
-    )
-    add_perm, _ = Permission.objects.get_or_create(
-        codename="add_case",
-        content_type=content_type,
-        defaults={"name": "Can add case"},
-    )
-    delete_perm, _ = Permission.objects.get_or_create(
-        codename="delete_case",
-        content_type=content_type,
-        defaults={"name": "Can delete case"},
+    user_perms = Permission.objects.filter(
+        codename__in=["view_user", "change_user", "add_user", "delete_user"],
+        content_type=user_ct,
     )
 
-    # Get or create User permissions (for moderators to manage users)
-    user_view_perm, _ = Permission.objects.get_or_create(
-        codename="view_user",
-        content_type=user_content_type,
-        defaults={"name": "Can view user"},
-    )
-    user_change_perm, _ = Permission.objects.get_or_create(
-        codename="change_user",
-        content_type=user_content_type,
-        defaults={"name": "Can change user"},
-    )
-    user_add_perm, _ = Permission.objects.get_or_create(
-        codename="add_user",
-        content_type=user_content_type,
-        defaults={"name": "Can add user"},
-    )
-    user_delete_perm, _ = Permission.objects.get_or_create(
-        codename="delete_user",
-        content_type=user_content_type,
-        defaults={"name": "Can delete user"},
-    )
-
-    # Assign permissions based on role
     if role in ["Admin", "Moderator", "Contributor"]:
-        user.user_permissions.add(view_perm, change_perm, add_perm, delete_perm)
+        user.user_permissions.add(*case_perms)
 
     # Moderators and Admins can manage users
     if role in ["Admin", "Moderator"]:
-        user.user_permissions.add(
-            user_view_perm, user_change_perm, user_add_perm, user_delete_perm
-        )
+        user.user_permissions.add(*user_perms)
 
     return user

@@ -133,3 +133,36 @@ class CaseWorkflowRun(models.Model):
                 "updated_at",
             ]
         )
+
+    def get_resume_step(self, workflow) -> str | None:
+        """Return the failed step name, or the first non-complete step."""
+        steps_state = (self.case_data or {}).get("steps", {})
+        for step in workflow.steps:
+            if steps_state.get(step.name, {}).get("status") == "failed":
+                return step.name
+        for step in workflow.steps:
+            if steps_state.get(step.name, {}).get("status") != "complete":
+                return step.name
+        return None
+
+    def can_resume_from(self, step_name: str, workflow) -> tuple[bool, str]:
+        """Validate whether this run can resume from the given step."""
+        if self.is_complete:
+            return False, "Workflow run is already complete"
+
+        step_names = [step.name for step in workflow.steps]
+        if step_name not in step_names:
+            return False, f"Unknown workflow step: {step_name}"
+
+        step_state = (self.case_data or {}).get("steps", {}).get(step_name, {})
+        if step_state.get("status") == "complete":
+            return False, f"Step is already complete: {step_name}"
+
+        return True, ""
+
+    def prepare_for_resume(self, step_name: str) -> None:
+        """Clear failure fields so the run can execute again."""
+        self.has_failed = False
+        self.error_message = ""
+        self.completed_at = None
+        self.save(update_fields=["has_failed", "error_message", "completed_at", "updated_at"])

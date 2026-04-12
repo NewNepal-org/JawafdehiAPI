@@ -6,6 +6,7 @@ import pytest
 from django.db import IntegrityError
 
 from case_workflows.models import CaseWorkflowRun
+from case_workflows.registry import get_workflow
 
 
 @pytest.mark.django_db
@@ -116,3 +117,71 @@ class TestCaseWorkflowRunModel:
         run.is_complete = False
         run.has_failed = True
         assert "✗" in str(run)
+
+    def test_get_resume_step_prefers_failed_step(self):
+        run = CaseWorkflowRun.objects.create(
+            case_id="case-resume01",
+            workflow_id="ciaa_caseworker",
+            case_data={
+                "is_complete": False,
+                "steps": {
+                    "initialize-casework": {"status": "complete"},
+                    "fetch-source-documents": {"status": "failed"},
+                    "fetch-news-articles": {"status": "in_progress"},
+                },
+                "files": {},
+            },
+        )
+        workflow = get_workflow("ciaa_caseworker")
+
+        assert run.get_resume_step(workflow) == "fetch-source-documents"
+
+    def test_get_resume_step_returns_first_pending_when_no_failed(self):
+        run = CaseWorkflowRun.objects.create(
+            case_id="case-resume02",
+            workflow_id="ciaa_caseworker",
+            case_data={
+                "is_complete": False,
+                "steps": {
+                    "initialize-casework": {"status": "complete"},
+                },
+                "files": {},
+            },
+        )
+        workflow = get_workflow("ciaa_caseworker")
+
+        assert run.get_resume_step(workflow) == "fetch-source-documents"
+
+    def test_can_resume_from_rejects_complete_step(self):
+        run = CaseWorkflowRun.objects.create(
+            case_id="case-resume03",
+            workflow_id="ciaa_caseworker",
+            case_data={
+                "is_complete": False,
+                "steps": {
+                    "initialize-casework": {"status": "complete"},
+                },
+                "files": {},
+            },
+        )
+        workflow = get_workflow("ciaa_caseworker")
+
+        allowed, message = run.can_resume_from("initialize-casework", workflow)
+
+        assert allowed is False
+        assert "already complete" in message
+
+    def test_prepare_for_resume_clears_failure_state(self):
+        run = CaseWorkflowRun.objects.create(
+            case_id="case-resume04",
+            workflow_id="ciaa_caseworker",
+            has_failed=True,
+            error_message="boom",
+        )
+
+        run.prepare_for_resume("fetch-news-articles")
+        run.refresh_from_db()
+
+        assert run.has_failed is False
+        assert run.error_message == ""
+        assert run.completed_at is None

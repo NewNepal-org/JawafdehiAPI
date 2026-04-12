@@ -50,6 +50,7 @@ hypothesis = "^6.148.2"
 pytest = "^9.0.1"
 pytest-django = "^4.11.1"
 pytest-asyncio = "^1.3.0"
+pytest-xdist = {extras = ["psutil"], version = "^3.8.0"}
 black = "^26.3.0"
 ruff = "^0.15.5"
 pytest-timeout = "^2.4.0"
@@ -59,8 +60,17 @@ DJANGO_SETTINGS_MODULE = "config.settings"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "--reuse-db --timeout=10"
+addopts = "--reuse-db --timeout=10 -n auto"
 asyncio_mode = "auto"
+markers = [
+    "unit: pure-logic tests with no DB or network I/O",
+    "api: HTTP-level API integration tests",
+    "integration: multi-component integration tests",
+    "e2e: end-to-end workflow tests (slow)",
+    "migration: Django migration tests (very slow — uses TransactionTestCase)",
+    "property: Hypothesis property-based tests",
+    "slow: any test expected to take > 2 s",
+]
 
 [build-system]
 requires = ["poetry-core"]

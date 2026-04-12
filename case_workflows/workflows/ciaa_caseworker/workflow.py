@@ -16,6 +16,7 @@ from typing import List
 
 from langchain_core.tools import tool
 
+from case_workflows.encoding_tool import create_fix_encoding_tool
 from case_workflows.registry import register
 from case_workflows.workflow import Workflow, WorkflowStep
 
@@ -84,6 +85,10 @@ def download_file(url: str, output_path: str) -> str:
         return f"URL error downloading {url}: {exc.reason}"
     except Exception as exc:  # noqa: BLE001
         return f"Error downloading {url}: {exc}"
+
+
+# Instantiate the fix_encoding tool for use in all steps
+fix_encoding = create_fix_encoding_tool()
 
 
 # MCP stdio server config for fetch tool
@@ -191,7 +196,9 @@ Step 4 — If the case details or any downloaded document references an IFB/RFP/
 
 
 Step 5 — Fetch court order (faisala):
- Red court_identifier from {case_dir}/case_details-{case_dir.name}.md.
+ Before probing URLs, read the case status from {case_dir}/case_details-{case_dir.name}.md.
+ If the case is clearly ongoing / चलिरहेको and there is no source indicating that a final order already exists, do not probe court-order URLs. Record an intentional skip in {case_dir}/logs/fetch-summary.md explaining that no faisala is expected yet for an ongoing case.
+ Otherwise, read court_identifier from {case_dir}/case_details-{case_dir.name}.md.
  Try direct URLs first for {case_dir.name} under <court_identifier> using suffix .1, then .2, and extensions in this order: .doc, .docx, .pdf, .jpg, .jpeg.
  Pattern: https://ngm-store.jawafdehi.org/uploads/court-orders/<court_identifier>/{case_dir.name}.<suffix>.<extension>
  Example: https://ngm-store.jawafdehi.org/uploads/court-orders/special/081-CR-0046.1.doc
@@ -204,7 +211,7 @@ Step 5 — Fetch court order (faisala):
  If court_identifier is missing, try special then supreme and record what was used in {case_dir}/logs/fetch-summary.md.
 YOU MUST DOWNLOAD the original file (.pdf, .doc, etc) to the {case_dir}/sources/raw/ directory first using the download_file tool. Then, use the `convert_to_markdown` MCP tool to convert each downloaded file. Finally, write a brief summary to {case_dir}/logs/fetch-summary.md listing which documents were found, their urls, and which were skipped.
 """,
-                tools=[download_file],
+                tools=[download_file, fix_encoding],
                 mcp_servers={**jawafdehi_server, **_FETCH_SERVER},
                 mcp_tool_filter=["convert_to_markdown", "fetch"],
                 system_prompt=_SYSTEM_PROMPT,
@@ -218,19 +225,29 @@ Search the web for news articles about this corruption case.
 Read {case_dir}/instructions/INSTRUCTIONS.md for full guidance. Also read case_details*.md,
 MEMORY.md, and any source markdown files already in {case_dir}/sources/markdown/.
 
+At the start of the step, generate all required query variations up front and record them in
+{case_dir}/sources/markdown/news-search-progress.md before running searches.
+
 Use the `search` MCP tool with engines ["duckduckgo", "bing", "brave"] for each query
-to run a parallel multi-engine search. Run multiple query variations in parallel where
-possible. If you encounter rate-limit errors (HTTP 429 or repeatedly empty results),
-switch to single-engine queries and pause a few seconds between calls.
+to run a parallel multi-engine search. Run the first wave of query variations in parallel,
+deduplicate the returned URLs, then fetch promising results in balanced parallel batches of 6-8 URLs.
+After each fetch round, run `convert_to_markdown` in parallel for that batch before deciding whether
+you need another search or fetch round.
+
+If you encounter rate-limit errors (HTTP 429 or repeatedly empty results from engines that were
+previously productive), temporarily switch to single-engine queries, pause a few seconds between
+calls, and return to full multi-engine parallel search only after the responses stabilize.
+
+Collect 6-10 high-quality, case-relevant news articles and stop when you have enough source diversity and factual coverage. Do not collect more than 10 articles unless you document a specific reason in {case_dir}/logs/news-search-summary.md.
 
 For each relevant result, use `fetchWebContent` (or `fetch`) to retrieve the full page,
 then use `convert_to_markdown` to save it to {case_dir}/sources/markdown/news-<source-name>.md.
 
-After every ~10 searches update {case_dir}/sources/markdown/news-search-progress.md.
+Update {case_dir}/sources/markdown/news-search-progress.md after each search wave and fetch/conversion round with the queries run, URL counts, accepted articles, and any rate-limit fallback used.
 Write a final summary to {case_dir}/logs/news-search-summary.md.
 Update MEMORY.md with any key learnings for later steps.
 """,
-                tools=[download_file],
+                tools=[download_file, fix_encoding],
                 mcp_servers={
                     **jawafdehi_server,
                     **_FETCH_SERVER,
@@ -262,12 +279,21 @@ Update MEMORY.md with any key learnings for later steps.
                 prompt_fn=lambda case_dir: f"""\
 The Jawafdehi case ID is: {case_dir.name}
 
-Using all the source markdown documents in {case_dir}/sources/markdown/ as well as places, draft a complete Jawafdehi accountability case.
+Draft a complete Jawafdehi accountability case using sources in {case_dir}/sources/markdown/ and case details.
 
 YOU MUST MATCH the specifications given in {case_dir}/instructions/case-template.md. You must also follow additional instructions in {case_dir}/instructions/INSTRUCTIONS.md, which include guidance on how to extract key information from the source documents and how to structure the case draft. The draft must be saved in Nepali.
 
-Save the draft to {case_dir}/draft.md.
+Execution requirements:
+1. Create {case_dir}/draft.md immediately with a complete template skeleton before long analysis.
+2. Fill the skeleton with verified facts from core sources first (case_details, charge sheet, CIAA release), then enrich with news context.
+3. Keep sourcing conservative: if facts conflict, prefer primary legal/official documents and explicitly note uncertainty.
+4. Before finishing, confirm the file exists and includes substantive content in every required template section.
+
+Save the final draft to {case_dir}/draft.md.
 """,
+                tools=[fix_encoding],
+                required_outputs={"draft.md": 100},
+                retries=1,
                 system_prompt=_SYSTEM_PROMPT,
             ),
             WorkflowStep(
@@ -319,7 +345,8 @@ record indicates, and the revision needed.
 End draft-review.md with an overall outcome:
   `approved` | `approved_with_minor_edits` | `needs_revision` | `blocked`
 """,
-                tools=[download_file],
+                tools=[download_file, fix_encoding],
+                                required_outputs={"draft-review.md": 100},
                 system_prompt=_SYSTEM_PROMPT,
             ),
             WorkflowStep(
@@ -339,6 +366,8 @@ Finally, append a one-line revision note to {case_dir}/logs/case-summary.md summ
 which categories of issues were addressed (e.g. "Revised: corrected verdict date, added
 missing bigo amount, fixed template fields").
 """,
+                tools=[fix_encoding],
+                required_outputs={"draft.md": 100},
                 system_prompt=_SYSTEM_PROMPT,
             ),
             WorkflowStep(
@@ -352,6 +381,7 @@ in {case_dir}/MEMORY.md for use in subsequent steps.
 
 NOTE: along with the case title, you MUST update the Key allegations, Timeline, case start, case end dates.
 """,
+                tools=[fix_encoding],
                 mcp_servers=jawafdehi_server,
                 mcp_tool_filter=[
                     "create_jawafdehi_case",
@@ -385,8 +415,8 @@ Step 3 — Link the entity to the case.
   Call patch_jawafdehi_case with the numeric Jawafdehi case ID from MEMORY.md.
   Use a JSON Patch add operation:
     {{"op": "add", "path": "/entities/-", "value": {{"entity": <entity_id>, "relationship_type": "<TYPE>", "notes": "<notes>"}}}}
-  Relationship types: ACCUSED (main defendants), ALLEGED (named but unconfirmed), RELATED
-  (organizations or third parties), WITNESS, VICTIM, LOCATION. LOCATION is a special relation type for places.
+    Relationship types: accused (main defendants), alleged (named but unconfirmed), related
+    (organizations or third parties), witness, victim, opposition, location. Use the exact lowercase values accepted by the API.
 
   Set notes to the role the entity played as described in the draft.
 
@@ -395,6 +425,7 @@ Step 4 — Confirm the link.
 
 Record all entity IDs created or linked in {case_dir}/MEMORY.md.
 """,
+                tools=[fix_encoding],
                 mcp_servers=jawafdehi_server,
                 mcp_tool_filter=[
                     "search_jawafdehi_cases",
@@ -419,9 +450,9 @@ Upload each primary source file as a DocumentSource.
 For every file in {case_dir}/sources/raw/ with extension .pdf, .doc, .docx, .jpg, or .jpeg,
 call upload_document_source with:
   - file_path: the absolute path to the file
-  - title: a descriptive title (e.g. "CIAA Press Release – {case_dir.name}", "Charge Sheet – {case_dir.name}")
-  - description (REQUIRED for legal/official docs): concise description of the document, e.g.
-      "CIAA Charge Sheet — Case {case_dir.name} filed on 2081-05-15 against Ram Prasad Sharma"
+    - title: a descriptive title
+    - description (REQUIRED for legal/official docs): concise source description in Nepali, e.g.
+            "अख्तियारद्वारा दायर गरिएको अभियोग पत्र — मुद्दा {case_dir.name}, प्रतिवादी र मुख्य आरोपसम्बन्धी आधिकारिक कागजात।"
   - source_type from this mapping:
       ciaa-press-release-*  →  OFFICIAL_GOVERNMENT
       charge-sheet-*        →  LEGAL_PROCEDURAL
@@ -432,8 +463,14 @@ Also upload news markdown files from {case_dir}/sources/markdown/. For every fil
 news-*.md, call upload_document_source with:
   - file_path: the absolute path to the .md file
   - title: a descriptive title for the article
-  - description: optional brief summary of the article's relevance
+    - url: ["<original_article_url>"] using the original article URL recorded in {case_dir}/MEMORY.md. Do not use the uploaded markdown path as the external URL.
+    - publication_date: YYYY-MM-DD from {case_dir}/MEMORY.md when available
+    - description: one-sentence source description in Nepali summarising the article's specific contribution to this case
   - source_type: MEDIA_NEWS
+
+For every news source, preserve both pieces of information: the uploaded markdown transcript stays attached as the file upload, and the original external article URL must be present in the `url` field.
+
+Before moving on, verify that no uploaded news source is missing its original external URL and that source descriptions are generally in Nepali.
 
 Record every returned source_id along with a short description in {case_dir}/MEMORY.md.
 
@@ -443,9 +480,11 @@ After all uploads, call patch_jawafdehi_case with a single RFC 6902 JSON Patch r
 containing one add operation per evidence entry:
   {{"op": "add", "path": "/evidence/-", "value": {{"source_id": "<source_id>", "description": "<description>"}}}}
 
-Use clear, factual descriptions for each piece of evidence, e.g.:
-  "CIAA charge sheet confirming procurement fraud allegation and bigo amount"
-  "Special Court verdict dated 2081-09-12 — convicted, sentenced to 3 years"
+Use clear, factual evidence descriptions in Nepali, e.g.:
+    "यो अभियोग पत्रले आरोपित गैरकानुनी सम्पत्ति आर्जनको दाबी र बिगो रकम पुष्टि गर्दछ।"
+    "यो अदालत आदेशले मिति 2081-09-12 को निर्णय र त्यसको नतिजा पुष्टि गर्दछ।"
+
+Evidence descriptions should generally be in Nepali for both official documents and news articles.
 
 --- STEP 3: Update remaining case fields ---
 
@@ -454,7 +493,7 @@ Then patch missing or incomplete fields from {case_dir}/draft.md:
   - /timeline: list of {{"date": "<ISO date AD>", "title": "<title>", "description": "<description>"}} objects
   - /short_description: one-sentence teaser (if not yet set)
   - /description: full Nepali HTML description (if not yet set)
-  - /tags: list of English tags
+    - /tags: list of English tags following the recommended controlled vocabulary in {case_dir}/instructions/INSTRUCTIONS.md
   - /key_allegations: list of allegations
   - /case_start_date and /case_end_date: ISO 8601 dates
   - /court_cases: list of strings in "court_identifier:case_number" format, e.g. ["special:081-CR-0123"].
@@ -468,6 +507,7 @@ Then patch missing or incomplete fields from {case_dir}/draft.md:
 
 All patch operations for these fields can be combined into a single patch_jawafdehi_case call.
 """,
+                tools=[fix_encoding],
                 mcp_servers=jawafdehi_server,
                 mcp_tool_filter=[
                     "create_jawafdehi_case",

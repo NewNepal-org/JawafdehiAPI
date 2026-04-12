@@ -8,6 +8,8 @@ import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 from case_workflows.storage_utils import (
     _EXCLUDED_DIRS,
@@ -311,3 +313,56 @@ class TestRecordDownloadedFiles:
         record = result["files"].get("fallback.pdf")
         assert record is not None
         assert "backend_path" in record
+
+
+# ---------------------------------------------------------------------------
+# read_draft_md_safe
+# ---------------------------------------------------------------------------
+
+
+class TestReadDraftMdSafe:
+    """Tests for safe draft.md reading with auto-repair."""
+
+    def test_reads_valid_utf8_draft(self, tmp_path):
+        from case_workflows.storage_utils import read_draft_md_safe
+
+        draft = tmp_path / "draft.md"
+        draft.write_text("# Case Title\n\nNepali content: नेपाल", encoding="utf-8")
+
+        result = read_draft_md_safe(draft)
+
+        assert "Case Title" in result
+        assert "नेपाल" in result
+
+    def test_auto_repairs_invalid_utf8_bytes(self, tmp_path):
+        from case_workflows.storage_utils import read_draft_md_safe
+
+        draft = tmp_path / "draft.md"
+        bad_content = b"The defendant is charged: " + bytes([0xBE]) + b" with corruption."
+        draft.write_bytes(bad_content)
+
+        result = read_draft_md_safe(draft)
+
+        # Should recover the readable text with replacement character
+        assert "defendant" in result
+        assert "corruption" in result
+        # File should now be valid UTF-8
+        repaired_content = draft.read_text(encoding="utf-8")
+        assert repaired_content is not None
+
+    def test_rewrites_file_with_valid_utf8(self, tmp_path):
+        from case_workflows.storage_utils import read_draft_md_safe
+
+        draft = tmp_path / "draft.md"
+        bad_bytes = b"prefix " + bytes([0xBE]) + b" suffix"
+        draft.write_bytes(bad_bytes)
+
+        read_draft_md_safe(draft)
+
+        # After read, file should be readable without errors
+        try:
+            recovered = draft.read_text(encoding="utf-8")
+            assert "prefix" in recovered
+            assert "suffix" in recovered
+        except UnicodeDecodeError:
+            pytest.fail("draft.md should be valid UTF-8 after auto-repair")

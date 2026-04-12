@@ -39,6 +39,38 @@ _WORKFLOW_OUTPUTS_PREFIX = "workflow-outputs"
 
 
 # ---------------------------------------------------------------------------
+# Safe draft.md reading with auto-repair
+# ---------------------------------------------------------------------------
+
+
+def read_draft_md_safe(draft_path: Path) -> str:
+    """Read draft.md with UTF-8 validation and auto-repair.
+
+    If the file contains invalid UTF-8 bytes, this function will:
+    1. Decode with errors='replace' to recover readable content.
+    2. Re-write the file with valid UTF-8 for consistency.
+    3. Log a warning with the error position for root-cause investigation.
+
+    Args:
+        draft_path: Absolute path to draft.md file.
+
+    Returns:
+        The file contents as a valid UTF-8 string.
+    """
+    try:
+        return draft_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        logger.warning(
+            "draft.md contains invalid UTF-8 at byte %s; auto-repairing",
+            exc.start,
+        )
+        repaired = draft_path.read_text(encoding="utf-8", errors="replace")
+        draft_path.write_text(repaired, encoding="utf-8")
+        logger.info("draft.md repaired and re-written with valid UTF-8")
+        return repaired
+
+
+# ---------------------------------------------------------------------------
 # File checksum helper
 # ---------------------------------------------------------------------------
 
@@ -95,6 +127,15 @@ def upload_workflow_outputs(
             logger.debug("Skipping excluded directory: %s", rel_path.parts[0])
             continue
         rel_str = str(rel_path)
+
+        if rel_str == "draft.md":
+            try:
+                abs_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                logger.warning(
+                    "draft.md contains invalid UTF-8 at byte %s before upload",
+                    exc.start,
+                )
 
         if rel_str in previous_files:
             try:
@@ -158,6 +199,10 @@ def download_workflow_outputs(case_dir: Path, files_dict: dict[str, dict]) -> No
                     for chunk in remote_file.chunks():
                         local_file.write(chunk)
             logger.debug("Downloaded workflow output %s → %s", backend_path, rel_str)
+
+            # Auto-repair draft.md if it contains invalid UTF-8 bytes
+            if rel_str == "draft.md":
+                read_draft_md_safe(local_path)
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Failed to download workflow output %s: %s", backend_path, exc

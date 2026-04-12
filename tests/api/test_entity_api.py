@@ -7,6 +7,8 @@ Tests entity listing, retrieval, search, and pagination
 
 import pytest
 
+pytestmark = pytest.mark.property
+
 from django.core.cache import cache
 from hypothesis import given, strategies as st, settings
 from rest_framework.test import APIClient

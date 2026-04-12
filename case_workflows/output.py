@@ -11,12 +11,13 @@ Rich-based output formatting for workflow runs.
 
 from __future__ import annotations
 
+import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
 
@@ -58,6 +59,10 @@ def _truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
     return text[:max_len] + "…"
+
+
+def _utc_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class _TeeConsole:
@@ -108,6 +113,10 @@ class WorkflowPrinter:
         # printing duplicate "thinking…" lines for back-to-back start events.
         self._model_active: bool = False
         self._streamed_content: bool = False  # did we output any streaming text?
+        self._tool_state: dict = {}  # Store metadata across tool start/end events
+
+    def _with_ts(self, text: str) -> str:
+        return f"[dim]{_utc_timestamp()}[/dim] {text}"
 
     def enable_file_logging(self, path: Path) -> None:
         """
@@ -149,26 +158,20 @@ class WorkflowPrinter:
     ) -> None:
         self._console.print()
         self._console.print(
-            f"[bold]Workflow:[/bold] {display_name} [dim]({workflow_id})[/dim]"
+            self._with_ts(
+                f"[bold]Workflow:[/bold] {display_name} [dim]({workflow_id})[/dim]"
+            )
         )
-        self._console.print(f"[bold]Model:   [/bold] {model}")
+        self._console.print(self._with_ts(f"[bold]Model:   [/bold] {model}"))
         if base_url:
-            self._console.print(f"[bold]Base URL:[/bold] {base_url}")
+            self._console.print(self._with_ts(f"[bold]Base URL:[/bold] {base_url}"))
 
     def print_case_header(self, case_id: str, created: bool) -> None:
         status = (
             "[green]✦ New run[/green]" if created else "[yellow]♻ Resuming[/yellow]"
         )
         self._console.print()
-        self._console.print(
-            Panel(
-                f"  {status}",
-                title=f"[bold]Case: {case_id}[/bold]",
-                title_align="left",
-                expand=False,
-                padding=(0, 1),
-            )
-        )
+        self._console.print(self._with_ts(f"[bold]Case:[/bold] {case_id} {status}"))
 
     def print_work_dir(self, work_dir: str) -> None:
         self._work_dir = work_dir
@@ -178,35 +181,38 @@ class WorkflowPrinter:
             display = str(rel)
         except ValueError:
             display = work_dir
-        self._console.print(f"  [dim]📁 {display}[/dim]")
+        self._console.print(self._with_ts(f"[dim]📁 {display}[/dim]"))
 
     def print_mcp_info(self, servers: list[str]) -> None:
-        self._console.print(f"  [dim]🔗 MCP: {', '.join(servers)}[/dim]")
+        self._console.print(self._with_ts(f"[dim]🔗 MCP: {', '.join(servers)}[/dim]"))
 
     def print_tracing_info(self, provider: str) -> None:
-        self._console.print(f"  [dim]📡 {provider} tracing enabled[/dim]")
+        self._console.print(self._with_ts(f"[dim]📡 {provider} tracing enabled[/dim]"))
 
     def print_step_header(self, name: str, index: int, total: int) -> None:
         self._console.print()
         self._console.print(
-            Rule(
-                f"[{_STEP_COLOR}]Step {index}/{total}: {name}[/{_STEP_COLOR}]",
-                style="dim",
+            self._with_ts(
+                f"[{_STEP_COLOR}]Step {index}/{total}: {name}[/{_STEP_COLOR}]"
             )
         )
 
     def print_step_done(self, name: str, elapsed_seconds: Optional[float] = None) -> None:
         if elapsed_seconds is None:
-            self._console.print(f"  [{_OK_COLOR}]✓ {name}[/{_OK_COLOR}]")
+            self._console.print(self._with_ts(f"[{_OK_COLOR}]✓ {name}[/{_OK_COLOR}]"))
             return
         duration = _format_duration(elapsed_seconds)
         self._console.print(
-            f"  [{_OK_COLOR}]✓ {name} [dim]({duration})[/dim][/{_OK_COLOR}]"
+            self._with_ts(
+                f"[{_OK_COLOR}]✓ {name} [dim]({duration})[/dim][/{_OK_COLOR}]"
+            )
         )
 
     def print_step_skipped(self, name: str) -> None:
         self._console.print(
-            f"  [{_SKIP_COLOR}]⏭ {name} — already complete[/{_SKIP_COLOR}]"
+            self._with_ts(
+                f"[{_SKIP_COLOR}]⏭ {name} — already complete[/{_SKIP_COLOR}]"
+            )
         )
 
     def print_summary(
@@ -227,7 +233,7 @@ class WorkflowPrinter:
 
     def print_usage_summary(self, input_tokens: int, output_tokens: int) -> None:
         self._console.print()
-        self._console.print(Rule("[bold]Token Usage[/bold]", style="dim"))
+        self._console.print(self._with_ts("[bold]Token Usage[/bold]"))
         total = input_tokens + output_tokens
         if total == 0:
             self._console.print(
@@ -249,10 +255,10 @@ class WorkflowPrinter:
         self._console.print()
 
     def error(self, msg: str) -> None:
-        self._err_console.print(f"  [{_ERR_COLOR}]✗ {msg}[/{_ERR_COLOR}]")
+        self._err_console.print(self._with_ts(f"[{_ERR_COLOR}]✗ {msg}[/{_ERR_COLOR}]"))
 
     def warn(self, msg: str) -> None:
-        self._console.print(f"  [{_WARN_COLOR}]⚠ {msg}[/{_WARN_COLOR}]")
+        self._console.print(self._with_ts(f"[{_WARN_COLOR}]⚠ {msg}[/{_WARN_COLOR}]"))
 
     # ------------------------------------------------------------------
     # Agent event streaming
@@ -265,7 +271,7 @@ class WorkflowPrinter:
 
         if kind == "on_chat_model_start":
             if not self._model_active:
-                self._console.print("  [dim italic]🤔 thinking…[/dim italic]")
+                self._console.print(self._with_ts("[dim italic]🤔 thinking…[/dim italic]"))
                 self._model_active = True
                 self._streamed_content = False
 
@@ -290,18 +296,159 @@ class WorkflowPrinter:
 
         elif kind == "on_tool_start":
             inputs = event.get("data", {}).get("input", {})
+            
+            # Tool-specific compact formatters
+            if name == "read_file":
+                file_path = inputs.get("file_path", "")
+                file_path = _compress_paths(file_path, self._work_dir)
+                offset = inputs.get("startLine", "")
+                limit = inputs.get("endLine", "")
+                params = f"[{offset}–{limit}]" if offset and limit else ""
+                self._console.print(
+                    self._with_ts(f"🔍 [bold {_TOOL_COLOR}]read_file[/bold {_TOOL_COLOR}] {file_path} {params}".strip())
+                )
+                return
+            
+            elif name == "grep":
+                pattern = inputs.get("query", "")
+                path = inputs.get("includePattern", inputs.get("path", ""))
+                path = _compress_paths(path, self._work_dir) if path else ""
+                self._console.print(
+                    self._with_ts(f"🔎 [bold {_TOOL_COLOR}]grep[/bold {_TOOL_COLOR}] pattern='{_truncate(pattern, 50)}' {path}".strip())
+                )
+                return
+            
+            elif name == "ls":
+                path = inputs.get("path", "")
+                path = _compress_paths(path, self._work_dir)
+                self._console.print(
+                    self._with_ts(f"📂 [bold {_TOOL_COLOR}]ls[/bold {_TOOL_COLOR}] {path}")
+                )
+                return
+            
+            elif name == "write_file":
+                # For write_file, capture content metadata for later display
+                file_path = inputs.get("filePath", "")
+                content = inputs.get("content", "")
+                char_count = len(content)
+                self._tool_state["write_file"] = {
+                    "file_path": file_path,
+                    "char_count": char_count
+                }
+                file_path = _compress_paths(file_path, self._work_dir)
+                self._console.print(
+                    self._with_ts(f"✏️ [bold {_TOOL_COLOR}]write_file[/bold {_TOOL_COLOR}] {file_path}")
+                )
+                return
+            
+            elif name == "write_todos":
+                # write_todos start is minimal; details in on_tool_end
+                self._console.print(
+                    self._with_ts(f"📋 [bold {_TOOL_COLOR}]write_todos[/bold {_TOOL_COLOR}]")
+                )
+                return
+            
+            # Default tool start handler for all other tools
             raw = str(inputs)
             raw = _compress_paths(raw, self._work_dir)
             raw = _truncate(raw, 200)
-            self._console.print(f"  🔧 [bold {_TOOL_COLOR}]{name}[/bold {_TOOL_COLOR}]")
-            self._console.print(f"     [dim]{raw}[/dim]")
+            self._console.print(
+                self._with_ts(f"🔧 [bold {_TOOL_COLOR}]{name}[/bold {_TOOL_COLOR}]")
+            )
+            self._console.print(self._with_ts(f"[dim]↳ {raw}[/dim]"))
 
         elif kind == "on_tool_end":
             output = event.get("data", {}).get("output", "")
+            
+            # Tool-specific compact formatters for output
+            if name == "read_file":
+                # Show errors, skip success output
+                output_str = str(output)
+                if "error" in output_str.lower() or "cannot" in output_str.lower():
+                    output_str = _compress_paths(output_str, self._work_dir)
+                    self._console.print(self._with_ts(f"[red]  {_truncate(output_str, 220)}[/red]"))
+                return
+            
+            elif name == "grep":
+                # Show errors, skip success output
+                output_str = str(output)
+                if "error" in output_str.lower() or "no matches" in output_str.lower():
+                    output_str = _compress_paths(output_str, self._work_dir)
+                    self._console.print(self._with_ts(f"[red]  {_truncate(output_str, 220)}[/red]"))
+                return
+            
+            elif name == "ls":
+                # Show errors inline on one line, skip success output
+                output_str = str(output)
+                if "error" in output_str.lower() or "cannot" in output_str.lower():
+                    output_str = _compress_paths(output_str, self._work_dir)
+                    self._console.print(self._with_ts(f"[red]❌ {_truncate(output_str, 220)}[/red]"))
+                return
+            
+            elif name == "write_file":
+                # Display: file name, character count, and summary
+                raw = str(output)
+                raw = _compress_paths(raw, self._work_dir)
+                summary = "updated"
+                is_error = False
+                
+                # Determine outcome from output
+                if "Updated file" in raw:
+                    summary = "✓ updated"
+                elif "Cannot write" in raw or "error" in raw.lower():
+                    summary = "✗ error"
+                    is_error = True
+                
+                # Get stored metadata
+                write_file_state = self._tool_state.get("write_file", {})
+                char_count = write_file_state.get("char_count", 0)
+                file_path = write_file_state.get("file_path", "")
+                file_path = _compress_paths(file_path, self._work_dir)
+                
+                # Show success compactly, errors with detail
+                if is_error:
+                    self._console.print(self._with_ts(f"✏️ {summary} {file_path}"))
+                    self._console.print(self._with_ts(f"[red]  {_truncate(raw, 220)}[/red]"))
+                else:
+                    if char_count > 0:
+                        self._console.print(self._with_ts(f"✏️ {summary} {file_path} ({char_count} chars)"))
+                    else:
+                        self._console.print(self._with_ts(f"✏️ {summary} {file_path}"))
+                
+                # Clean up state
+                self._tool_state.pop("write_file", None)
+                return
+            
+            elif name == "write_todos":
+                # Display todos line-by-line
+                raw = str(output)
+                # Parse JSON if the output is a task JSON, otherwise show as-is
+                try:
+                    # Try to parse as JSON first
+                    if raw.startswith("{") or raw.startswith("["):
+                        data = json.loads(raw)
+                        if isinstance(data, dict) and "todos" in data:
+                            todos = data["todos"]
+                            if isinstance(todos, list):
+                                for todo in todos:
+                                    if isinstance(todo, dict):
+                                        status = todo.get("status", "").upper()
+                                        content = todo.get("content", "")
+                                        self._console.print(self._with_ts(f"  • [{status}] {content}"))
+                                    else:
+                                        self._console.print(self._with_ts(f"  • {todo}"))
+                                return
+                except Exception:
+                    pass
+                # Fallback: just show the raw output
+                self._console.print(self._with_ts(f"[dim]↳ {_truncate(raw, 220)}[/dim]"))
+                return
+            
+            # Default tool end handler for all other tools
             raw = str(output)
             raw = _compress_paths(raw, self._work_dir)
             raw = _truncate(raw, 220)
-            self._console.print(f"     [dim]↳ {raw}[/dim]")
+            self._console.print(self._with_ts(f"[dim]↳ {raw}[/dim]"))
 
     # ------------------------------------------------------------------
     # Logging integration
@@ -379,13 +526,14 @@ class _WorkflowRichHandler(logging.Handler):
             level_tag = record.levelname[0]  # D / I / W / E / C
             is_err = record.levelno >= logging.ERROR
             target = self._err_console if is_err else self._console
+            ts = _utc_timestamp()
 
             if style:
                 target.print(
-                    f"  [dim]{level_tag}[/dim] [{style}][dim]{short_name}[/dim] {msg}[/{style}]"
+                    f"[dim]{ts}[/dim] [dim]{level_tag}[/dim] [{style}][dim]{short_name}[/dim] {msg}[/{style}]"
                 )
             else:
-                target.print(f"  {level_tag} [dim]{short_name}[/dim] {msg}")
+                target.print(f"[dim]{ts}[/dim] {level_tag} [dim]{short_name}[/dim] {msg}")
 
             if record.exc_info:
                 target.print_exception(show_locals=False)

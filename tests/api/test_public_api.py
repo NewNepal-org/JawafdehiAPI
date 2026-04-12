@@ -9,6 +9,8 @@ Validates: Requirements 4.1, 6.1, 6.2, 6.3, 8.1, 8.3
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
+pytestmark = pytest.mark.property
+
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from rest_framework.test import APIClient

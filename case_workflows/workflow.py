@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -203,6 +204,8 @@ class WorkflowStep:
     mcp_tool_filter: Optional[List[str]] = None
     subagents: List[dict] = field(default_factory=list)
     system_prompt: Optional[str] = None
+    required_outputs: dict[str, int] = field(default_factory=dict)
+    retries: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -300,11 +303,12 @@ class Workflow(ABC):
         )
         return Path(base) / self.workflow_id / run.case_id
 
-    def setup_work_dir(self, run: CaseWorkflowRun) -> Path:
+    def setup_work_dir(self, run: CaseWorkflowRun, *, preserve_existing: bool = False) -> Path:
         """
         Create the work directory for a run and populate it.
 
-        - If the directory already exists, logs a warning and deletes it
+                - If the directory already exists, either recreates it or preserves it
+                    when ``preserve_existing=True``
         - Downloads any previously uploaded files tracked in ``run.case_data``
         - Calls ``on_work_dir_created(case_dir)`` for template-specific setup
         - Initialises ``run.case_data`` if empty
@@ -314,12 +318,15 @@ class Workflow(ABC):
         import shutil
 
         case_dir = self.get_work_dir(run)
+        existed_before = case_dir.is_dir()
 
-        if case_dir.is_dir():
+        if existed_before and not preserve_existing:
             logger.warning(
                 "Work directory already exists — deleting and recreating: %s", case_dir
             )
             shutil.rmtree(case_dir)
+        elif existed_before and preserve_existing:
+            logger.info("Work directory exists — preserving for resume: %s", case_dir)
 
         case_dir.mkdir(parents=True, exist_ok=True)
 
@@ -332,8 +339,9 @@ class Workflow(ABC):
         if tracked_files:
             download_workflow_outputs(case_dir, tracked_files)
 
-        # Template-specific extra setup
-        self.on_work_dir_created(case_dir)
+        # Template-specific bootstrap is only needed for fresh directories.
+        if not (preserve_existing and existed_before):
+            self.on_work_dir_created(case_dir)
 
         run.work_dir = str(case_dir)
         run.save(update_fields=["work_dir", "case_data", "updated_at"])
@@ -355,6 +363,7 @@ class Workflow(ABC):
         verbose: bool = False,
         recursion_limit: int = 200,
         printer: Optional[WorkflowPrinter] = None,
+        resume_from_step: Optional[str] = None,
     ) -> None:
         """
         Run all pending workflow steps in order using a deepagents agent.
@@ -376,6 +385,7 @@ class Workflow(ABC):
                 verbose=verbose,
                 recursion_limit=recursion_limit,
                 printer=printer,
+                resume_from_step=resume_from_step,
             )
         )
 
@@ -389,6 +399,7 @@ class Workflow(ABC):
         verbose: bool = False,
         recursion_limit: int = 200,
         printer: Optional[WorkflowPrinter] = None,
+        resume_from_step: Optional[str] = None,
     ) -> None:
         import os
 
@@ -434,6 +445,19 @@ class Workflow(ABC):
         if state.get("is_complete"):
             await sync_to_async(run.mark_complete)(case_data=state)
             return
+
+        resume_step_index = 0
+        if resume_from_step is not None:
+            step_names = [step.name for step in self.steps]
+            if resume_from_step not in step_names:
+                raise RuntimeError(
+                    f"Unknown resume step '{resume_from_step}'. Available steps: {step_names}"
+                )
+            resume_step_index = step_names.index(resume_from_step)
+            if printer:
+                printer.warn(f"Resuming run from step: {resume_from_step}")
+            else:
+                logger.info("Resuming run from step: %s", resume_from_step)
 
         await sync_to_async(run.mark_started)()
         self.on_initialize()
@@ -493,6 +517,13 @@ class Workflow(ABC):
         total_steps = len(self.steps)
         try:
             for idx, step in enumerate(self.steps, start=1):
+                if resume_from_step is not None and idx - 1 < resume_step_index:
+                    if printer:
+                        printer.print_step_skipped(step.name)
+                    else:
+                        logger.info("Skipping step before resume target: %s", step.name)
+                    continue
+
                 step_state = state["steps"].get(step.name, {})
                 if step_state.get("status") == "complete":
                     if printer:
@@ -506,88 +537,188 @@ class Workflow(ABC):
                 else:
                     logger.info("Running step: %s", step.name)
 
-                # Gather pre-connected MCP tools for this step's servers
-                mcp_tools: list[Any] = []
-                for server_name in step.mcp_servers:
-                    mcp_tools.extend(mcp_tools_by_server.get(server_name, []))
-                if step.mcp_tool_filter is not None:
-                    allowed = set(step.mcp_tool_filter)
-                    mcp_tools = [t for t in mcp_tools if t.name in allowed]
+                max_attempts = max(1, 1 + step.retries)
+                prior_attempts = list(step_state.get("attempts", []))
+                attempts = prior_attempts
 
-                all_tools = mcp_tools + step.tools
+                for attempt in range(1, max_attempts + 1):
+                    if step.name == "draft-case":
+                        self._validate_draft_inputs(case_dir)
 
-                # Pass MEMORY.md as agent memory so it is injected into the
-                # system prompt at startup and the agent can write back to it
-                # with `edit_file` to record learnings across steps.
-                memory_file = case_dir / "MEMORY.md"
-                memory_paths = [str(memory_file)] if memory_file.is_file() else None
+                    # Gather pre-connected MCP tools for this step's servers
+                    mcp_tools: list[Any] = []
+                    for server_name in step.mcp_servers:
+                        mcp_tools.extend(mcp_tools_by_server.get(server_name, []))
+                    if step.mcp_tool_filter is not None:
+                        allowed = set(step.mcp_tool_filter)
+                        mcp_tools = [t for t in mcp_tools if t.name in allowed]
 
-                agent = create_deep_agent(
-                    model=chat_model,
-                    tools=all_tools,
-                    system_prompt=step.system_prompt,
-                    subagents=step.subagents or None,
-                    backend=FilesystemBackend(
-                        root_dir=str(case_dir), virtual_mode=False
-                    ),
-                    memory=memory_paths,
-                )
+                    all_tools = mcp_tools + step.tools
 
-                invocation = {
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": step.prompt_fn(case_dir),
-                        }
-                    ]
-                }
-                run_config = {
-                    "callbacks": langfuse_callbacks + [usage_tracker],
-                    "run_name": step.name,
-                    "recursion_limit": recursion_limit,
-                }
+                    # Pass MEMORY.md as agent memory so it is injected into the
+                    # system prompt at startup and the agent can write back to it
+                    # with `edit_file` to record learnings across steps.
+                    memory_file = case_dir / "MEMORY.md"
+                    memory_paths = [str(memory_file)] if memory_file.is_file() else None
 
-                # Record step start time and persist before running
-                step_started_dt = datetime.now(timezone.utc)
-                step_started_at = step_started_dt.isoformat()
-                state["steps"][step.name] = {
-                    "status": "in_progress",
-                    "started_at": step_started_at,
-                }
-                run.case_data = state
-                await sync_to_async(run.save)(update_fields=["case_data", "updated_at"])
-
-                if verbose:
-                    async for event in agent.astream_events(
-                        invocation, config=run_config, version="v2"
-                    ):
-                        if printer:
-                            printer.handle_agent_event(event)
-                else:
-                    await agent.ainvoke(invocation, config=run_config)
-
-                # Mark step complete and persist
-                step_completed_dt = datetime.now(timezone.utc)
-                elapsed_seconds = (step_completed_dt - step_started_dt).total_seconds()
-                state["steps"][step.name] = {
-                    "status": "complete",
-                    "started_at": step_started_at,
-                    "completed_at": step_completed_dt.isoformat(),
-                    "duration_seconds": round(elapsed_seconds, 3),
-                }
-
-                previous_files = state.get("files", {})
-                uploaded = self._upload_outputs(case_dir, run.case_id, previous_files)
-                state.setdefault("files", {}).update(uploaded)
-
-                run.case_data = state
-                await sync_to_async(run.save)(update_fields=["case_data", "updated_at"])
-                if printer:
-                    printer.print_step_done(step.name, elapsed_seconds)
-                else:
-                    logger.info(
-                        "Step completed: %s (%.2fs)", step.name, elapsed_seconds
+                    agent = create_deep_agent(
+                        model=chat_model,
+                        tools=all_tools,
+                        system_prompt=step.system_prompt,
+                        subagents=step.subagents or None,
+                        backend=FilesystemBackend(
+                            root_dir=str(case_dir), virtual_mode=False
+                        ),
+                        memory=memory_paths,
                     )
+
+                    files_before = set(self._list_relative_files(case_dir))
+                    prompt_text = self._build_step_prompt(
+                        step,
+                        case_dir,
+                        attempt=attempt,
+                        max_attempts=max_attempts,
+                    )
+
+                    invocation = {
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": prompt_text,
+                            }
+                        ]
+                    }
+                    run_config = {
+                        "callbacks": langfuse_callbacks + [usage_tracker],
+                        "run_name": step.name,
+                        "recursion_limit": recursion_limit,
+                    }
+
+                    # Record attempt start time and persist before running
+                    attempt_started_dt = datetime.now(timezone.utc)
+                    attempt_started_at = attempt_started_dt.isoformat()
+                    attempt_state: dict[str, Any] = {
+                        "attempt": attempt,
+                        "started_at": attempt_started_at,
+                    }
+
+                    state["steps"][step.name] = {
+                        "status": "in_progress",
+                        "started_at": attempts[0]["started_at"] if attempts else attempt_started_at,
+                        "current_attempt": attempt,
+                        "max_attempts": max_attempts,
+                        "attempts": attempts + [attempt_state],
+                    }
+                    run.case_data = state
+                    await sync_to_async(run.save)(update_fields=["case_data", "updated_at"])
+
+                    try:
+                        created_files: list[str] = []
+                        if verbose:
+                            async for event in agent.astream_events(
+                                invocation, config=run_config, version="v2"
+                            ):
+                                if printer:
+                                    printer.handle_agent_event(event)
+                        else:
+                            await agent.ainvoke(invocation, config=run_config)
+
+                        created_files = self._detect_created_files(
+                            files_before,
+                            set(self._list_relative_files(case_dir)),
+                        )
+                        self._validate_step_outputs(case_dir, step)
+
+                        attempt_completed_dt = datetime.now(timezone.utc)
+                        elapsed_seconds = (
+                            attempt_completed_dt - attempt_started_dt
+                        ).total_seconds()
+                        attempt_state.update(
+                            {
+                                "status": "complete",
+                                "completed_at": attempt_completed_dt.isoformat(),
+                                "duration_seconds": round(elapsed_seconds, 3),
+                                "created_files": created_files,
+                                "created_files_count": len(created_files),
+                            }
+                        )
+                        attempts.append(attempt_state)
+
+                        state["steps"][step.name] = {
+                            "status": "complete",
+                            "started_at": attempts[0]["started_at"],
+                            "completed_at": attempt_completed_dt.isoformat(),
+                            "duration_seconds": round(elapsed_seconds, 3),
+                            "current_attempt": attempt,
+                            "max_attempts": max_attempts,
+                            "attempts": attempts,
+                        }
+
+                        previous_files = state.get("files", {})
+                        uploaded = self._upload_outputs(
+                            case_dir, run.case_id, previous_files
+                        )
+                        state.setdefault("files", {}).update(uploaded)
+
+                        run.case_data = state
+                        await sync_to_async(run.save)(
+                            update_fields=["case_data", "updated_at"]
+                        )
+                        if printer:
+                            printer.print_step_done(step.name, elapsed_seconds)
+                        else:
+                            logger.info(
+                                "Step completed: %s (%.2fs)",
+                                step.name,
+                                elapsed_seconds,
+                            )
+                        break
+
+                    except Exception as step_exc:
+                        created_files = self._detect_created_files(
+                            files_before,
+                            set(self._list_relative_files(case_dir)),
+                        )
+                        attempt_completed_dt = datetime.now(timezone.utc)
+                        elapsed_seconds = (
+                            attempt_completed_dt - attempt_started_dt
+                        ).total_seconds()
+                        attempt_state.update(
+                            {
+                                "status": "failed",
+                                "completed_at": attempt_completed_dt.isoformat(),
+                                "duration_seconds": round(elapsed_seconds, 3),
+                                "error": str(step_exc),
+                                "created_files": created_files,
+                                "created_files_count": len(created_files),
+                            }
+                        )
+                        attempts.append(attempt_state)
+
+                        state["steps"][step.name] = {
+                            "status": "failed" if attempt == max_attempts else "in_progress",
+                            "started_at": attempts[0]["started_at"],
+                            "completed_at": attempt_completed_dt.isoformat(),
+                            "duration_seconds": round(elapsed_seconds, 3),
+                            "current_attempt": attempt,
+                            "max_attempts": max_attempts,
+                            "attempts": attempts,
+                        }
+                        run.case_data = state
+                        await sync_to_async(run.save)(
+                            update_fields=["case_data", "updated_at"]
+                        )
+
+                        if attempt < max_attempts:
+                            retry_msg = (
+                                f"Step '{step.name}' attempt {attempt}/{max_attempts} failed: {step_exc}. Retrying..."
+                            )
+                            if printer:
+                                printer.warn(retry_msg)
+                            else:
+                                logger.warning(retry_msg)
+                            continue
+                        raise
 
             # All steps done
             state["is_complete"] = True
@@ -616,6 +747,113 @@ class Workflow(ABC):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _list_relative_files(case_dir: Path) -> list[str]:
+        """List all files in a case directory as stable relative paths."""
+        return sorted(
+            str(path.relative_to(case_dir))
+            for path in case_dir.rglob("*")
+            if path.is_file()
+        )
+
+    @staticmethod
+    def _detect_created_files(before: set[str], after: set[str]) -> list[str]:
+        """Return files newly created during the step attempt."""
+        return sorted(after - before)
+
+    @staticmethod
+    def _build_step_prompt(
+        step: WorkflowStep,
+        case_dir: Path,
+        *,
+        attempt: int,
+        max_attempts: int,
+    ) -> str:
+        """Build user prompt for the current step attempt."""
+        prompt = step.prompt_fn(case_dir)
+        if step.name != "draft-case" or attempt <= 1:
+            return prompt
+
+        fallback = f"""
+
+Retry context: attempt {attempt}/{max_attempts}.
+
+Previous attempt failed because required output `draft.md` was missing.
+You MUST create `{case_dir}/draft.md` immediately using write_file before any long analysis.
+
+Use fallback mode:
+1. Start from core sources only: case_details-*.md, charge-sheet-*.md, ciaa-press-release-*.md.
+2. Write a complete template-compliant draft with minimum required sections first.
+3. Expand and refine with news sources only after the initial draft file exists.
+4. Before finishing, verify `{case_dir}/draft.md` exists and is not empty.
+"""
+        return prompt + fallback
+
+    @staticmethod
+    def _read_markdown_resilient(path: Path) -> str:
+        """Read text as UTF-8 and recover safely when bytes are invalid."""
+        try:
+            return path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            logger.warning(
+                "Invalid UTF-8 in %s at byte %s; decoding with replacement",
+                path,
+                exc.start,
+            )
+            return path.read_text(encoding="utf-8", errors="replace")
+
+    @classmethod
+    def _log_invalid_utf8_sources(cls, case_dir: Path) -> None:
+        """Log source markdown files that contain invalid UTF-8 bytes."""
+        markdown_dir = case_dir / "sources" / "markdown"
+        if not markdown_dir.is_dir():
+            return
+
+        for src in sorted(markdown_dir.glob("*.md")):
+            try:
+                src.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                logger.warning(
+                    "Source markdown contains invalid UTF-8: %s (byte %s)",
+                    src,
+                    exc.start,
+                )
+
+    @staticmethod
+    def _validate_draft_inputs(case_dir: Path) -> None:
+        """Validate source quality and article-volume policy before drafting."""
+        Workflow._log_invalid_utf8_sources(case_dir)
+        markdown_dir = case_dir / "sources" / "markdown"
+        news_files = sorted(markdown_dir.glob("news-*.md"))
+
+        if len(news_files) > 10:
+            summary_path = case_dir / "logs" / "news-search-summary.md"
+            summary_text = ""
+            if summary_path.is_file():
+                summary_text = Workflow._read_markdown_resilient(summary_path)
+            has_override = bool(
+                re.search(r"\b(override|exception|reason)\b", summary_text, flags=re.IGNORECASE)
+            )
+            if not has_override:
+                raise RuntimeError(
+                    "draft-case input policy violation: found "
+                    f"{len(news_files)} news markdown files (max 10) without a documented override reason in logs/news-search-summary.md"
+                )
+
+        escaped_pattern = re.compile(r"\bu[0-9a-fA-F]{4}\b")
+        escaped_candidates: list[str] = []
+        for src in markdown_dir.glob("*.md"):
+            text = Workflow._read_markdown_resilient(src)
+            if len(escaped_pattern.findall(text)) >= 20:
+                escaped_candidates.append(src.name)
+
+        if escaped_candidates:
+            raise RuntimeError(
+                "draft-case input quality violation: escaped-unicode-heavy markdown detected in "
+                + ", ".join(sorted(escaped_candidates))
+                + ". Normalize or regenerate these files before drafting."
+            )
+
+    @staticmethod
     def _upload_outputs(
         case_dir: Path, case_id: str, previous_files: dict[str, dict] | None = None
     ) -> dict[str, dict]:
@@ -625,3 +863,26 @@ class Workflow(ABC):
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to upload workflow outputs for %s: %s", case_id, exc)
             return {}
+
+    @staticmethod
+    def _validate_step_outputs(case_dir: Path, step: WorkflowStep) -> None:
+        """Ensure required step outputs exist and are non-trivial."""
+        missing_or_invalid: list[str] = []
+
+        for rel_path, min_bytes in step.required_outputs.items():
+            output_path = case_dir / rel_path
+            if not output_path.is_file():
+                missing_or_invalid.append(f"missing {rel_path}")
+                continue
+
+            size = output_path.stat().st_size
+            if size < min_bytes:
+                missing_or_invalid.append(
+                    f"{rel_path} too small ({size} bytes < {min_bytes} bytes)"
+                )
+
+        if missing_or_invalid:
+            details = "; ".join(missing_or_invalid)
+            raise RuntimeError(
+                f"Step '{step.name}' did not produce required outputs: {details}"
+            )

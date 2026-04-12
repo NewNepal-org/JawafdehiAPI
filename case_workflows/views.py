@@ -1,6 +1,7 @@
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.authentication import TokenAuthentication
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -8,8 +9,12 @@ from cases.models import Case
 
 from .models import CaseWorkflowRun
 from .permissions import IsAdminOrModerator
-from .registry import list_workflows
-from .serializers import CaseWorkflowRunDetailSerializer, CaseWorkflowRunSerializer
+from .registry import get_workflow, list_workflows
+from .serializers import (
+    CaseWorkflowResumeSerializer,
+    CaseWorkflowRunDetailSerializer,
+    CaseWorkflowRunSerializer,
+)
 
 
 class CaseWorkflowRunViewSet(viewsets.ReadOnlyModelViewSet):
@@ -30,9 +35,44 @@ class CaseWorkflowRunViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["case_id", "run_id"]
 
     def get_serializer_class(self):
+        if self.action == "resume":
+            return CaseWorkflowResumeSerializer
         if self.action == "retrieve":
             return CaseWorkflowRunDetailSerializer
         return CaseWorkflowRunSerializer
+
+    @action(detail=True, methods=["post"])
+    def resume(self, request, run_id=None):
+        """Mark a failed/pending run ready to resume from its failed step."""
+        run = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        workflow = get_workflow(run.workflow_id)
+        requested_step = serializer.validated_data.get("from_step")
+        resume_from_step = requested_step or run.get_resume_step(workflow)
+
+        if not resume_from_step:
+            return Response(
+                {"error": "No failed or pending step found to resume from"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        can_resume, message = run.can_resume_from(resume_from_step, workflow)
+        if not can_resume:
+            return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+
+        run.prepare_for_resume(resume_from_step)
+
+        return Response(
+            {
+                "run_id": run.run_id,
+                "case_id": run.case_id,
+                "workflow_id": run.workflow_id,
+                "status": "ready_for_resume",
+                "resume_from_step": resume_from_step,
+            }
+        )
 
 
 class EligibleCasesView(APIView):

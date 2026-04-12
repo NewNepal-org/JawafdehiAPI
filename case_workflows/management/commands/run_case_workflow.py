@@ -128,6 +128,23 @@ class Command(BaseCommand):
             dest="list_workflows",
             help="List all registered workflows and exit",
         )
+        parser.add_argument(
+            "--resume",
+            action="store_true",
+            help="Resume an existing failed run from its failed step.",
+        )
+        parser.add_argument(
+            "--run-id",
+            type=str,
+            default=None,
+            help="Target an existing run by run_id (useful with --resume).",
+        )
+        parser.add_argument(
+            "--resume-from-step",
+            type=str,
+            default=None,
+            help="Override the step name to resume from (defaults to failed step).",
+        )
 
     def handle(self, *args, **options):
         printer = WorkflowPrinter()
@@ -173,10 +190,28 @@ class Command(BaseCommand):
 
         # ---- Determine target cases ----
         specific_case = options["case_id"]
+        specific_run_id = options["run_id"]
+        resume = options["resume"]
+        resume_from_step_override = options["resume_from_step"]
+
+        if specific_case and specific_run_id:
+            raise CommandError("Use only one of --case-id or --run-id")
+
+        if resume and not specific_case and not specific_run_id:
+            raise CommandError("--resume requires --case-id or --run-id")
+
+        if resume_from_step_override and not resume:
+            raise CommandError("--resume-from-step can only be used with --resume")
+
         if specific_case:
             case_ids = [specific_case]
             printer._console.print(
                 f"  Targeting specific case: [bold]{specific_case}[/bold]"
+            )
+        elif specific_run_id:
+            case_ids = []
+            printer._console.print(
+                f"  Targeting specific run: [bold]{specific_run_id}[/bold]"
             )
         else:
             case_ids = workflow.get_eligible_cases()
@@ -184,7 +219,7 @@ class Command(BaseCommand):
                 f"  Found [bold]{len(case_ids)}[/bold] eligible case(s)"
             )
 
-        if not case_ids:
+        if not case_ids and not specific_run_id:
             printer.warn("No cases to process. Exiting.")
             return
 
@@ -193,11 +228,28 @@ class Command(BaseCommand):
         skip_count = 0
         fail_count = 0
 
-        for cid in case_ids:
-            run, created = CaseWorkflowRun.objects.get_or_create(
-                case_id=cid,
-                workflow_id=workflow_id,
-            )
+        target_runs: list[tuple[CaseWorkflowRun, bool]] = []
+        if specific_run_id:
+            try:
+                run = CaseWorkflowRun.objects.get(
+                    run_id=specific_run_id,
+                    workflow_id=workflow_id,
+                )
+            except CaseWorkflowRun.DoesNotExist as exc:
+                raise CommandError(
+                    f"Run not found for workflow '{workflow_id}': {specific_run_id}"
+                ) from exc
+            target_runs.append((run, False))
+        else:
+            for cid in case_ids:
+                run, created = CaseWorkflowRun.objects.get_or_create(
+                    case_id=cid,
+                    workflow_id=workflow_id,
+                )
+                target_runs.append((run, created))
+
+        for run, created in target_runs:
+            cid = run.case_id
 
             if not created and run.is_complete:
                 printer.print_step_skipped(cid)
@@ -207,7 +259,24 @@ class Command(BaseCommand):
             printer.print_case_header(cid, created)
 
             try:
-                workflow.setup_work_dir(run)
+                resume_from_step = None
+                preserve_existing = False
+                if resume:
+                    resume_from_step = resume_from_step_override or run.get_resume_step(
+                        workflow
+                    )
+                    if not resume_from_step:
+                        raise CommandError(
+                            "Run is not resumable because no failed or pending step was found"
+                        )
+                    can_resume, message = run.can_resume_from(resume_from_step, workflow)
+                    if not can_resume:
+                        raise CommandError(message)
+                    run.prepare_for_resume(resume_from_step)
+                    preserve_existing = True
+                    printer.warn(f"Resuming from step: {resume_from_step}")
+
+                workflow.setup_work_dir(run, preserve_existing=preserve_existing)
                 printer.print_work_dir(run.work_dir)
                 log_path = (
                     Path(run.work_dir)
@@ -228,6 +297,7 @@ class Command(BaseCommand):
                     verbose=verbose,
                     recursion_limit=recursion_limit,
                     printer=printer,
+                    resume_from_step=resume_from_step,
                 )
             except KeyboardInterrupt:
                 printer.error("Interrupted — stopping")

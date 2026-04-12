@@ -8,6 +8,8 @@ Validates: Requirements 1.5, 3.1, 3.2, 3.3, 5.1, 5.2, 5.3
 
 import pytest
 
+pytestmark = pytest.mark.property
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from hypothesis import given, settings

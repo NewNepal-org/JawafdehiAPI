@@ -2,6 +2,7 @@
 Tests for Workflow execution methods (setup_work_dir, execute).
 """
 
+import asyncio
 import shutil
 from unittest.mock import AsyncMock, patch
 
@@ -9,6 +10,7 @@ import pytest
 
 from case_workflows.models import CaseWorkflowRun
 from case_workflows.registry import get_workflow
+from case_workflows.workflow import Workflow, WorkflowStep
 
 
 @pytest.mark.django_db
@@ -94,6 +96,21 @@ class TestWorkflowSetupWorkDir:
 
         shutil.rmtree(tmp_path, ignore_errors=True)
 
+    def test_setup_preserves_existing_dir_when_requested(self, tmp_path, settings):
+        """If preserve_existing=True, existing files remain in place."""
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run()
+
+        work_dir = workflow.setup_work_dir(run)
+        marker = work_dir / "marker.txt"
+        marker.write_text("keep")
+
+        workflow.setup_work_dir(run, preserve_existing=True)
+        assert marker.exists()
+
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
     def test_setup_preserves_existing_case_data(self, tmp_path, settings):
         """If run.case_data already has steps, it is preserved on re-setup."""
         settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
@@ -173,4 +190,382 @@ class TestWorkflowExecute:
                 verbose=False,
                 recursion_limit=200,
                 printer=None,
+                resume_from_step=None,
             )
+
+    def test_execute_passes_resume_step(self, tmp_path, settings):
+        """execute() passes resume_from_step to async executor."""
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run(case_id="case-resume-pass")
+        workflow.setup_work_dir(run)
+
+        with patch.object(
+            workflow, "_execute_async", new_callable=AsyncMock
+        ) as mock_async:
+            workflow.execute(run, resume_from_step="fetch-news-articles")
+            mock_async.assert_called_once_with(
+                run,
+                model="openai:gpt-4o",
+                api_key=None,
+                base_url=None,
+                verbose=False,
+                recursion_limit=200,
+                printer=None,
+                resume_from_step="fetch-news-articles",
+            )
+
+    def test_validate_step_outputs_accepts_present_files(self, tmp_path, settings):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run()
+        work_dir = workflow.setup_work_dir(run)
+        draft_step = next(s for s in workflow.steps if s.name == "draft-case")
+
+        (work_dir / "draft.md").write_text("x" * 120)
+
+        workflow._validate_step_outputs(work_dir, draft_step)
+
+    def test_validate_step_outputs_rejects_missing_file(self, tmp_path, settings):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run()
+        work_dir = workflow.setup_work_dir(run)
+        draft_step = next(s for s in workflow.steps if s.name == "draft-case")
+
+        with pytest.raises(RuntimeError, match="missing draft.md"):
+            workflow._validate_step_outputs(work_dir, draft_step)
+
+    def test_execute_marks_run_failed_when_required_output_missing(
+        self, tmp_path, settings
+    ):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run()
+        workflow.setup_work_dir(run)
+
+        class DummyAgent:
+            async def ainvoke(self, invocation, config=None):
+                return None
+
+            async def astream_events(self, invocation, config=None, version=None):
+                if False:
+                    yield None
+
+        class DummyClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def get_tools(self):
+                return []
+
+        with (
+            patch("langchain.chat_models.init_chat_model", return_value=object()),
+            patch("langchain_mcp_adapters.client.MultiServerMCPClient", DummyClient),
+            patch("deepagents.create_deep_agent", return_value=DummyAgent()),
+            patch(
+                "case_workflows.workflow.upload_workflow_outputs",
+                return_value={},
+                create=True,
+            ),
+            patch.object(run, "mark_started"),
+            patch.object(run, "save"),
+            patch.object(run, "mark_failed") as mock_mark_failed,
+        ):
+            with pytest.raises(RuntimeError, match="did not produce required outputs"):
+                asyncio.run(
+                    workflow._execute_async(
+                        run,
+                        model="openai:gpt-4o",
+                        api_key=None,
+                        base_url=None,
+                        verbose=False,
+                        recursion_limit=20,
+                        printer=None,
+                    )
+                )
+
+        mock_mark_failed.assert_called_once()
+        assert "draft-case" in mock_mark_failed.call_args.kwargs["error_message"]
+
+    def test_step_retries_once_and_succeeds_on_second_attempt(self, tmp_path, settings):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+
+        class RetryWorkflow(Workflow):
+            @property
+            def workflow_id(self) -> str:
+                return "retry_workflow"
+
+            @property
+            def display_name(self) -> str:
+                return "Retry Workflow"
+
+            @property
+            def steps(self):
+                return [
+                    WorkflowStep(
+                        name="draft-case",
+                        prompt_fn=lambda case_dir: "Draft case",
+                        required_outputs={"draft.md": 10},
+                        retries=1,
+                    )
+                ]
+
+            def get_eligible_cases(self):
+                return []
+
+            def on_work_dir_created(self, case_dir):
+                pass
+
+        workflow = RetryWorkflow()
+        run = CaseWorkflowRun.objects.create(
+            case_id="case-retry-success",
+            workflow_id=workflow.workflow_id,
+        )
+        work_dir = workflow.setup_work_dir(run)
+
+        class DummyAgent:
+            def __init__(self):
+                self.calls = 0
+
+            async def ainvoke(self, invocation, config=None):
+                self.calls += 1
+                if self.calls == 2:
+                    (work_dir / "draft.md").write_text("x" * 20)
+                return None
+
+            async def astream_events(self, invocation, config=None, version=None):
+                if False:
+                    yield None
+
+        class DummyClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def get_tools(self):
+                return []
+
+        agent = DummyAgent()
+
+        with (
+            patch("langchain.chat_models.init_chat_model", return_value=object()),
+            patch("langchain_mcp_adapters.client.MultiServerMCPClient", DummyClient),
+            patch("deepagents.create_deep_agent", return_value=agent),
+            patch("case_workflows.workflow.upload_workflow_outputs", return_value={}),
+            patch.object(run, "mark_started"),
+            patch.object(run, "save"),
+            patch.object(run, "mark_complete") as mock_mark_complete,
+            patch.object(run, "mark_failed") as mock_mark_failed,
+        ):
+            asyncio.run(
+                workflow._execute_async(
+                    run,
+                    model="openai:gpt-4o",
+                    api_key=None,
+                    base_url=None,
+                    verbose=False,
+                    recursion_limit=20,
+                    printer=None,
+                )
+            )
+
+        assert agent.calls == 2
+        assert run.case_data["steps"]["draft-case"]["status"] == "complete"
+        assert len(run.case_data["steps"]["draft-case"]["attempts"]) == 2
+        assert run.case_data["steps"]["draft-case"]["attempts"][0]["status"] == "failed"
+        assert run.case_data["steps"]["draft-case"]["attempts"][1]["status"] == "complete"
+        mock_mark_complete.assert_called_once()
+        mock_mark_failed.assert_not_called()
+
+    def test_step_fails_after_retry_budget_exhausted(self, tmp_path, settings):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+
+        class RetryWorkflow(Workflow):
+            @property
+            def workflow_id(self) -> str:
+                return "retry_workflow"
+
+            @property
+            def display_name(self) -> str:
+                return "Retry Workflow"
+
+            @property
+            def steps(self):
+                return [
+                    WorkflowStep(
+                        name="draft-case",
+                        prompt_fn=lambda case_dir: "Draft case",
+                        required_outputs={"draft.md": 10},
+                        retries=1,
+                    )
+                ]
+
+            def get_eligible_cases(self):
+                return []
+
+            def on_work_dir_created(self, case_dir):
+                pass
+
+        workflow = RetryWorkflow()
+        run = CaseWorkflowRun.objects.create(
+            case_id="case-retry-fail",
+            workflow_id=workflow.workflow_id,
+        )
+        workflow.setup_work_dir(run)
+
+        class DummyAgent:
+            def __init__(self):
+                self.calls = 0
+
+            async def ainvoke(self, invocation, config=None):
+                self.calls += 1
+                return None
+
+            async def astream_events(self, invocation, config=None, version=None):
+                if False:
+                    yield None
+
+        class DummyClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def get_tools(self):
+                return []
+
+        agent = DummyAgent()
+
+        with (
+            patch("langchain.chat_models.init_chat_model", return_value=object()),
+            patch("langchain_mcp_adapters.client.MultiServerMCPClient", DummyClient),
+            patch("deepagents.create_deep_agent", return_value=agent),
+            patch("case_workflows.workflow.upload_workflow_outputs", return_value={}),
+            patch.object(run, "mark_started"),
+            patch.object(run, "save"),
+            patch.object(run, "mark_failed") as mock_mark_failed,
+        ):
+            with pytest.raises(RuntimeError, match="did not produce required outputs"):
+                asyncio.run(
+                    workflow._execute_async(
+                        run,
+                        model="openai:gpt-4o",
+                        api_key=None,
+                        base_url=None,
+                        verbose=False,
+                        recursion_limit=20,
+                        printer=None,
+                    )
+                )
+
+        assert agent.calls == 2
+        assert run.case_data["steps"]["draft-case"]["status"] == "failed"
+        assert len(run.case_data["steps"]["draft-case"]["attempts"]) == 2
+        mock_mark_failed.assert_called_once()
+
+    def test_build_step_prompt_adds_retry_fallback_for_draft(self, tmp_path):
+        workflow = get_workflow("ciaa_caseworker")
+        case_dir = tmp_path / "081-CR-0121"
+        draft_step = next(s for s in workflow.steps if s.name == "draft-case")
+
+        attempt1 = workflow._build_step_prompt(
+            draft_step,
+            case_dir,
+            attempt=1,
+            max_attempts=2,
+        )
+        attempt2 = workflow._build_step_prompt(
+            draft_step,
+            case_dir,
+            attempt=2,
+            max_attempts=2,
+        )
+
+        assert "Retry context" not in attempt1
+        assert "Retry context: attempt 2/2." in attempt2
+        assert "create" in attempt2.lower()
+        assert "draft.md" in attempt2
+
+    def test_validate_draft_inputs_rejects_news_over_cap_without_override(
+        self, tmp_path, settings
+    ):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run(case_id="081-CR-0121")
+        work_dir = workflow.setup_work_dir(run)
+
+        markdown_dir = work_dir / "sources" / "markdown"
+        for idx in range(1, 12):
+            (markdown_dir / f"news-{idx}.md").write_text("news", encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="max 10"):
+            workflow._validate_draft_inputs(work_dir)
+
+    def test_validate_draft_inputs_accepts_news_over_cap_with_override(
+        self, tmp_path, settings
+    ):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run(case_id="081-CR-0121")
+        work_dir = workflow.setup_work_dir(run)
+
+        markdown_dir = work_dir / "sources" / "markdown"
+        for idx in range(1, 12):
+            (markdown_dir / f"news-{idx}.md").write_text("news", encoding="utf-8")
+
+        logs_dir = work_dir / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        (logs_dir / "news-search-summary.md").write_text(
+            "Override reason: source diversity required for conflicting verdict coverage.",
+            encoding="utf-8",
+        )
+
+        workflow._validate_draft_inputs(work_dir)
+
+    def test_validate_draft_inputs_rejects_escaped_unicode_heavy_sources(
+        self, tmp_path, settings
+    ):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run(case_id="081-CR-0121")
+        work_dir = workflow.setup_work_dir(run)
+
+        markdown_dir = work_dir / "sources" / "markdown"
+        escaped_blob = " ".join(["u0915"] * 30)
+        (markdown_dir / "news-bad.md").write_text(escaped_blob, encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="escaped-unicode-heavy"):
+            workflow._validate_draft_inputs(work_dir)
+
+    def test_validate_draft_inputs_handles_invalid_utf8_in_source_markdown(
+        self, tmp_path, settings
+    ):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run(case_id="081-CR-0121")
+        work_dir = workflow.setup_work_dir(run)
+
+        markdown_dir = work_dir / "sources" / "markdown"
+        bad_file = markdown_dir / "news-bad-bytes.md"
+        bad_file.write_bytes(b"prefix " + bytes([0xBE]) + b" suffix")
+
+        # Should not raise decode errors; resilient reader must recover.
+        workflow._validate_draft_inputs(work_dir)
+
+    def test_validate_draft_inputs_handles_invalid_utf8_in_news_summary(
+        self, tmp_path, settings
+    ):
+        settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
+        workflow = get_workflow("ciaa_caseworker")
+        run = self._make_run(case_id="081-CR-0121")
+        work_dir = workflow.setup_work_dir(run)
+
+        markdown_dir = work_dir / "sources" / "markdown"
+        for idx in range(1, 12):
+            (markdown_dir / f"news-{idx}.md").write_text("news", encoding="utf-8")
+
+        logs_dir = work_dir / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        summary_path = logs_dir / "news-search-summary.md"
+        summary_path.write_bytes(b"Override reason: " + bytes([0xBE]))
+
+        # Override token is still present; decode should be resilient.
+        workflow._validate_draft_inputs(work_dir)

@@ -8,6 +8,8 @@ Validates: Requirements 4.2
 
 import pytest
 
+pytestmark = pytest.mark.property
+
 from django.core.exceptions import ValidationError
 from hypothesis import given, settings
 

@@ -8,6 +8,9 @@ These tests verify both the migration process and post-migration behavior:
 """
 
 import pytest
+
+pytestmark = pytest.mark.migration
+
 from django.test import TransactionTestCase
 from django.db import connection
 from django.core.management import call_command

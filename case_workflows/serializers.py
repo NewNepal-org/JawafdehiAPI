@@ -28,3 +28,7 @@ class CaseWorkflowRunDetailSerializer(CaseWorkflowRunSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+
+class CaseWorkflowResumeSerializer(serializers.Serializer):
+    from_step = serializers.CharField(required=False, allow_blank=False)

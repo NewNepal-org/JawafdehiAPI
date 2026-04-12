@@ -4,7 +4,7 @@ You are an expert agentic workflow runner and you are helping build a fact-based
 
 Follow the user stories strictly in `prd.json`.
 
-Start by reading INSTRUCTIONS.md, then read `progress.json` to find the next incomplete story. Execute **exactly one** user story, then stop immediately. Do not plan or proceed to any subsequent stories.
+Start by reading INSTRUCTIONS.md, then follow the workflow runner's selected step for this invocation. Execute **exactly one** user story, then stop immediately. Do not plan or proceed to any subsequent stories.
 
 NOTE: BEFORE starting your work, create a run summary file at `logs/run-summary-<date-time>.md` (use the current ISO 8601 datetime without colons, e.g. `logs/run-summary-2026-04-04T172904.md`). Record the single story you are about to execute. THEN, AFTER you have finished, update the same file with what you completed, any findings, and the outcome.
 
@@ -16,14 +16,14 @@ WORKFLOW_PROGRESS: {"story": "US-XXX", "story_title": "...", "success": true, "n
 
 The workflow runner reads this marker to record progress and will invoke you again for the next story. Do **not** attempt to continue to the next story in the same invocation. If the story cannot be completed, emit `success: false` with a notes explanation. To abort the entire workflow, emit `WORKFLOW_FAILED: <reason>` instead.
 
-**IMPORTANT:** Do **NOT** write to `progress.json` or `prd.json`. These files are managed exclusively by the workflow runner. You may only read them.
+**IMPORTANT:** Do **NOT** write to workflow runner state files (including `progress.json` and `prd.json`). These are managed exclusively by the workflow runner.
 
 ## Casework Folder Structure
 
 Your working environment for each case is isolated within a unique case folder located at `casework/<case_number>`. This folder contains the following structure:
 
 - `prd.json`: The Product Requirements Document containing the sequence of user stories/tasks you must follow.
-- `progress.json`: Tracks which user stories are complete. Written by the workflow runner — do not edit directly.
+- `progress.json` (optional): Runner-managed progress tracking file. It may be absent for some workflow modes.
 - `logs/`: A directory for run summaries. Each agent invocation writes one `run-summary-<date-time>.md` file here.
 - `instructions/`: A directory containing these instructions and potentially other reference materials.
 - `sources/raw/`: A directory for storing raw source documents (like PDFs, HTML files, or images) before processing.
@@ -204,9 +204,27 @@ Use the `search` MCP tool to find relevant news articles about the case. This bu
 
 ### Search strategy
 
-For each query, call `search` with `engines: ["duckduckgo", "bing", "brave"]` to run all three engines in a single parallel call. Run multiple query variations in parallel where possible.
+Start by planning the first query wave before running any searches. Read the case details, identify the primary accused name(s), romanised name variant, case number, and any project or organization keywords, then write the planned query set into `sources/markdown/news-search-progress.md`.
 
-**Rate limiting:** If you receive rate-limit errors (HTTP 429 or consistently empty results from engines that were previously productive), stop parallel searching, pause briefly, and switch to single-engine queries with a few seconds between calls. Resume parallel mode once errors clear.
+For each query, call `search` with `engines: ["duckduckgo", "bing", "brave"]` to run all three engines in a single parallel call. Run multiple query variations in parallel in the first wave whenever possible.
+
+Use a balanced batching strategy:
+- search query variations in parallel first
+- de-duplicate result URLs before fetching
+- fetch promising URLs in batches of 6 to 8
+- convert fetched pages to markdown in parallel for the same batch
+- review quality and stop once you have 6 to 10 strong, source-diverse articles
+
+**Stop rule:** collect enough reporting to cover the case well, then stop. In most cases this means **6 to 10 high-quality articles total**. Do **not** collect more than 10 news articles unless you record a concrete reason in `logs/news-search-summary.md`.
+
+Prefer:
+- original reporting over short rewrites
+- source diversity across outlets
+- articles that add factual detail, procedural updates, or case-specific context
+
+Avoid padding the source set with many near-duplicate filing stories that add no new information.
+
+**Rate limiting:** If you receive rate-limit errors (HTTP 429 or consistently empty results from engines that were previously productive), stop parallel searching immediately, note the affected engine(s) in `sources/markdown/news-search-progress.md`, pause briefly, and switch to single-engine queries with a few seconds between calls. Resume parallel mode only after one or two stable search batches with no repeated rate-limit symptoms.
 
 ### Queries to run
 
@@ -219,20 +237,21 @@ For each case, run at least these variations:
 
 Appending `Nepal` or `नेपाल` to each query helps surface Nepali-language and Nepal-focused results since the `search` tool has no native region parameter.
 
+Do not wait for one query's results before inventing the next basic variation. The four required variations above should be prepared up front and run in the first parallel search wave.
+
 ### Fetching, saving, and cleaning each article
 
-Repeat the following numbered steps **for every article** before moving on to the next one.
+Work in batches instead of strictly one article at a time.
 
-1. Call `search` with `engines: ["duckduckgo", "bing", "brave"]` and your query.
+1. Run the planned query wave with `search` using `engines: ["duckduckgo", "bing", "brave"]`.
 
-2. For each relevant result URL, call `fetchWebContent` (or `fetch`) to retrieve the full page.
+2. Combine and de-duplicate result URLs from that wave. Select the most promising URLs based on outlet quality, relevance, and source diversity.
 
-3. Call `convert_to_markdown` to save to `sources/markdown/news-<source-name>.md`.
+3. Fetch the selected URLs in parallel batches of 6 to 8 using `fetchWebContent` (or `fetch`).
 
-4. **Immediately record metadata in MEMORY.md** — before any other step, append a new row to the
-   `## News Articles` table in `MEMORY.md`. Use the **original search-result URL** (not any URL
-   scraped from inside the converted file). If a publication date is visible in the page content,
-   record it; otherwise write `unknown`.
+4. For the fetched batch, call `convert_to_markdown` in parallel and save to `sources/markdown/news-<source-name>.md`.
+
+5. After the conversion batch finishes, update `MEMORY.md` for the accepted articles from that batch. Use the **original search-result URL** (not any URL scraped from inside the converted file). If a publication date is visible in the page content, record it; otherwise write `unknown`.
 
    The table must have this exact format:
    ```
@@ -243,7 +262,7 @@ Repeat the following numbered steps **for every article** before moving on to th
    | news-beemapost.md | https://www.beemapost.com/... | unknown | सव-इन्जिनियरद्वारा... |
    ```
 
-5. **Clean the saved markdown** — edit the file in-place to remove all website chrome:
+6. **Clean the saved markdown** — edit each accepted file in-place to remove all website chrome:
    navigation menus, site headers and footers, logo images, social sharing buttons
    (Facebook, Twitter, Viber, etc.), advertising banners/GIFs, related-article blocks,
    subscribe/login prompts, weather widgets, trending-topics bars, and any other content
@@ -256,10 +275,10 @@ Repeat the following numbered steps **for every article** before moving on to th
    be the article headline or dateline (e.g., `# सब-इन्जिनियरविरुद्ध भ्रष्टाचार मुद्दा दायर`
    or `**२७ चैत्र २०८२**`), not a logo or nav element.
 
-   If the publication date was recorded as `unknown` in step 4, re-read the now-clean
+   If the publication date was recorded as `unknown` in step 5, re-read the now-clean
    dateline and update the MEMORY.md table row with the correct date.
 
-6. **Identify case-relevant images** — scan the cleaned body text for `![` or `<img` tags
+7. **Identify case-relevant images** — scan the cleaned body text for `![` or `<img` tags
    that appear *inside* the article body (skip logos, icons, and ads). For each image that
    is directly relevant to the case — photos of the accused or co-defendants, official CIAA
    or court document photos, property or crime-scene photos — append an entry to `MEMORY.md`
@@ -271,13 +290,21 @@ Repeat the following numbered steps **for every article** before moving on to th
    ```
    Skip this step if no relevant images are found in the article.
 
+Reject low-value duplicates early. If two articles add essentially the same filing facts from the same outlet family or syndication chain, keep the stronger one and record the rejection reason briefly in `sources/markdown/news-search-progress.md` or `logs/news-search-summary.md`.
+
 ### Progress checkpointing
 
-After every ~10 searches, write or update `sources/markdown/news-search-progress.md` with the queries run, articles found, and any issues encountered.
+After every search wave and every fetch/conversion batch, write or update `sources/markdown/news-search-progress.md` with:
+- queries run
+- number of URLs returned
+- number of URLs fetched
+- number of accepted and rejected articles
+- any duplicate filtering decisions
+- any rate-limit issues or engine fallback used
 
 If no news items can be found at all, note it in your run summary, write a brief `sources/markdown/news-search-results.md` explaining what was tried, and continue.
 
-Write a final summary of all found articles to `logs/news-search-summary.md` and update `MEMORY.md` with key learnings for later steps.
+Write a final summary of all found articles to `logs/news-search-summary.md` and update `MEMORY.md` with key learnings for later steps. The final summary should mention the total query count, how many fetch batches were used, whether rate-limit fallback was needed, and why the final article set was sufficient.
 
 
 ## Preparing the Case Draft Locally
@@ -372,9 +399,11 @@ For each file in `sources/raw/` with one of those extensions, call `upload_docum
 For news articles (`sources/markdown/news-*.md`), call `upload_document_source` with:
 - `source_type`: `MEDIA_NEWS`
 - `file_path`: absolute path to the cleaned `.md` file
+- keep the uploaded `.md` transcript as the uploaded file attachment
 - `url`: `["<original_article_url>"]` — use the URL recorded in `MEMORY.md ## News Articles`
   for this file. **Do NOT scrape URLs from inside the markdown file itself** (they will be
   logo or navigation links, not the article URL).
+- the external `url` field must preserve the **original article URL**. The markdown transcript path is **not** the external URL.
 - `publication_date`: `YYYY-MM-DD` — use the date recorded in `MEMORY.md ## News Articles`.
   If it was recorded as `unknown`, re-read the first 10 lines of the cleaned file and extract
   the dateline. **Do not substitute the case filing date** when the real date is unknown — leave
@@ -384,6 +413,11 @@ For news articles (`sources/markdown/news-*.md`), call `upload_document_source` 
   `"Ekantipur (२०८२-०१-२८) ले सव-इन्जिनियर कुमार पौड्यालविरुद्ध रु. ३.६३ करोडको अकुत सम्पत्ति आर्जन सम्बन्धी अख्तियारको मुद्दाबारे समाचार प्रकाशित गरेको।"`
 
 Record every returned `source_id` and its description in `MEMORY.md`.
+
+Before leaving the upload step, verify for each news `DocumentSource` that:
+- the uploaded file is the cleaned markdown transcript
+- the external `url` field contains the original article URL
+- the source description is written mainly in Nepali
 
 ### Step 2 — Attach evidence to the case
 
@@ -403,6 +437,8 @@ For **news articles**, the evidence description should name the outlet, publicat
 which allegation(s) the article corroborates, **in Nepali**. Example:
 `"Ekantipur (२०८२-०१-२८) ले अभियोग दायरी र रु. ३.६३ करोडको बिगो रकम पुष्टि गर्दछ।"`
 
+If a source description or evidence description is mostly in English when Nepali is practical, treat that as a quality problem and fix it before completing the step.
+
 Combine all evidence `add` ops into a single `patch_jawafdehi_case` call.
 
 ### Step 3 — Update remaining case fields
@@ -421,6 +457,38 @@ is missing from `draft.md`:
 - `/missing_details` — freetext string compiled from the unchecked items in the **Missing Details** section of `draft.md`. Omit if all items are checked or the section is empty.
 
 Combine all field updates into a single `patch_jawafdehi_case` call.
+
+### Recommended tags
+
+Use a small, consistent set of English tags. Prefer the most relevant tags rather than tagging everything.
+
+Common core tags:
+- `CIAA`
+- `Special Court`
+- `Corruption`
+
+Use one or more allegation/context tags when applicable:
+- `Illegal Property Acquisition`
+- `Bribery`
+- `Procurement Irregularities`
+- `Public Office Abuse`
+- `Witness Tampering`
+- `Forged Documents`
+
+Use sector or institution tags when they help identify the case context:
+- `Local Government`
+- `Municipality`
+- `Kathmandu Metropolitan City`
+- ministry, department, project, or public body name in English when it is central to the case
+
+Use location tags sparingly and only when they add search value:
+- district or city names in English such as `Kathmandu`
+- broader geographic tags only if they are directly relevant
+
+Avoid:
+- redundant synonyms
+- very generic tags that add no filtering value
+- more than about 5 to 8 tags unless the case genuinely spans multiple distinct contexts
 
 ### Step 4 — Patch case notes with images
 
