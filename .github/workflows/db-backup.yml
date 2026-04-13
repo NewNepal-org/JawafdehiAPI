@@ -1,0 +1,75 @@
+# GitHub Actions workflow for daily PostgreSQL database backup to Cloudflare R2.
+#
+# This workflow:
+# 1. Runs daily at 02:00 UTC via cron schedule
+# 2. Dumps the PostgreSQL database using pg_dump
+# 3. Compresses the dump with gzip
+# 4. Uploads the compressed dump to the "jawafdehi-admin" Cloudflare R2 bucket
+#
+# Backups are stored at: backups/jawafdehi-<YYYY-MM-DD>.sql.gz
+#
+# Required environment secrets (GitHub Environment: "DB backup"):
+#   DATABASE_URL          - PostgreSQL connection string (postgres://user:pass@host:port/db)
+#   R2_ACCESS_KEY_ID      - Cloudflare R2 Access Key ID
+#   R2_SECRET_ACCESS_KEY  - Cloudflare R2 Secret Access Key
+#   R2_ACCOUNT_ID         - Cloudflare Account ID (used to build the R2 endpoint URL)
+
+name: DB Backup
+
+on:
+  schedule:
+    # Run daily at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+permissions:
+  contents: none
+
+jobs:
+  backup:
+    name: Dump and upload database
+    runs-on: ubuntu-latest
+    environment: "DB backup"
+
+    steps:
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Parse DATABASE_URL into pg_dump-compatible parts
+          # Expected format: postgres://user:password@host:port/dbname
+          DB_USER=$(echo "$DATABASE_URL" | sed -E 's|postgres://([^:]+):.*|\1|')
+          DB_PASSWORD=$(echo "$DATABASE_URL" | sed -E 's|postgres://[^:]+:([^@]+)@.*|\1|')
+          DB_HOST=$(echo "$DATABASE_URL" | sed -E 's|postgres://[^@]+@([^:/]+).*|\1|')
+          DB_PORT=$(echo "$DATABASE_URL" | sed -E 's|postgres://[^@]+@[^:]+:([0-9]+)/.*|\1|')
+          DB_NAME=$(echo "$DATABASE_URL" | sed -E 's|.*/([^?]+).*|\1|')
+
+          BACKUP_FILE="jawafdehi-$(date -u +%Y-%m-%d).sql.gz"
+
+          PGPASSWORD="$DB_PASSWORD" pg_dump \
+            --host="$DB_HOST" \
+            --port="$DB_PORT" \
+            --username="$DB_USER" \
+            --no-password \
+            --format=plain \
+            "$DB_NAME" \
+            | gzip > "$BACKUP_FILE"
+
+          echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
+
+      - name: Upload to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+        run: |
+          aws s3 cp "$BACKUP_FILE" \
+            "s3://jawafdehi-admin/backups/$BACKUP_FILE" \
+            --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
+            --region auto
