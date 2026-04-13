@@ -119,8 +119,8 @@ class TestFixFileEncoding:
         monkeypatch.setenv("JAWAFDEHI_ALLOWED_WORK_DIR", str(base))
         tool = create_fix_encoding_tool()
 
-        ok = tool.func(str(allowed))
-        err = tool.func(str(denied))
+        ok = tool.invoke({"file_path": str(allowed)})
+        err = tool.invoke({"file_path": str(denied)})
 
         assert ok["status"] == "ok"
         assert err["status"] == "error"

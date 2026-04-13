@@ -15,7 +15,7 @@ Use --dry-run to preview what would be created without writing to the DB.
 """
 
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from case_workflows.workflows.ciaa_caseworker.constants import CIAA_CASE_NUMBERS
 from cases.models import Case, CaseState, CaseType
@@ -67,12 +67,34 @@ class Command(BaseCommand):
                             f"[DRY-RUN] Would create: {_case_title(case_number)}"
                         )
                     else:
-                        case = Case.objects.create(
-                            title=_case_title(case_number),
-                            case_type=CaseType.CORRUPTION,
-                            state=CaseState.DRAFT,
-                        )
-                        self.stdout.write(f"[CREATED] {case_number} → {case.case_id}")
+                        # NOTE: Fully race-safe behavior requires a DB uniqueness constraint
+                        # on a dedicated CIAA case number field. This command narrows the
+                        # race window by using get_or_create on canonical title + case_type.
+                        try:
+                            case, was_created = Case.objects.get_or_create(
+                                title=_case_title(case_number),
+                                case_type=CaseType.CORRUPTION,
+                                defaults={"state": CaseState.DRAFT},
+                            )
+                        except IntegrityError:
+                            case = Case.objects.filter(
+                                title=_case_title(case_number),
+                                case_type=CaseType.CORRUPTION,
+                            ).first()
+                            if case is None:
+                                raise
+                            was_created = False
+
+                        if was_created:
+                            self.stdout.write(
+                                f"[CREATED] {case_number} → {case.case_id}"
+                            )
+                        else:
+                            self.stdout.write(
+                                f"[SKIP] {case_number} — already exists as {case.case_id}"
+                            )
+                            skipped += 1
+                            continue
                     created += 1
 
             if dry_run:

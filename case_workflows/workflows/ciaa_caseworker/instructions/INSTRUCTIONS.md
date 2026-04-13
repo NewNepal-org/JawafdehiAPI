@@ -36,7 +36,7 @@ Any temporary files, drafts, or exported evidence for the case should be generat
 
 ### Case data
 
-Use the `ngm_extract_case_data` tool to extract the full case data from the NGM database. You must save it in the casework folder as `sources/case_<case_number>_<date-time>.md`.
+Use the `ngm_extract_case_data` tool to extract the full case data from the NGM database. You must save it in the casework folder as `case_details-<case_number>.md`.
 
 ### CIAA Press releases
 Find the CIAA press release for Special court case {{CASE_NUMBER}}.
@@ -118,12 +118,12 @@ If your initial search returns no results, try variations:
 Once you have identified the IFB/RFP/EOI/PQ number, use the `fetch_bolpatra.py` script to automatically search and download all procurement documents:
 
 ```bash
-python .agents/caseworker/etc/scripts/fetch_bolpatra.py "IFB_NUMBER"
+python case_workflows/workflows/ciaa_caseworker/etc/scripts/fetch_bolpatra.py "IFB_NUMBER"
 ```
 
 **Example:**
 ```bash
-python .agents/caseworker/etc/scripts/fetch_bolpatra.py "NITC/G/NCB-7-2074/75"
+python case_workflows/workflows/ciaa_caseworker/etc/scripts/fetch_bolpatra.py "NITC/G/NCB-7-2074/75"
 ```
 
 The script will:
@@ -131,11 +131,11 @@ The script will:
 2. Extract tender IDs from search results
 3. Fetch detailed tender information
 4. Download all available documents (bid documents, addendums, LOI, etc.)
-5. Save files to `.agents/caseworker/data/bolpatra/` directory
+5. Save files to `case_workflows/workflows/ciaa_caseworker/data/bolpatra/` directory
 
 **After downloading**, move the files to your case folder:
 ```bash
-mv .agents/caseworker/data/bolpatra/NITC-G-NCB-7-2074-75_*.pdf casework/<case_number>/sources/raw/
+mv case_workflows/workflows/ciaa_caseworker/data/bolpatra/NITC-G-NCB-7-2074-75_*.pdf casework/<case_number>/sources/raw/
 ```
 
 #### Step 3: Try Variations if No Results

@@ -134,12 +134,6 @@ class Command(BaseCommand):
             help="Resume an existing failed run from its failed step.",
         )
         parser.add_argument(
-            "--run-id",
-            type=str,
-            default=None,
-            help="Target an existing run by run_id (useful with --resume).",
-        )
-        parser.add_argument(
             "--resume-from-step",
             type=str,
             default=None,
@@ -190,15 +184,11 @@ class Command(BaseCommand):
 
         # ---- Determine target cases ----
         specific_case = options["case_id"]
-        specific_run_id = options["run_id"]
         resume = options["resume"]
         resume_from_step_override = options["resume_from_step"]
 
-        if specific_case and specific_run_id:
-            raise CommandError("Use only one of --case-id or --run-id")
-
-        if resume and not specific_case and not specific_run_id:
-            raise CommandError("--resume requires --case-id or --run-id")
+        if resume and not specific_case:
+            raise CommandError("--resume requires --case-id")
 
         if resume_from_step_override and not resume:
             raise CommandError("--resume-from-step can only be used with --resume")
@@ -208,18 +198,13 @@ class Command(BaseCommand):
             printer._console.print(
                 f"  Targeting specific case: [bold]{specific_case}[/bold]"
             )
-        elif specific_run_id:
-            case_ids = []
-            printer._console.print(
-                f"  Targeting specific run: [bold]{specific_run_id}[/bold]"
-            )
         else:
             case_ids = workflow.get_eligible_cases()
             printer._console.print(
                 f"  Found [bold]{len(case_ids)}[/bold] eligible case(s)"
             )
 
-        if not case_ids and not specific_run_id:
+        if not case_ids:
             printer.warn("No cases to process. Exiting.")
             return
 
@@ -229,36 +214,24 @@ class Command(BaseCommand):
         fail_count = 0
 
         target_runs: list[tuple[CaseWorkflowRun, bool]] = []
-        if specific_run_id:
-            try:
-                run = CaseWorkflowRun.objects.get(
-                    run_id=specific_run_id,
-                    workflow_id=workflow_id,
-                )
-            except CaseWorkflowRun.DoesNotExist as exc:
-                raise CommandError(
-                    f"Run not found for workflow '{workflow_id}': {specific_run_id}"
-                ) from exc
-            target_runs.append((run, False))
-        else:
-            for cid in case_ids:
-                if resume:
-                    try:
-                        run = CaseWorkflowRun.objects.get(
-                            case_id=cid,
-                            workflow_id=workflow_id,
-                        )
-                        created = False
-                    except CaseWorkflowRun.DoesNotExist as exc:
-                        raise CommandError(
-                            f"Cannot resume: no existing run for case '{cid}' and workflow '{workflow_id}'"
-                        ) from exc
-                else:
-                    run, created = CaseWorkflowRun.objects.get_or_create(
+        for cid in case_ids:
+            if resume:
+                try:
+                    run = CaseWorkflowRun.objects.get(
                         case_id=cid,
                         workflow_id=workflow_id,
                     )
-                target_runs.append((run, created))
+                    created = False
+                except CaseWorkflowRun.DoesNotExist as exc:
+                    raise CommandError(
+                        f"Cannot resume: no existing run for case '{cid}' and workflow '{workflow_id}'"
+                    ) from exc
+            else:
+                run, created = CaseWorkflowRun.objects.get_or_create(
+                    case_id=cid,
+                    workflow_id=workflow_id,
+                )
+            target_runs.append((run, created))
 
         for run, created in target_runs:
             cid = run.case_id

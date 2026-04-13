@@ -13,13 +13,17 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from langchain_core.tools import tool
 
 from case_workflows.encoding_tool import create_fix_encoding_tool
 from case_workflows.registry import register
 from case_workflows.workflow import Workflow, WorkflowStep
+
+if TYPE_CHECKING:
+    from case_workflows.models import CaseWorkflowRun
+    from cases.models import Case
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +172,27 @@ def _render_instruction_tokens(case_dir: Path, case_number: str) -> None:
             md_file.write_text(rendered, encoding="utf-8")
 
 
+def _extract_ciaa_case_number(case: "Case") -> str:
+    """Return the unique Special Court case number from Case.court_cases."""
+    special_case_numbers: list[str] = []
+
+    for ref in case.court_cases or []:
+        if not isinstance(ref, str) or ":" not in ref:
+            continue
+        court_identifier, case_number = ref.split(":", 1)
+        if court_identifier == "special" and case_number.strip():
+            special_case_numbers.append(case_number.strip())
+
+    if len(special_case_numbers) != 1:
+        raise ValueError(
+            "Expected exactly one special court case reference for "
+            f"case {case.case_id}; found {len(special_case_numbers)} "
+            f"in court_cases={case.court_cases!r}"
+        )
+
+    return special_case_numbers[0]
+
+
 @register
 class CIAACaseworkerWorkflow(Workflow):
     """
@@ -190,6 +215,15 @@ class CIAACaseworkerWorkflow(Workflow):
     @property
     def display_name(self) -> str:
         return "CIAA Caseworker"
+
+    def get_work_dir(self, run: "CaseWorkflowRun") -> Path:
+        """Use CIAA Special Court case number (not Jawafdehi case_id) as directory."""
+        from cases.models import Case
+
+        base_dir = super().get_work_dir(run).parent
+        case = Case.objects.only("case_id", "court_cases").get(case_id=run.case_id)
+        ciaa_case_number = _extract_ciaa_case_number(case)
+        return base_dir / ciaa_case_number
 
     @property
     def steps(self) -> List[WorkflowStep]:

@@ -3,6 +3,7 @@ Tests for workflow registry and ABC contract.
 """
 
 import re
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -10,7 +11,12 @@ import pytest
 from case_workflows.output import _utc_timestamp
 from case_workflows.registry import get_workflow, list_workflows
 from case_workflows.workflow import Workflow, WorkflowStep
-from case_workflows.workflows.ciaa_caseworker.workflow import download_file
+from case_workflows.workflows.ciaa_caseworker.workflow import (
+    CIAACaseworkerWorkflow,
+    _extract_ciaa_case_number,
+    download_file,
+)
+from cases.models import Case, CaseState, CaseType
 
 
 class TestWorkflowStep:
@@ -220,7 +226,9 @@ class TestWorkflowRegistry:
 
 class TestCIAADownloadFileTool:
     def test_rejects_unsupported_url_scheme(self):
-        result = download_file.func("file:///etc/passwd", "/tmp/output.txt")
+        result = download_file.invoke(
+            {"url": "file:///etc/passwd", "output_path": "/tmp/output.txt"}
+        )
 
         assert "Unsupported URL scheme" in result
 
@@ -230,7 +238,9 @@ class TestCIAADownloadFileTool:
         outside = tmp_path / "outside.txt"
         monkeypatch.setenv("JAWAFDEHI_ALLOWED_WORK_DIR", str(allowed))
 
-        result = download_file.func("https://example.com/file.txt", str(outside))
+        result = download_file.invoke(
+            {"url": "https://example.com/file.txt", "output_path": str(outside)}
+        )
 
         assert "outside allowed work directory" in result
 
@@ -251,7 +261,58 @@ class TestCIAADownloadFileTool:
                 return b"hello"
 
         with patch("urllib.request.urlopen", return_value=_FakeResponse()):
-            result = download_file.func("https://example.com/file.txt", str(target))
+            result = download_file.invoke(
+                {"url": "https://example.com/file.txt", "output_path": str(target)}
+            )
 
         assert "Downloaded" in result
         assert target.read_bytes() == b"hello"
+
+
+@pytest.mark.django_db
+class TestCIAACaseNumberExtraction:
+    def test_extract_ciaa_case_number_happy_path(self):
+        case = Case.objects.create(
+            title="CIAA Special Court Case 081-CR-0123",
+            case_type=CaseType.CORRUPTION,
+            state=CaseState.DRAFT,
+            court_cases=["special:081-CR-0123"],
+        )
+
+        assert _extract_ciaa_case_number(case) == "081-CR-0123"
+
+    def test_extract_ciaa_case_number_raises_if_missing_special_case(self):
+        case = Case.objects.create(
+            title="CIAA Special Court Case 081-CR-0123",
+            case_type=CaseType.CORRUPTION,
+            state=CaseState.DRAFT,
+            court_cases=["supreme:081-CR-0123"],
+        )
+
+        with pytest.raises(ValueError, match="exactly one special court"):
+            _extract_ciaa_case_number(case)
+
+    def test_extract_ciaa_case_number_raises_if_multiple_special_cases(self):
+        case = Case.objects.create(
+            title="CIAA Special Court Case 081-CR-0123",
+            case_type=CaseType.CORRUPTION,
+            state=CaseState.DRAFT,
+            court_cases=["special:081-CR-0123", "special:081-CR-0456"],
+        )
+
+        with pytest.raises(ValueError, match="exactly one special court"):
+            _extract_ciaa_case_number(case)
+
+    def test_get_work_dir_uses_ciaa_case_number(self):
+        case = Case.objects.create(
+            title="CIAA Special Court Case 081-CR-0123",
+            case_type=CaseType.CORRUPTION,
+            state=CaseState.DRAFT,
+            court_cases=["special:081-CR-0123"],
+        )
+        run = SimpleNamespace(case_id=case.case_id)
+
+        wf = CIAACaseworkerWorkflow()
+        case_dir = wf.get_work_dir(run)
+
+        assert case_dir.name == "081-CR-0123"

@@ -274,6 +274,12 @@ class BolpatraFetcher:
             return filepath
         except requests.exceptions.RequestException as e:
             print(f"  Error downloading from {url}: {e}")
+            # Clean up partial file
+            try:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            except OSError:
+                pass
             return None
         except OSError as e:
             print(f"  File I/O error writing to {filepath}: {e}")
