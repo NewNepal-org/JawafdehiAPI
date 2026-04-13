@@ -387,15 +387,12 @@ def user_with_role(draw, role):
 
     Roles: 'Admin', 'Moderator', 'Contributor'
     """
-    import uuid
-
-    # Add UUID to ensure uniqueness across test runs
-    unique_id = uuid.uuid4().hex[:8]
+    # Use Hypothesis-driven UUIDs instead of uuid4() so examples are fully
+    # deterministic and reproducible during shrinking/replay.
+    unique_id = draw(st.uuids()).hex[:8]
     base_username = draw(
         st.text(
-            alphabet=st.characters(
-                whitelist_categories=("Ll", "Nd"), whitelist_characters="_"
-            ),
+            alphabet="abcdefghijklmnopqrstuvwxyz0123456789_",
             min_size=3,
             max_size=12,
         ).filter(lambda x: x and not x.startswith("_"))

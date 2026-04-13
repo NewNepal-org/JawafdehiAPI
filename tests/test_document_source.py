@@ -12,6 +12,7 @@ from django.core.exceptions import ValidationError
 from hypothesis import given, settings
 
 from cases.models import DocumentSource
+from cases.models import SourceType
 from tests.conftest import create_document_source_with_entities
 from tests.strategies import (
     valid_source_data,
@@ -242,3 +243,39 @@ def test_document_source_has_contributors_field():
     assert (
         source in user.assigned_sources.all()
     ), "Source should be in user's assigned_sources"
+
+
+@pytest.mark.django_db
+def test_media_news_source_requires_publication_date():
+    """MEDIA_NEWS DocumentSource must be rejected when publication_date is absent."""
+    source = create_document_source_with_entities(
+        title="Gorkhapatra report",
+        description="News article",
+        related_entity_ids=[],
+    )
+    source.source_type = SourceType.MEDIA_NEWS
+    source.publication_date = None
+
+    with pytest.raises(ValidationError) as exc_info:
+        source.save()
+
+    assert "publication_date" in exc_info.value.message_dict
+
+
+@pytest.mark.django_db
+def test_media_news_source_accepts_valid_publication_date():
+    """MEDIA_NEWS DocumentSource with a publication_date must save successfully."""
+    import datetime
+
+    source = create_document_source_with_entities(
+        title="Kantipur daily",
+        description="News article",
+        related_entity_ids=[],
+    )
+    source.source_type = SourceType.MEDIA_NEWS
+    source.publication_date = datetime.date(2024, 3, 15)
+
+    # Must not raise
+    source.save()
+    source.refresh_from_db()
+    assert source.publication_date == datetime.date(2024, 3, 15)

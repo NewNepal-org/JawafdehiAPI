@@ -17,13 +17,15 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
+from django.db.models import Q
 from rest_framework import filters, mixins, status, viewsets
-from rest_framework.authentication import TokenAuthentication
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .admin import CaseAdminForm
 from .caseworker_serializers import (
@@ -39,7 +41,12 @@ from .models import (
     JawafEntity,
     RelationshipType,
 )
-from .rules.predicates import can_change_case, can_transition_case_state, can_view_case
+from .rules.predicates import (
+    can_change_case,
+    can_transition_case_state,
+    can_view_case,
+    is_admin_or_moderator,
+)
 from .serializers import (
     CaseDetailSerializer,
     CaseSerializer,
@@ -65,9 +72,14 @@ from .serializers import (
     list=extend_schema(
         summary="List published cases",
         description="""
-        Retrieve a paginated list of published accountability cases.
-        
-        Only cases with state=PUBLISHED are returned (regardless of authorization).
+        Retrieve a paginated list of accountability cases.
+
+        **Visibility rules:**
+        - Unauthenticated requests: only PUBLISHED cases.
+        - Admin / Moderator: all non-CLOSED cases (PUBLISHED + IN_REVIEW + DRAFT).
+        - Authenticated contributor/other: PUBLISHED cases + any DRAFT or IN_REVIEW cases
+          they are explicitly assigned to as contributors.
+
         Results are ordered by creation date (newest first).
         
         **Filtering:**
@@ -157,13 +169,14 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["case_type"]
     search_fields = ["title", "description", "key_allegations"]
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [
+        JWTAuthentication,
+        TokenAuthentication,
+        SessionAuthentication,
+    ]
 
     def get_permissions(self):
-        """
-        Allow POST/PATCH for authenticated users, read-only for everyone else.
-        """
-        if self.action in {"create", "partial_update"}:
+        if self.action in ("create", "partial_update"):
             return [IsAuthenticated()]
         return super().get_permissions()
 
@@ -200,8 +213,22 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                     state__in=[CaseState.PUBLISHED, CaseState.IN_REVIEW]
                 )
         else:
-            # List endpoint: only published cases (regardless of authorization)
-            queryset = Case.objects.filter(state=CaseState.PUBLISHED)
+            # List endpoint: visibility depends on authentication/role.
+            # - Unauthenticated: PUBLISHED only
+            # - Admin/Moderator: all non-CLOSED cases
+            # - Other authenticated (contributor): PUBLISHED + cases they are assigned to
+            if not (self.request.user and self.request.user.is_authenticated):
+                queryset = Case.objects.filter(state=CaseState.PUBLISHED)
+            elif is_admin_or_moderator(self.request.user):
+                queryset = Case.objects.exclude(state=CaseState.CLOSED)
+            else:
+                queryset = (
+                    Case.objects.exclude(state=CaseState.CLOSED)
+                    .filter(
+                        Q(state=CaseState.PUBLISHED) | Q(contributors=self.request.user)
+                    )
+                    .distinct()
+                )
 
         # Apply tag filtering if provided
         tags_param = self.request.query_params.get("tags", None)
@@ -397,6 +424,19 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         # Non-IN_REVIEW targets will be rejected with 422 below even if the
         # permission check above passes.
 
+        # Gate entity rewrite to actual /entities patch ops.
+        # _build_snapshot always includes "entities" in the snapshot, so
+        # "entities" will always be present in validated after apply_patch.
+        # Checking validated alone would wipe relationships on every PATCH.
+        entities_touched = any(
+            isinstance(op, dict)
+            and (
+                op.get("path") == "/entities"
+                or op.get("path", "").startswith("/entities/")
+            )
+            for op in patch_ops
+        )
+
         # Fields that map directly to Case model columns (updated via bulk UPDATE)
         scalar_fields = frozenset(
             [
@@ -426,27 +466,18 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             if scalar_updates:
                 Case.objects.filter(pk=pk).update(**scalar_updates)
 
-            # Persist entity relationship changes
+            # Persist entity relationship changes only when a /entities op
+            # was explicitly included — avoids unnecessary delete/recreate on
+            # scalar-only PATCHes.
             case.refresh_from_db()
-            if "alleged_entity_ids" in validated:
-                case.entity_relationships.filter(
-                    relationship_type=RelationshipType.ACCUSED
-                ).delete()
-                for entity_id in validated["alleged_entity_ids"]:
+            if entities_touched:
+                case.entity_relationships.all().delete()
+                for item in validated["entities"]:
                     CaseEntityRelationship.objects.create(
                         case=case,
-                        entity_id=entity_id,
-                        relationship_type=RelationshipType.ACCUSED,
-                    )
-            if "related_entity_ids" in validated:
-                case.entity_relationships.filter(
-                    relationship_type=RelationshipType.RELATED
-                ).delete()
-                for entity_id in validated["related_entity_ids"]:
-                    CaseEntityRelationship.objects.create(
-                        case=case,
-                        entity_id=entity_id,
-                        relationship_type=RelationshipType.RELATED,
+                        entity_id=item["entity"],
+                        relationship_type=item["relationship_type"],
+                        notes=item.get("notes") or "",
                     )
 
             case.refresh_from_db()
@@ -459,8 +490,10 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                         detail = getattr(exc, "message_dict", None) or {
                             "detail": exc.messages
                         }
+                        transaction.set_rollback(True)
                         return Response(detail, status=status.HTTP_400_BAD_REQUEST)
                 else:
+                    transaction.set_rollback(True)
                     return Response(
                         {
                             "detail": "Only transitions to IN_REVIEW are supported via this endpoint."
@@ -490,16 +523,14 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             ),
             "timeline": list(case.timeline) if case.timeline else [],
             "evidence": list(case.evidence) if case.evidence else [],
-            "alleged_entity_ids": list(
-                case.entity_relationships.filter(
-                    relationship_type=RelationshipType.ACCUSED
-                ).values_list("entity_id", flat=True)
-            ),
-            "related_entity_ids": list(
-                case.entity_relationships.filter(
-                    relationship_type=RelationshipType.RELATED
-                ).values_list("entity_id", flat=True)
-            ),
+            "entities": [
+                {
+                    "entity": rel.entity_id,
+                    "relationship_type": rel.relationship_type,
+                    "notes": rel.notes or "",
+                }
+                for rel in case.entity_relationships.all()
+            ],
             "slug": case.slug,
             "court_cases": list(case.court_cases) if case.court_cases else [],
             "missing_details": case.missing_details,

@@ -4,6 +4,8 @@ Minimal test coverage for source_type field on DocumentSource.
 Verifies field persistence, serialization, and valid enum values.
 """
 
+import datetime
+
 import pytest
 from cases.models import DocumentSource, SourceType
 
@@ -15,7 +17,9 @@ class TestSourceTypeField:
     def test_source_type_persistence(self):
         """Verify source_type field persists valid enum values."""
         source = DocumentSource.objects.create(
-            title="Test Source", source_type=SourceType.MEDIA_NEWS
+            title="Test Source",
+            source_type=SourceType.MEDIA_NEWS,
+            publication_date=datetime.date(2024, 1, 1),
         )
 
         source.refresh_from_db()
