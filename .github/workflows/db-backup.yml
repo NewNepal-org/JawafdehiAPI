@@ -36,7 +36,7 @@ jobs:
       - name: Install PostgreSQL 18 client and AWS CLI
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg awscli
+          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg unzip
 
           sudo install -d -m 0755 /etc/apt/keyrings
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
@@ -47,7 +47,25 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends postgresql-client-18
 
+          case "$(uname -m)" in
+            x86_64)
+              AWSCLI_ARCH="x86_64"
+              ;;
+            aarch64|arm64)
+              AWSCLI_ARCH="aarch64"
+              ;;
+            *)
+              echo "Unsupported architecture: $(uname -m)"
+              exit 1
+              ;;
+          esac
+
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${AWSCLI_ARCH}.zip" -o awscliv2.zip
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+
           pg_dump --version
+          aws --version
 
       - name: Dump database
         env:
