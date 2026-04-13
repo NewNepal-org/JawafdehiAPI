@@ -4,10 +4,12 @@ API ViewSets for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
+import logging
 import jsonpatch
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import connection, transaction
+from django.http import Http404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -54,6 +56,8 @@ from .serializers import (
     FeedbackSerializer,
     JawafEntitySerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -251,6 +255,84 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset.prefetch_related(
             "entity_relationships__entity",
         ).order_by("-created_at")
+
+    def get_object(self):
+        """
+        Override to support lookup by either numeric id or slug.
+
+        Lookup disambiguation:
+        - If lookup_value is purely numeric → query by id
+        - Otherwise → query by slug
+
+        Deprecation tracking:
+        - Numeric ID lookups trigger deprecation warning
+        - Sets request._used_numeric_id flag for response header
+
+        Returns:
+            Case: The retrieved case object
+
+        Raises:
+            Http404: If no case matches the lookup value
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_value = self.kwargs.get(self.lookup_field)
+
+        # Disambiguation logic
+        if lookup_value.isdigit():
+            # Numeric ID lookup (deprecated)
+            try:
+                obj = queryset.get(id=int(lookup_value))
+
+                # Track deprecation
+                self.request._used_numeric_id = True
+                self._log_numeric_id_deprecation(lookup_value)
+
+                return obj
+            except (Case.DoesNotExist, ValueError):
+                raise Http404("Not found.")
+        else:
+            # Slug lookup (preferred)
+            try:
+                obj = queryset.get(slug=lookup_value)
+                return obj
+            except Case.DoesNotExist:
+                raise Http404("Not found.")
+
+    def _log_numeric_id_deprecation(self, case_id):
+        """
+        Log deprecation warning for numeric ID access.
+
+        Args:
+            case_id: The numeric case ID used in the request
+        """
+        client_ip = self._get_client_ip()
+        logger.warning(
+            f"Deprecated numeric ID access: case_id={case_id}, ip={client_ip}"
+        )
+
+    def _get_client_ip(self):
+        """Extract client IP address from request."""
+        x_forwarded_for = self.request.META.get("HTTP_X_FORWARDED_FOR")
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(",")[0].strip()
+        else:
+            ip = self.request.META.get("REMOTE_ADDR", "unknown")
+        return ip
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        """
+        Override to add deprecation header for numeric ID lookups.
+
+        Checks for _used_numeric_id flag set by get_object() and adds
+        the Deprecation header if present.
+        """
+        response = super().finalize_response(request, response, *args, **kwargs)
+
+        # Add deprecation header if numeric ID was used
+        if getattr(request, "_used_numeric_id", False):
+            response["Deprecation"] = "true"
+
+        return response
 
     def create(self, request, *args, **kwargs):
         """
