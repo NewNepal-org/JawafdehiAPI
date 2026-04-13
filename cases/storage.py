@@ -81,8 +81,9 @@ class HashedFilenameS3Boto3Storage(S3Boto3Storage):
         """
         Return a filename that's available for the storage system.
 
-        Since we're using hashes, conflicts should be extremely rare,
-        but we still check for availability.
+        Since the filename is a deterministic hash of the original name, it is
+        always the same for a given input.  We return it directly without
+        delegating to super(), which would append a numeric/random suffix when
+        the object already exists and thereby break the deterministic guarantee.
         """
-        hashed_name = self._get_hashed_filename(name)
-        return super().get_available_name(hashed_name, max_length)
+        return self._get_hashed_filename(name)

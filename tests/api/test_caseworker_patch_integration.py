@@ -74,14 +74,36 @@ def test_patch_multi_operation_end_to_end_persists_all_changes():
             "value": {"date": "2024-03-15", "title": "Hearing scheduled"},
         },
         {
-            "op": "replace",
-            "path": "/alleged_entity_ids",
-            "value": [alleged_1.id, alleged_2.id],
+            "op": "add",
+            "path": "/entities/-",
+            "value": {
+                "entity": alleged_1.id,
+                "relationship_type": RelationshipType.ACCUSED,
+            },
         },
         {
-            "op": "replace",
-            "path": "/related_entity_ids",
-            "value": [related.id, location.id],
+            "op": "add",
+            "path": "/entities/-",
+            "value": {
+                "entity": alleged_2.id,
+                "relationship_type": RelationshipType.ACCUSED,
+            },
+        },
+        {
+            "op": "add",
+            "path": "/entities/-",
+            "value": {
+                "entity": related.id,
+                "relationship_type": RelationshipType.RELATED,
+            },
+        },
+        {
+            "op": "add",
+            "path": "/entities/-",
+            "value": {
+                "entity": location.id,
+                "relationship_type": RelationshipType.LOCATION,
+            },
         },
     ]
 
@@ -106,16 +128,19 @@ def test_patch_multi_operation_end_to_end_persists_all_changes():
             case=case,
             relationship_type=RelationshipType.ACCUSED,
         ).values_list("entity_id", flat=True)
-    ) == {
-        alleged_1.id,
-        alleged_2.id,
-    }
+    ) == {alleged_1.id, alleged_2.id}
     assert set(
         CaseEntityRelationship.objects.filter(
             case=case,
             relationship_type=RelationshipType.RELATED,
         ).values_list("entity_id", flat=True)
-    ) == {related.id, location.id}
+    ) == {related.id}
+    assert set(
+        CaseEntityRelationship.objects.filter(
+            case=case,
+            relationship_type=RelationshipType.LOCATION,
+        ).values_list("entity_id", flat=True)
+    ) == {location.id}
 
 
 @pytest.mark.django_db

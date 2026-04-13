@@ -167,8 +167,8 @@ class TestTokenAuthDraftCases:
         assert response.data["case_id"] == case.case_id
         assert response.data["state"] == CaseState.IN_REVIEW
 
-    def test_list_endpoint_only_shows_published(self):
-        """List endpoint should only show PUBLISHED cases regardless of authorization."""
+    def test_list_endpoint_shows_published_and_assigned_for_contributor(self):
+        """Contributor list view should include PUBLISHED and their assigned draft cases."""
         # Create cases in different states
         draft_case = create_case_with_entities(
             title="Draft Case",
@@ -198,6 +198,6 @@ class TestTokenAuthDraftCases:
         assert response.status_code == 200
         case_ids = [c["case_id"] for c in response.data["results"]]
 
-        # Only published case should appear
+        # Contributor should see published + assigned draft case
         assert published_case.case_id in case_ids
-        assert draft_case.case_id not in case_ids
+        assert draft_case.case_id in case_ids
