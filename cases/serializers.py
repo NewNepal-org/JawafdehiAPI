@@ -360,6 +360,7 @@ class DocumentSourceSerializer(serializers.ModelSerializer):
             "description",
             "source_type",
             "url",
+            "publication_date",
             "created_at",
             "updated_at",
         ]
@@ -521,6 +522,13 @@ class JawafEntityCreateSerializer(serializers.ModelSerializer):
 class DocumentSourceCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating DocumentSource records with file uploads via API."""
 
+    url = serializers.ListField(
+        child=serializers.URLField(),
+        required=False,
+        default=list,
+        help_text="List of external URLs for this source (e.g. original article link)",
+    )
+
     class Meta:
         model = DocumentSource
         fields = [
@@ -529,9 +537,29 @@ class DocumentSourceCreateSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "source_type",
+            "url",
+            "publication_date",
             "uploaded_file",
         ]
         read_only_fields = ["id", "source_id"]
+
+    def to_internal_value(self, data):
+        """
+        Handle the url field arriving as a JSON-encoded string from multipart/form-data.
+
+        When the API is called via multipart, the url list must be submitted as a
+        JSON string (e.g. '["https://example.com"]'). This method parses it back into
+        a Python list before normal validation runs.
+        """
+        import json as _json
+
+        if isinstance(data, dict) and "url" in data and isinstance(data["url"], str):
+            try:
+                data = data.copy()
+                data["url"] = _json.loads(data["url"])
+            except (_json.JSONDecodeError, ValueError):
+                pass
+        return super().to_internal_value(data)
 
     def validate_title(self, value):
         if not value or not value.strip():

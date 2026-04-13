@@ -53,13 +53,15 @@ def validate_url_list(value):
 
 
 # File upload configuration
-ALLOWED_UPLOAD_EXTENSIONS = ["pdf", "doc", "docx", "jpg", "jpeg", "png"]
+ALLOWED_UPLOAD_EXTENSIONS = ["pdf", "doc", "docx", "jpg", "jpeg", "png", "md", "txt"]
 ALLOWED_UPLOAD_MIMETYPES = [
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "image/jpeg",
     "image/png",
+    "text/plain",
+    "text/markdown",
 ]
 MAX_UPLOAD_FILE_SIZE = 10 * 1024 * 1024  # 10 MB in bytes
 
@@ -790,6 +792,13 @@ class DocumentSource(models.Model):
         help_text="Contributors assigned to manage this source",
     )
 
+    # Publication date (for media/news sources)
+    publication_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Publication date of the source (required for news/media sources)",
+    )
+
     # Soft deletion
     is_deleted = models.BooleanField(
         default=False, db_index=True, help_text="Soft deletion flag"
@@ -823,6 +832,14 @@ class DocumentSource(models.Model):
             self.url = [
                 url.strip() if isinstance(url, str) else url for url in self.url
             ]
+
+        # Enforce publication_date for media/news sources
+        if self.source_type == SourceType.MEDIA_NEWS and not self.publication_date:
+            raise ValidationError(
+                {
+                    "publication_date": "Publication date is required for media/news sources"
+                }
+            )
 
     def save(self, *args, **kwargs):
         """Override save to generate source_id and validate all fields."""

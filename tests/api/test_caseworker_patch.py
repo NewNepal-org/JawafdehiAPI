@@ -171,7 +171,7 @@ def test_patch_remove_timeline_item():
 
 
 @pytest.mark.django_db
-def test_patch_replace_alleged_entity_ids():
+def test_patch_add_entity_with_relationship_type():
     user = _contributor("kiran")
     case = _make_case()
     case.contributors.add(user)
@@ -180,20 +180,55 @@ def test_patch_replace_alleged_entity_ids():
     client = _authed_client(user)
     response = client.patch(
         URL.format(case.pk),
-        data=[{"op": "replace", "path": "/alleged_entity_ids", "value": [entity.pk]}],
+        data=[
+            {
+                "op": "add",
+                "path": "/entities/-",
+                "value": {
+                    "entity": entity.pk,
+                    "relationship_type": RelationshipType.ACCUSED,
+                },
+            }
+        ],
         format="json",
     )
     assert response.status_code == 200
-    alleged_ids = [
-        e["id"]
-        for e in response.data["entities"]
-        if e["type"] == RelationshipType.ACCUSED
-    ]
-    assert entity.pk in alleged_ids
-    case.refresh_from_db()
+    entity_types = [e["type"] for e in response.data["entities"]]
+    assert RelationshipType.ACCUSED in entity_types
     assert CaseEntityRelationship.objects.filter(
         case=case, entity=entity, relationship_type=RelationshipType.ACCUSED
     ).exists()
+
+
+@pytest.mark.django_db
+def test_patch_add_location_entity():
+    user = _contributor("kiran-loc")
+    case = _make_case()
+    case.contributors.add(user)
+    entity = JawafEntity.objects.create(display_name="Kathmandu")
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.pk),
+        data=[
+            {
+                "op": "add",
+                "path": "/entities/-",
+                "value": {
+                    "entity": entity.pk,
+                    "relationship_type": RelationshipType.LOCATION,
+                    "notes": "Primary location",
+                },
+            }
+        ],
+        format="json",
+    )
+    assert response.status_code == 200
+    entity_types = [e["type"] for e in response.data["entities"]]
+    assert RelationshipType.LOCATION in entity_types
+    rel = CaseEntityRelationship.objects.get(case=case, entity=entity)
+    assert rel.relationship_type == RelationshipType.LOCATION
+    assert rel.notes == "Primary location"
 
 
 @pytest.mark.django_db
@@ -358,7 +393,42 @@ def test_patch_422_for_nonexistent_entity_id():
     client = _authed_client(user)
     response = client.patch(
         URL.format(case.pk),
-        data=[{"op": "replace", "path": "/alleged_entity_ids", "value": [999999]}],
+        data=[
+            {
+                "op": "add",
+                "path": "/entities/-",
+                "value": {"entity": 999999, "relationship_type": "accused"},
+            }
+        ],
         format="json",
     )
     assert response.status_code == 422
+
+
+@pytest.mark.django_db
+def test_patch_scalar_only_does_not_touch_entity_relationships():
+    """Scalar-only PATCH must not delete/recreate entity relationships."""
+    user = _contributor("binod")
+    case = _make_case()
+    case.contributors.add(user)
+
+    entity = JawafEntity.objects.create(display_name="Bijaya Shumsher")
+    CaseEntityRelationship.objects.create(
+        case=case,
+        entity=entity,
+        relationship_type=RelationshipType.ACCUSED,
+    )
+    rel_pk_before = CaseEntityRelationship.objects.get(case=case, entity=entity).pk
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.pk),
+        data=[{"op": "replace", "path": "/title", "value": "Updated Title"}],
+        format="json",
+    )
+    assert response.status_code == 200
+    # The relationship row must be the exact same DB row (same pk).
+    rel_pk_after = CaseEntityRelationship.objects.get(case=case, entity=entity).pk
+    assert (
+        rel_pk_before == rel_pk_after
+    ), "Scalar-only PATCH must not delete and recreate entity relationships"
