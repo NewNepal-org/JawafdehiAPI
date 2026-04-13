@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import List
@@ -22,6 +23,7 @@ from case_workflows.workflow import Workflow, WorkflowStep
 
 logger = logging.getLogger(__name__)
 
+_WORK_DIR_ENV = "JAWAFDEHI_ALLOWED_WORK_DIR"
 TEMPLATE_DIR = Path(__file__).resolve().parent
 
 _SYSTEM_PROMPT = """\
@@ -67,6 +69,21 @@ def download_file(url: str, output_path: str) -> str:
         A message reporting the number of bytes written, or an error description.
     """
     try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme.lower() not in {"http", "https"}:
+            return f"Unsupported URL scheme for download: {parsed.scheme or '(none)'}"
+
+        out = Path(output_path).resolve()
+        allowed_work_dir = os.environ.get(_WORK_DIR_ENV)
+        if allowed_work_dir:
+            base = Path(allowed_work_dir).resolve()
+            if not base.is_dir():
+                return f"Configured work directory is invalid: {base}"
+            try:
+                out.relative_to(base)
+            except ValueError:
+                return f"Output path is outside allowed work directory: {out} (base: {base})"
+
         req = urllib.request.Request(
             url,
             headers={
@@ -75,10 +92,10 @@ def download_file(url: str, output_path: str) -> str:
         )
         with urllib.request.urlopen(req) as response:
             data = response.read()
-        out = Path(output_path)
+
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_bytes(data)
-        return f"Downloaded {len(data):,} bytes to {output_path}"
+        return f"Downloaded {len(data):,} bytes to {out}"
     except urllib.error.HTTPError as exc:
         return f"HTTP error {exc.code} downloading {url}: {exc.reason}"
     except urllib.error.URLError as exc:

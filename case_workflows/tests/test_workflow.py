@@ -3,12 +3,14 @@ Tests for workflow registry and ABC contract.
 """
 
 import re
+from unittest.mock import patch
 
 import pytest
 
 from case_workflows.output import _utc_timestamp
 from case_workflows.registry import get_workflow, list_workflows
 from case_workflows.workflow import Workflow, WorkflowStep
+from case_workflows.workflows.ciaa_caseworker.workflow import download_file
 
 
 class TestWorkflowStep:
@@ -214,3 +216,42 @@ class TestWorkflowRegistry:
         assert "Run the planned query wave" in instructions
         assert "### Recommended tags" in instructions
         assert "`CIAA`" in instructions
+
+
+class TestCIAADownloadFileTool:
+    def test_rejects_unsupported_url_scheme(self):
+        result = download_file.func("file:///etc/passwd", "/tmp/output.txt")
+
+        assert "Unsupported URL scheme" in result
+
+    def test_rejects_output_path_outside_allowed_dir(self, tmp_path, monkeypatch):
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        outside = tmp_path / "outside.txt"
+        monkeypatch.setenv("JAWAFDEHI_ALLOWED_WORK_DIR", str(allowed))
+
+        result = download_file.func("https://example.com/file.txt", str(outside))
+
+        assert "outside allowed work directory" in result
+
+    def test_accepts_output_path_inside_allowed_dir(self, tmp_path, monkeypatch):
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        target = allowed / "file.txt"
+        monkeypatch.setenv("JAWAFDEHI_ALLOWED_WORK_DIR", str(allowed))
+
+        class _FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b"hello"
+
+        with patch("urllib.request.urlopen", return_value=_FakeResponse()):
+            result = download_file.func("https://example.com/file.txt", str(target))
+
+        assert "Downloaded" in result
+        assert target.read_bytes() == b"hello"

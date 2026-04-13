@@ -9,6 +9,7 @@ OUTPUT_DIR = ".agents/caseworker/data"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "ciaa-press-releases.csv")
 
 FIELDS = ["press_id", "publication_date", "title", "source_url"]
+DEFAULT_TIMEOUT = 30
 
 
 def fetch_all_manuscripts(index_url):
@@ -16,8 +17,16 @@ def fetch_all_manuscripts(index_url):
     url = index_url
     while url:
         print(f"Fetching: {url}")
-        resp = requests.get(url)
-        resp.raise_for_status()
+        try:
+            resp = requests.get(url, timeout=DEFAULT_TIMEOUT)
+            resp.raise_for_status()
+        except requests.exceptions.Timeout as exc:
+            raise RuntimeError(
+                f"Timed out after {DEFAULT_TIMEOUT}s while fetching {url}"
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            raise RuntimeError(f"Request failed for {url}: {exc}") from exc
+
         data = resp.json()
         manuscripts.extend(data.get("manuscripts", []))
         url = data.get("next")

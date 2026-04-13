@@ -16,27 +16,22 @@ import urllib3
 # Request timeout in seconds (connect, read)
 DEFAULT_TIMEOUT = (10, 60)
 
-# SSL verification is disabled by default for bolpatra.gov.np due to certificate issues
-# The government website has a misconfigured certificate chain that prevents downloads
-# Set ENFORCE_SSL_VERIFICATION=1 to enable strict certificate validation (will likely fail)
-ENFORCE_SSL_VERIFICATION = os.environ.get("ENFORCE_SSL_VERIFICATION", "").lower() in (
+# TLS verification is enabled by default.
+# Use INSECURE_SKIP_SSL=1 only when endpoints are known to be misconfigured.
+INSECURE_SKIP_SSL = os.environ.get("INSECURE_SKIP_SSL", "").lower() in (
     "1",
     "true",
     "yes",
 )
 
-if not ENFORCE_SSL_VERIFICATION:
+if INSECURE_SKIP_SSL:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     print(
-        "   WARNING: TLS certificate verification is disabled for bolpatra.gov.np",
+        "   WARNING: TLS certificate verification disabled via INSECURE_SKIP_SSL",
         file=sys.stderr,
     )
     print(
-        "   This is necessary due to the government website's SSL certificate issues.",
-        file=sys.stderr,
-    )
-    print(
-        "   Set ENFORCE_SSL_VERIFICATION=1 to enable (downloads will likely fail).\n",
+        "   Use this only for temporary troubleshooting on trusted networks.\n",
         file=sys.stderr,
     )
 
@@ -56,10 +51,8 @@ class BolpatraFetcher:
             }
         )
 
-        # Disable SSL verification by default due to bolpatra.gov.np certificate issues
-        # Can be overridden with ENFORCE_SSL_VERIFICATION=1 environment variable
-        if not ENFORCE_SSL_VERIFICATION:
-            self.session.verify = False
+        # Keep TLS verification on by default; allow explicit insecure override.
+        self.session.verify = not INSECURE_SKIP_SSL
 
         # Default output directory relative to script location
         if output_dir is None:
@@ -239,19 +232,49 @@ class BolpatraFetcher:
         print(f"Downloading: {filename}")
 
         try:
-            response = self.session.get(url, stream=True, timeout=DEFAULT_TIMEOUT)
-            response.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            print(f"  Error downloading from {url}: {e}")
-            return None
+            with self.session.get(
+                url, stream=True, timeout=DEFAULT_TIMEOUT
+            ) as response:
+                response.raise_for_status()
 
-        try:
-            with open(filepath, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
+                content_type = response.headers.get("Content-Type", "").lower()
+                if content_type and not (
+                    "application/pdf" in content_type
+                    or "application/octet-stream" in content_type
+                ):
+                    print(
+                        f"  Unexpected content type for {url}: {content_type}; skipping"
+                    )
+                    return None
+
+                iterator = response.iter_content(chunk_size=8192)
+                first_chunk = b""
+                for chunk in iterator:
+                    if chunk:
+                        first_chunk = chunk
+                        break
+
+                if not first_chunk:
+                    print(f"  Empty response body for {url}; skipping")
+                    return None
+
+                if not first_chunk.startswith(b"%PDF"):
+                    print(
+                        f"  Response for {url} is not a valid PDF (missing %PDF signature); skipping"
+                    )
+                    return None
+
+                with open(filepath, "wb") as f:
+                    f.write(first_chunk)
+                    for chunk in iterator:
+                        if chunk:
+                            f.write(chunk)
 
             print(f"  Saved to: {filepath}")
             return filepath
+        except requests.exceptions.RequestException as e:
+            print(f"  Error downloading from {url}: {e}")
+            return None
         except OSError as e:
             print(f"  File I/O error writing to {filepath}: {e}")
             # Clean up partial file

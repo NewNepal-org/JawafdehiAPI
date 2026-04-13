@@ -189,7 +189,20 @@ def main() -> None:
     for year in years:
         logger.info(f"Year {year}:")
         for month in range(1, 13):
-            sheets = fetch_charge_sheets_for_month(year, month)
+            try:
+                sheets = fetch_charge_sheets_for_month(year, month)
+            except RuntimeError as exc:
+                month_id = calculate_month_id(year, month)
+                logger.warning(
+                    "  Month %2d (month_id=%d) failed: %s. Continuing.",
+                    month,
+                    month_id,
+                    exc,
+                )
+                # Keep scraping other months even if one month fails.
+                time.sleep(0.5)
+                continue
+
             if sheets:
                 logger.info(f"  Month {month:2d}: {len(sheets)} charge sheets")
                 for sheet in sheets:
