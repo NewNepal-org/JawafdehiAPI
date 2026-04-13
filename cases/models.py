@@ -833,6 +833,14 @@ class DocumentSource(models.Model):
                 url.strip() if isinstance(url, str) else url for url in self.url
             ]
 
+        # Enforce publication_date for media/news sources
+        if self.source_type == SourceType.MEDIA_NEWS and not self.publication_date:
+            raise ValidationError(
+                {
+                    "publication_date": "Publication date is required for media/news sources"
+                }
+            )
+
     def save(self, *args, **kwargs):
         """Override save to generate source_id and validate all fields."""
         if not self.source_id:

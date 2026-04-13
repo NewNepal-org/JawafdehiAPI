@@ -143,11 +143,19 @@ def create_entities_from_ids(entity_ids):
     if not entity_ids:
         return []
 
-    # Insert any missing entities in one batch, ignoring already-existing ones.
-    JawafEntity.objects.bulk_create(
-        [JawafEntity(nes_id=nid) for nid in entity_ids],
-        ignore_conflicts=True,
+    # Determine which ids already exist in one query to avoid re-saving them.
+    existing_ids = set(
+        JawafEntity.objects.filter(nes_id__in=entity_ids).values_list(
+            "nes_id", flat=True
+        )
     )
+    # Save only new entities, going through full_clean() so that NES's
+    # validate_entity_id() runs and malformed ids are caught in tests.
+    for nid in entity_ids:
+        if nid not in existing_ids:
+            entity = JawafEntity(nes_id=nid)
+            entity.full_clean()
+            entity.save()
     # Fetch all requested entities in a single query and preserve order.
     by_id = {e.nes_id: e for e in JawafEntity.objects.filter(nes_id__in=entity_ids)}
     return [by_id[nid] for nid in entity_ids]

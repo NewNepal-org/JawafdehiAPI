@@ -424,6 +424,19 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         # Non-IN_REVIEW targets will be rejected with 422 below even if the
         # permission check above passes.
 
+        # Gate entity rewrite to actual /entities patch ops.
+        # _build_snapshot always includes "entities" in the snapshot, so
+        # "entities" will always be present in validated after apply_patch.
+        # Checking validated alone would wipe relationships on every PATCH.
+        entities_touched = any(
+            isinstance(op, dict)
+            and (
+                op.get("path") == "/entities"
+                or op.get("path", "").startswith("/entities/")
+            )
+            for op in patch_ops
+        )
+
         # Fields that map directly to Case model columns (updated via bulk UPDATE)
         scalar_fields = frozenset(
             [
@@ -453,9 +466,11 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             if scalar_updates:
                 Case.objects.filter(pk=pk).update(**scalar_updates)
 
-            # Persist entity relationship changes
+            # Persist entity relationship changes only when a /entities op
+            # was explicitly included — avoids unnecessary delete/recreate on
+            # scalar-only PATCHes.
             case.refresh_from_db()
-            if "entities" in validated:
+            if entities_touched:
                 case.entity_relationships.all().delete()
                 for item in validated["entities"]:
                     CaseEntityRelationship.objects.create(
@@ -475,8 +490,10 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                         detail = getattr(exc, "message_dict", None) or {
                             "detail": exc.messages
                         }
+                        transaction.set_rollback(True)
                         return Response(detail, status=status.HTTP_400_BAD_REQUEST)
                 else:
+                    transaction.set_rollback(True)
                     return Response(
                         {
                             "detail": "Only transitions to IN_REVIEW are supported via this endpoint."

@@ -403,3 +403,32 @@ def test_patch_422_for_nonexistent_entity_id():
         format="json",
     )
     assert response.status_code == 422
+
+
+@pytest.mark.django_db
+def test_patch_scalar_only_does_not_touch_entity_relationships():
+    """Scalar-only PATCH must not delete/recreate entity relationships."""
+    user = _contributor("binod")
+    case = _make_case()
+    case.contributors.add(user)
+
+    entity = JawafEntity.objects.create(display_name="Bijaya Shumsher")
+    CaseEntityRelationship.objects.create(
+        case=case,
+        entity=entity,
+        relationship_type=RelationshipType.ACCUSED,
+    )
+    rel_pk_before = CaseEntityRelationship.objects.get(case=case, entity=entity).pk
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.pk),
+        data=[{"op": "replace", "path": "/title", "value": "Updated Title"}],
+        format="json",
+    )
+    assert response.status_code == 200
+    # The relationship row must be the exact same DB row (same pk).
+    rel_pk_after = CaseEntityRelationship.objects.get(case=case, entity=entity).pk
+    assert (
+        rel_pk_before == rel_pk_after
+    ), "Scalar-only PATCH must not delete and recreate entity relationships"
