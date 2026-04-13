@@ -96,7 +96,18 @@ class CaseWorkflowRun(models.Model):
     def mark_started(self):
         """Record that execution has begun."""
         self.started_at = timezone.now()
-        self.save(update_fields=["started_at", "updated_at"])
+        self.has_failed = False
+        self.error_message = ""
+        self.completed_at = None
+        self.save(
+            update_fields=[
+                "started_at",
+                "has_failed",
+                "error_message",
+                "completed_at",
+                "updated_at",
+            ]
+        )
 
     def mark_complete(self, case_data: dict | None = None):
         """Record successful completion."""

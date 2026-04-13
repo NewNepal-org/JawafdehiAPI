@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -27,6 +28,8 @@ if TYPE_CHECKING:
     from case_workflows.models import CaseWorkflowRun
 
 logger = logging.getLogger(__name__)
+
+_WORK_DIR_ENV = "JAWAFDEHI_ALLOWED_WORK_DIR"
 
 
 def _patch_gemini_null_properties() -> None:
@@ -403,7 +406,6 @@ class Workflow(ABC):
         printer: Optional[WorkflowPrinter] = None,
         resume_from_step: Optional[str] = None,
     ) -> None:
-        import os
 
         from deepagents import create_deep_agent
         from deepagents.backends import FilesystemBackend
@@ -621,6 +623,8 @@ class Workflow(ABC):
                     )
 
                     try:
+                        previous_allowed_work_dir = os.environ.get(_WORK_DIR_ENV)
+                        os.environ[_WORK_DIR_ENV] = str(case_dir.resolve())
                         created_files: list[str] = []
                         if verbose:
                             async for event in agent.astream_events(
@@ -727,6 +731,11 @@ class Workflow(ABC):
                                 logger.warning(retry_msg)
                             continue
                         raise
+                    finally:
+                        if previous_allowed_work_dir is None:
+                            os.environ.pop(_WORK_DIR_ENV, None)
+                        else:
+                            os.environ[_WORK_DIR_ENV] = previous_allowed_work_dir
 
             # All steps done
             state["is_complete"] = True

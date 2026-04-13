@@ -238,6 +238,7 @@ def build_file_record(local_path: Path, backend_path: str) -> dict:
 
 def record_downloaded_files(
     progress_data: dict,
+    case_id: str,
     case_dir: Path,
     local_paths: list[Path],
 ) -> dict:
@@ -277,10 +278,10 @@ def record_downloaded_files(
             rel_path = abs_path  # type: ignore[assignment]
 
         rel_str = str(rel_path)
-        # Derive a backend path that mirrors the work directory layout.
-        # We prefix with a placeholder case_id token; callers who know the
-        # case_id can pass it via ``upload_workflow_outputs`` directly.
-        storage_name = f"{_WORKFLOW_OUTPUTS_PREFIX}/{rel_path.as_posix()}"
+        # Namespace storage by case_id to prevent collisions across cases.
+        storage_name = (
+            f"{_WORKFLOW_OUTPUTS_PREFIX}/{case_id}/sources/{rel_path.as_posix()}"
+        )
 
         try:
             with open(abs_path, "rb") as fh:

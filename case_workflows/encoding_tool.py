@@ -8,13 +8,34 @@ encoding in markdown and text files during workflow execution.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_WORK_DIR_ENV = "JAWAFDEHI_ALLOWED_WORK_DIR"
 
-def fix_file_encoding(file_path: str, encoding: str = "utf-8") -> dict[str, Any]:
+
+def _validate_within_base(file_path: Path, allow_base_path: str) -> str | None:
+    """Return an error string when file_path escapes allow_base_path."""
+    base = Path(allow_base_path).resolve()
+    if not base.is_dir():
+        return f"Allowed base path is not a directory: {base}"
+
+    try:
+        file_path.resolve().relative_to(base)
+    except ValueError:
+        return f"Path {file_path.resolve()} is outside allowed base directory {base}"
+
+    return None
+
+
+def fix_file_encoding(
+    file_path: str,
+    encoding: str = "utf-8",
+    allow_base_path: str | None = None,
+) -> dict[str, Any]:
     """Validate and repair invalid encoding in a text file.
 
     This tool is callable by workflow agents to fix encoding problems in files
@@ -42,6 +63,17 @@ def fix_file_encoding(file_path: str, encoding: str = "utf-8") -> dict[str, Any]
         if not file_p.is_absolute():
             # If relative, assume it's relative to cwd; resolve to absolute
             file_p = file_p.resolve()
+
+        if allow_base_path:
+            base_error = _validate_within_base(file_p, allow_base_path)
+            if base_error:
+                return {
+                    "status": "error",
+                    "file_path": str(file_p.resolve()),
+                    "encoding": encoding,
+                    "details": base_error,
+                    "bytes_invalid": 0,
+                }
 
         if not file_p.exists():
             return {
@@ -128,6 +160,11 @@ def create_fix_encoding_tool():
         Returns:
             Status report: {status, file_path, encoding, details, bytes_invalid}
         """
-        return fix_file_encoding(file_path, encoding)
+        allow_base_path = os.environ.get(_WORK_DIR_ENV)
+        return fix_file_encoding(
+            file_path,
+            encoding,
+            allow_base_path=allow_base_path,
+        )
 
     return fix_encoding

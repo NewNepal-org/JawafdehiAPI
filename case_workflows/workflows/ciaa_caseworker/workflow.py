@@ -138,6 +138,19 @@ def _jawafdehi_server() -> dict:
     }
 
 
+def _render_instruction_tokens(case_dir: Path, case_number: str) -> None:
+    """Replace instruction placeholder tokens with runtime case values."""
+    instructions_dir = case_dir / "instructions"
+    if not instructions_dir.is_dir():
+        return
+
+    for md_file in instructions_dir.rglob("*.md"):
+        text = md_file.read_text(encoding="utf-8")
+        rendered = text.replace("{{CASE_NUMBER}}", case_number)
+        if rendered != text:
+            md_file.write_text(rendered, encoding="utf-8")
+
+
 @register
 class CIAACaseworkerWorkflow(Workflow):
     """
@@ -578,6 +591,7 @@ All patch operations for these fields can be combined into a single patch_jawafd
         instructions_src = TEMPLATE_DIR / "instructions"
         if instructions_src.is_dir():
             shutil.copytree(instructions_src, case_dir / "instructions")
+            _render_instruction_tokens(case_dir, case_dir.name)
             logger.info("Copied instructions to %s/instructions/", case_dir)
 
         data_src = TEMPLATE_DIR / "data"

@@ -39,7 +39,7 @@ Any temporary files, drafts, or exported evidence for the case should be generat
 Use the `ngm_extract_case_data` tool to extract the full case data from the NGM database. You must save it in the casework folder as `sources/case_<case_number>_<date-time>.md`.
 
 ### CIAA Press releases
-Find the CIAA press release for Special court case 081-CR-0123.
+Find the CIAA press release for Special court case {{CASE_NUMBER}}.
 
 The CIAA press releases are located at URLs like https://ciaa.gov.np/pressrelease/2000. The press release ID seems to be sorted in ascending order.
 
@@ -60,7 +60,7 @@ Once you find the URL, check for .doc, .docx, or .pdf files in the web page. Use
 
 ### Charge sheet.
 
-Get the charge sheet for Special court case 081-CR-0123.
+Get the charge sheet for Special court case {{CASE_NUMBER}}.
 
 It needs to be collected from Attorney General website located at https://ag.gov.np/abhiyog.
 
@@ -230,7 +230,7 @@ Avoid padding the source set with many near-duplicate filing stories that add no
 
 For each case, run at least these variations:
 
-- CIAA court case number alone, e.g. `081-CR-0123 Nepal`
+- CIAA court case number alone, e.g. `{{CASE_NUMBER}} Nepal`
 - Primary defendant name(s) in Nepali + `भ्रष्टाचार` or `विशेष अदालत`
 - Defendant name(s) in romanised form + `CIAA corruption Nepal`
 - Project or organisation name from the charge sheet + `Nepal`
@@ -318,7 +318,7 @@ Use the `create_jawafdehi_case` MCP tool with at minimum `title` and `case_type`
 You should also pass `short_description` if available.
 
 **Title format:** The title must be in Nepali and end with the CIAA/Special Court case number in parentheses, e.g.:
-> नागार्जुन नगरपालिकाका नगर प्रमुख मोहन बहादुर बस्नेतविरुद्ध घुस रिसवत र सम्पत्ति शुद्धीकरण सम्बन्धी भ्रष्टाचार केस (081-CR-0123)
+> नागार्जुन नगरपालिकाका नगर प्रमुख मोहन बहादुर बस्नेतविरुद्ध घुस रिसवत र सम्पत्ति शुद्धीकरण सम्बन्धी भ्रष्टाचार केस ({{CASE_NUMBER}})
 
 The tool returns a JSON object. Record the integer `id` field (e.g. `42`) in `MEMORY.md` as the
 **numeric Jawafdehi case ID**. This ID is required for all subsequent patch and upload operations.
@@ -382,7 +382,7 @@ file directly from disk — pass an absolute `file_path`, not base64 content.
 > case numbers, URLs, and numeric values may remain in English or their original form.
 >
 > Example for a charge sheet:
-> - Source description: `"अख्तियार दुरुपयोग अनुसन्धान आयोगद्वारा विशेष अदालतमा दायर गरिएको अभियोग पत्र — मुद्दा 081-CR-0123, मिति २०८१-०५-१५, प्रतिवादी Ram Prasad Sharma"`
+> - Source description: `"अख्तियार दुरुपयोग अनुसन्धान आयोगद्वारा विशेष अदालतमा दायर गरिएको अभियोग पत्र — मुद्दा {{CASE_NUMBER}}, मिति २०८१-०५-१५, प्रतिवादी Ram Prasad Sharma"`
 > - Evidence description: `"यो अभियोग पत्रले घुसखोरीको आरोप र रु. ९.२२ करोडको बिगो रकम पुष्टि गर्दछ।"`
 
 **Supported extensions for raw sources**: `.pdf`, `.doc`, `.docx`, `.jpg`, `.jpeg`
@@ -452,7 +452,7 @@ is missing from `draft.md`:
 - `/tags` — list of English tags
 - `/key_allegations` — list of allegations
 - `/case_start_date`, `/case_end_date` — ISO 8601 dates
-- `/court_cases` — list of strings in `"{court_identifier}:{case_number}"` format, e.g. `["special:081-CR-0123"]`. Read `court_identifier` and the case number from the NGM case data file (`case_details-*.md`). Omit if `court_identifier` is unknown.
+- `/court_cases` — list of strings in `"{court_identifier}:{case_number}"` format, e.g. `["special:{{CASE_NUMBER}}"]`. Read `court_identifier` and the case number from the NGM case data file (`case_details-*.md`). Omit if `court_identifier` is unknown.
 - `/bigo` — integer NPR amount from the **Bigo Amount** field in `draft.md`. Must be a plain integer (no commas or currency symbols), e.g. `15880000`. Omit if blank or unknown.
 - `/missing_details` — freetext string compiled from the unchecked items in the **Missing Details** section of `draft.md`. Omit if all items are checked or the section is empty.
 

@@ -10,7 +10,7 @@
 
 - **Case Type:** CORRUPTION  <!-- CORRUPTION | OTHER -->
 - **State:** DRAFT  <!-- DRAFT | IN_REVIEW -->
-- **Title:** <!-- Nepali title with the CIAA/Special Court case number as a suffix in parentheses, e.g. "राष्ट्रिय सूचना प्रविधि केन्द्रमा High Compute Infrastructure खरिदमा भ्रष्टाचार (081-CR-0123)" -->
+- **Title:** <!-- Nepali title with the CIAA/Special Court case number as a suffix in parentheses, e.g. "राष्ट्रिय सूचना प्रविधि केन्द्रमा High Compute Infrastructure खरिदमा भ्रष्टाचार ({{CASE_NUMBER}})" -->
 - **Case Start Date:** <!-- AD date (YYYY-MM-DD) — typically the CIAA decision/filing date -->
 - **Case End Date:** <!-- AD date if closed; leave blank if still active -->
 - **Bigo Amount:** <!-- Integer NPR amount of disputed/embezzled funds (बिगो), e.g. 15880000. Leave blank if unknown. -->
@@ -96,7 +96,7 @@ Each **source** has two distinct description fields:
 ### 1. [Document Title]
 
 - **Type:** OFFICIAL_GOVERNMENT
-- **Source Description:** <!-- Nepali. What this document is: e.g. "अख्तियारद्वारा विशेष अदालतमा दायर गरिएको अभियोग पत्र — मुद्दा 081-CR-0123, मिति २०८१-०५-१५, प्रतिवादी Ram Prasad Sharma" -->
+- **Source Description:** <!-- Nepali. What this document is: e.g. "अख्तियारद्वारा विशेष अदालतमा दायर गरिएको अभियोग पत्र — मुद्दा {{CASE_NUMBER}}, मिति २०८१-०५-१५, प्रतिवादी Ram Prasad Sharma" -->
 - **Evidence Description:** <!-- Nepali. How it supports this case: e.g. "यो अभियोग पत्रले घुसखोरीको आरोप र रु. ९.२२ करोडको बिगो रकम पुष्टि गर्दछ।" -->
 - **URL:** <!-- https://s3.jawafdehi.org/case_uploads/... or web URL -->
 

@@ -238,7 +238,9 @@ class TestRecordDownloadedFiles:
         mock_storage.save.side_effect = lambda name, _fh: name
 
         with patch("case_workflows.storage_utils.default_storage", mock_storage):
-            result = record_downloaded_files(progress_data, tmp_path, [f])
+            result = record_downloaded_files(
+                progress_data, "case-abc123", tmp_path, [f]
+            )
 
         assert "files" in result
         assert "ciaa.pdf" in result["files"]
@@ -254,10 +256,12 @@ class TestRecordDownloadedFiles:
         mock_storage.save.side_effect = lambda name, _fh: name
 
         with patch("case_workflows.storage_utils.default_storage", mock_storage):
-            result = record_downloaded_files(progress_data, tmp_path, [f])
+            result = record_downloaded_files(progress_data, "case-test", tmp_path, [f])
 
         record = result["files"]["charge-sheet.pdf"]
         assert "backend_path" in record
+        assert "case-test" in record["backend_path"]
+        assert "/sources/" in record["backend_path"]
         assert "size" in record
         assert record["size"] == len(content)
         assert "checksum" in record
@@ -269,7 +273,9 @@ class TestRecordDownloadedFiles:
         progress_data: dict = {}
 
         with patch("case_workflows.storage_utils.default_storage", MagicMock()):
-            result = record_downloaded_files(progress_data, tmp_path, [ghost])
+            result = record_downloaded_files(
+                progress_data, "case-skip", tmp_path, [ghost]
+            )
 
         assert result.get("files", {}) == {}
 
@@ -291,7 +297,7 @@ class TestRecordDownloadedFiles:
         mock_storage.save.side_effect = lambda name, _fh: name
 
         with patch("case_workflows.storage_utils.default_storage", mock_storage):
-            result = record_downloaded_files(progress_data, tmp_path, [f])
+            result = record_downloaded_files(progress_data, "case-mut", tmp_path, [f])
 
         assert "old.pdf" in result["files"]
         assert "new.pdf" in result["files"]
@@ -307,12 +313,13 @@ class TestRecordDownloadedFiles:
         progress_data: dict = {}
 
         with patch("case_workflows.storage_utils.default_storage", mock_storage):
-            result = record_downloaded_files(progress_data, tmp_path, [f])
+            result = record_downloaded_files(progress_data, "case-err", tmp_path, [f])
 
         # Record should still exist (with intended path as fallback)
         record = result["files"].get("fallback.pdf")
         assert record is not None
         assert "backend_path" in record
+        assert "case-err" in record["backend_path"]
 
 
 # ---------------------------------------------------------------------------

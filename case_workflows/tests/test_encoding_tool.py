@@ -60,14 +60,12 @@ class TestFixFileEncoding:
         assert result["status"] == "error"
         assert "does not exist" in result["details"]
 
-    def test_relative_path_is_resolved(self, tmp_path):
+    def test_relative_path_is_resolved(self, tmp_path, monkeypatch):
         """Relative paths are resolved to absolute."""
         f = tmp_path / "test.md"
         f.write_text("नेपाल", encoding="utf-8")
 
-        import os
-
-        os.chdir(tmp_path)
+        monkeypatch.chdir(tmp_path)
 
         result = fix_file_encoding("test.md")
 
@@ -85,6 +83,48 @@ class TestFixFileEncoding:
         assert result["status"] == "ok"
         recovered = f.read_text(encoding="utf-8")
         assert recovered == original
+
+    def test_allow_base_path_rejects_outside_target(self, tmp_path):
+        """Path outside allow_base_path is rejected."""
+        inside = tmp_path / "inside"
+        inside.mkdir()
+        outside = tmp_path / "outside.md"
+        outside.write_text("content", encoding="utf-8")
+
+        result = fix_file_encoding(str(outside), allow_base_path=str(inside))
+
+        assert result["status"] == "error"
+        assert "outside allowed base directory" in result["details"]
+
+    def test_allow_base_path_accepts_inside_target(self, tmp_path):
+        """Path inside allow_base_path is accepted."""
+        base = tmp_path / "case"
+        base.mkdir()
+        target = base / "draft.md"
+        target.write_text("नेपाल", encoding="utf-8")
+
+        result = fix_file_encoding(str(target), allow_base_path=str(base))
+
+        assert result["status"] == "ok"
+
+    def test_tool_uses_env_allowed_work_dir(self, tmp_path, monkeypatch):
+        """LangChain tool enforces JAWAFDEHI_ALLOWED_WORK_DIR boundary."""
+        base = tmp_path / "case"
+        base.mkdir()
+        allowed = base / "allowed.md"
+        allowed.write_text("ok", encoding="utf-8")
+        denied = tmp_path / "denied.md"
+        denied.write_text("no", encoding="utf-8")
+
+        monkeypatch.setenv("JAWAFDEHI_ALLOWED_WORK_DIR", str(base))
+        tool = create_fix_encoding_tool()
+
+        ok = tool.func(str(allowed))
+        err = tool.func(str(denied))
+
+        assert ok["status"] == "ok"
+        assert err["status"] == "error"
+        assert "outside allowed base directory" in err["details"]
 
 
 def test_create_fix_encoding_tool():

@@ -88,8 +88,11 @@ def autodiscover():
         module_name = f"case_workflows.workflows.{modname}.workflow"
         try:
             importlib.import_module(module_name)
-        except ModuleNotFoundError:
-            # Sub-package without a workflow.py — skip silently
-            pass
+        except ModuleNotFoundError as exc:
+            # Only skip when the workflow module itself is missing.
+            # If a dependency import inside that module is missing, surface it.
+            if exc.name == module_name:
+                continue
+            raise
         except Exception:
             logger.exception("Failed to import workflow module: %s", module_name)

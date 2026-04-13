@@ -5,7 +5,7 @@ Constants for the CIAA Caseworker workflow.
 # Hardcoded list of CIAA Special Court case numbers to process.
 # This is the single source of truth used by both the
 # discover_and_draft_cases management command and get_eligible_cases().
-CIAA_CASE_NUMBERS: list[str] = [
+_RAW_CIAA_CASE_NUMBERS: list[str] = [
     "081-CR-0022",
     "081-CR-0044",
     "081-CR-0048",
@@ -69,3 +69,6 @@ CIAA_CASE_NUMBERS: list[str] = [
     "080-CR-0174",
     "080-CR-0173",
 ]
+
+# Keep first-seen ordering while removing accidental duplicates.
+CIAA_CASE_NUMBERS: list[str] = list(dict.fromkeys(_RAW_CIAA_CASE_NUMBERS))

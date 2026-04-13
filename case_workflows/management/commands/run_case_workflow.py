@@ -242,10 +242,22 @@ class Command(BaseCommand):
             target_runs.append((run, False))
         else:
             for cid in case_ids:
-                run, created = CaseWorkflowRun.objects.get_or_create(
-                    case_id=cid,
-                    workflow_id=workflow_id,
-                )
+                if resume:
+                    try:
+                        run = CaseWorkflowRun.objects.get(
+                            case_id=cid,
+                            workflow_id=workflow_id,
+                        )
+                        created = False
+                    except CaseWorkflowRun.DoesNotExist as exc:
+                        raise CommandError(
+                            f"Cannot resume: no existing run for case '{cid}' and workflow '{workflow_id}'"
+                        ) from exc
+                else:
+                    run, created = CaseWorkflowRun.objects.get_or_create(
+                        case_id=cid,
+                        workflow_id=workflow_id,
+                    )
                 target_runs.append((run, created))
 
         for run, created in target_runs:

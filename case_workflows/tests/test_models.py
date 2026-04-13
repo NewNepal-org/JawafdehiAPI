@@ -72,6 +72,23 @@ class TestCaseWorkflowRunModel:
         run.refresh_from_db()
         assert run.started_at is not None
 
+    def test_mark_started_clears_stale_failure_state(self):
+        """mark_started resets failure metadata from previous failed attempts."""
+        run = CaseWorkflowRun.objects.create(
+            case_id="case-stale01",
+            workflow_id="ciaa_caseworker",
+            has_failed=True,
+            error_message="previous crash",
+        )
+        run.mark_failed("previous crash")
+
+        run.mark_started()
+        run.refresh_from_db()
+
+        assert run.has_failed is False
+        assert run.error_message == ""
+        assert run.completed_at is None
+
     def test_mark_complete(self):
         """mark_complete sets is_complete and completed_at."""
         run = CaseWorkflowRun.objects.create(
