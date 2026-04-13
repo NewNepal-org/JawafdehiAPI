@@ -64,16 +64,18 @@ jobs:
           unzip -q awscliv2.zip
           sudo ./aws/install --update
 
-          pg_dump --version
+          /usr/lib/postgresql/18/bin/pg_dump --version
           aws --version
 
       - name: Dump database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
+          set -o pipefail
+
           BACKUP_FILE="jawafdehi-$(date -u +%Y-%m-%d).sql.gz"
 
-          pg_dump \
+          /usr/lib/postgresql/18/bin/pg_dump \
             --dbname="$DATABASE_URL" \
             --no-owner \
             --no-privileges \
