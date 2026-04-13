@@ -7,7 +7,6 @@ from django import forms
 from django.db import models
 from django.urls import reverse
 from django.utils.html import format_html
-from django.utils.safestring import mark_safe
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.forms.models import BaseInlineFormSet
 from django.template.response import TemplateResponse
@@ -410,7 +409,7 @@ class CaseAdmin(admin.ModelAdmin):
         "description",
     ]
 
-    list_display_links = ["title"]
+    list_display_links = ("title",)
 
     readonly_fields = [
         "case_id",
@@ -502,47 +501,40 @@ class CaseAdmin(admin.ModelAdmin):
         Display Edit and View on Site action buttons for each case row.
 
         Edit button: Always active, navigates to admin edit page
-        View on Site button: Only active for PUBLISHED cases, opens public URL
+        View on Site button: Only active for PUBLISHED cases with slug, opens public URL
         """
-        # Generate edit URL
         edit_url = reverse("admin:cases_case_change", args=[obj.pk])
 
         # Edit button (always active)
-        edit_button = (
-            f'<a href="{edit_url}" '
-            f'class="button" '
-            f'style="padding: 5px 10px; margin-right: 5px; text-decoration: none; '
-            f"background-color: #417690; color: white; border-radius: 4px; "
-            f'display: inline-block; font-size: 13px;">'
-            f"Edit</a>"
+        edit_button = format_html(
+            '<a href="{}" class="button case-action-button case-action-button--edit">Edit</a>',
+            edit_url,
         )
 
         # View on Site button (conditional)
         if obj.state == CaseState.PUBLISHED and obj.slug:
             public_url = f"https://jawafdehi.org/case/{obj.slug}"
-            view_button = (
-                f'<a href="{public_url}" '
-                f'target="_blank" '
-                f'rel="noopener noreferrer" '
-                f'class="button" '
-                f'style="padding: 5px 10px; text-decoration: none; '
-                f"background-color: #28a745; color: white; border-radius: 4px; "
-                f'display: inline-block; font-size: 13px;">'
-                f"View on Site</a>"
+            view_button = format_html(
+                '<a href="{}" target="_blank" rel="noopener noreferrer" '
+                'class="button case-action-button case-action-button--view">View on Site</a>',
+                public_url,
             )
         else:
-            # Disabled button with tooltip
-            view_button = (
-                "<span "
-                'class="button" '
-                'title="Only published cases can be viewed publicly" '
-                'style="padding: 5px 10px; text-decoration: none; '
-                "background-color: #cccccc; color: #666666; border-radius: 4px; "
-                'display: inline-block; font-size: 13px; cursor: not-allowed;">'
-                "View on Site</span>"
+            # Determine tooltip message based on what's missing
+            if obj.state != CaseState.PUBLISHED and not obj.slug:
+                tooltip = "Requires PUBLISHED state and a slug"
+            elif obj.state != CaseState.PUBLISHED:
+                tooltip = "Only PUBLISHED cases can be viewed publicly"
+            else:  # obj.slug is missing
+                tooltip = "Case needs a slug to be viewed publicly"
+
+            view_button = format_html(
+                '<span class="button case-action-button case-action-button--disabled" '
+                'title="{}" aria-disabled="true">View on Site</span>',
+                tooltip,
             )
 
-        return mark_safe(edit_button + view_button)
+        return format_html("{}{}", edit_button, view_button)
 
     case_actions.short_description = "Actions"
 
