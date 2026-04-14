@@ -220,11 +220,23 @@ class WorkflowStep:
     skills: List[str] = field(default_factory=list)
     tools: List[Any] = field(default_factory=list)
     mcp_servers: dict[str, dict] = field(default_factory=dict)
+    mcp_servers_fn: Optional[Callable[[], dict[str, dict]]] = None
     mcp_tool_filter: Optional[List[str]] = None
     subagents: List[dict] = field(default_factory=list)
     system_prompt: Optional[str] = None
     required_outputs: dict[str, int] = field(default_factory=dict)
     retries: int = 0
+
+    def resolved_mcp_servers(self) -> dict[str, dict]:
+        """Return mcp_servers, merging in mcp_servers_fn() if provided.
+
+        ``mcp_servers_fn`` is called lazily at execution time so that
+        runtime-dependent values (e.g. API tokens read from env vars) are
+        not evaluated when the step list is constructed or inspected.
+        """
+        if self.mcp_servers_fn is not None:
+            return {**self.mcp_servers, **self.mcp_servers_fn()}
+        return self.mcp_servers
 
 
 # ---------------------------------------------------------------------------
@@ -515,9 +527,12 @@ class Workflow(ABC):
 
         # Pre-connect all unique MCP servers once across all steps so that
         # uvx only resolves/installs each server a single time.
+        # resolved_mcp_servers() is called here (at execution time) so that
+        # any mcp_servers_fn callables are evaluated lazily — not when the
+        # step list is constructed or inspected.
         all_mcp_servers: dict[str, dict] = {}
         for step in self.steps:
-            all_mcp_servers.update(step.mcp_servers)
+            all_mcp_servers.update(step.resolved_mcp_servers())
 
         usage_tracker = _UsageCallbackHandler()
 
@@ -567,7 +582,7 @@ class Workflow(ABC):
 
                     # Gather pre-connected MCP tools for this step's servers
                     mcp_tools: list[Any] = []
-                    for server_name in step.mcp_servers:
+                    for server_name in step.resolved_mcp_servers():
                         mcp_tools.extend(mcp_tools_by_server.get(server_name, []))
                     if step.mcp_tool_filter is not None:
                         allowed = set(step.mcp_tool_filter)

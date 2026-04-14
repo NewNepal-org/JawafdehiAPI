@@ -3,12 +3,26 @@ CIAA Caseworker workflow — processes Special Court cases from the NGM
 database and creates Jawafdehi accountability cases.
 
 Template location: ``case_workflows/workflows/ciaa_caseworker/``
+
+Security note
+-------------
+This workflow exposes a ``run_command`` tool that executes arbitrary shell
+commands inside the agent's working directory.  This is intentional: the
+workflow is designed to run in a **trusted, isolated environment** (e.g. a
+dedicated Cloud Run job with no internet-accessible services and no persistent
+credentials beyond what the job needs).
+
+DO NOT enable this workflow on shared hosts or attach it to user-facing
+processes.  The tool is deliberately sandboxed to the allowed work directory,
+but shell execution is inherently powerful and must be treated accordingly.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import shlex
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -113,6 +127,67 @@ def download_file(url: str, output_path: str) -> str:
 
 # Instantiate the fix_encoding tool for use in all steps
 fix_encoding = create_fix_encoding_tool()
+
+
+@tool
+def run_command(command: str) -> str:  # noqa: S603
+    """Run a shell command inside the allowed work directory.
+
+    .. danger::
+        This tool executes **arbitrary shell commands**.  It is intentionally
+        included because this workflow runs in a **trusted, isolated
+        environment** (e.g. a dedicated Cloud Run job with no
+        internet-accessible services and no persistent credentials beyond
+        what the job needs).  DO NOT enable this workflow on shared hosts or
+        attach it to user-facing processes.
+
+    The command is executed with ``shell=False`` via ``shlex.split`` to
+    reduce accidental glob expansion and word-splitting surprises, but it
+    still has full access to the filesystem paths reachable from the
+    allowed work directory.
+
+    Args:
+        command: The shell command to run (e.g. ``python3 fetch_bolpatra.py
+            --ifb 081-CR-0046``).  The working directory is set to
+            ``JAWAFDEHI_ALLOWED_WORK_DIR``.
+
+    Returns:
+        Combined stdout + stderr output (truncated to 8 KB if very long),
+        or an error description if the command could not be started or
+        timed out.
+    """
+    allowed_work_dir = os.environ.get(_WORK_DIR_ENV)
+    if not allowed_work_dir:
+        return f"run_command requires {_WORK_DIR_ENV} to be set"
+    work_dir = Path(allowed_work_dir).resolve()
+    if not work_dir.is_dir():
+        return f"Configured work directory is invalid: {work_dir}"
+
+    try:
+        args = shlex.split(command)
+    except ValueError as exc:
+        return f"Invalid command syntax: {exc}"
+
+    try:
+        result = subprocess.run(  # noqa: S603
+            args,
+            cwd=work_dir,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        return f"Command timed out after 300 s: {command}"
+    except FileNotFoundError:
+        return f"Command not found: {args[0]!r}"
+    except Exception as exc:  # noqa: BLE001
+        return f"Error running command: {exc}"
+
+    output = result.stdout + result.stderr
+    _TRUNCATE = 8 * 1024
+    if len(output) > _TRUNCATE:
+        output = output[:_TRUNCATE] + f"\n... [truncated — {len(output):,} bytes total]"
+    return output or f"(exit code {result.returncode}, no output)"
 
 
 # MCP stdio server config for fetch tool
@@ -230,7 +305,14 @@ class CIAACaseworkerWorkflow(Workflow):
 
     @property
     def steps(self) -> List[WorkflowStep]:
-        jawafdehi_server = _jawafdehi_server()
+        # _jawafdehi_server() is called lazily inside each step that needs it.
+        # This allows `workflow.steps` to be accessed (e.g. for listing or
+        # testing) without requiring JAWAFDEHI_API_TOKEN to be set at property
+        # access time.  The token is only checked when a step is actually
+        # executed by the workflow engine.
+
+        def _jserver() -> dict:
+            return _jawafdehi_server()
 
         return [
             WorkflowStep(
@@ -242,7 +324,7 @@ First read {case_dir}/instructions/INSTRUCTIONS.md for detailed caseworker guida
 
 Verify this case exists in the NGM database and is eligible for processing as a CIAA Special Court corruption case. Use the ngm_extract_case_data MCP tool with file_path={case_dir}/case_details-{case_dir.name}.md. Ensure the required directories exist: {case_dir}/sources/raw/, {case_dir}/sources/markdown/, {case_dir}/logs/. Write a brief initialization note to {case_dir}/logs/case-summary.md summarising the case number and some basic case details. For example, note the defendant name(s), registration date (both in BS and in AD), and any other key details you find. This information will be useful for searching for related documents and news articles in later steps.
 """,
-                mcp_servers=jawafdehi_server,
+                mcp_servers_fn=_jserver,
                 mcp_tool_filter=["ngm_extract_case_data"],
                 system_prompt=_SYSTEM_PROMPT,
             ),
@@ -278,8 +360,9 @@ Step 5 — Fetch court order (faisala):
  If court_identifier is missing, try special then supreme and record what was used in {case_dir}/logs/fetch-summary.md.
 YOU MUST DOWNLOAD the original file (.pdf, .doc, etc) to the {case_dir}/sources/raw/ directory first using the download_file tool. Then, use the `convert_to_markdown` MCP tool to convert each downloaded file. Finally, write a brief summary to {case_dir}/logs/fetch-summary.md listing which documents were found, their urls, and which were skipped.
 """,
-                tools=[download_file, fix_encoding],
-                mcp_servers={**jawafdehi_server, **_FETCH_SERVER},
+                tools=[download_file, run_command, fix_encoding],
+                mcp_servers=_FETCH_SERVER,
+                mcp_servers_fn=_jserver,
                 mcp_tool_filter=["convert_to_markdown", "fetch"],
                 system_prompt=_SYSTEM_PROMPT,
             ),
@@ -314,12 +397,12 @@ Update {case_dir}/sources/markdown/news-search-progress.md after each search wav
 Write a final summary to {case_dir}/logs/news-search-summary.md.
 Update MEMORY.md with any key learnings for later steps.
 """,
-                tools=[download_file, fix_encoding],
+                tools=[download_file, run_command, fix_encoding],
                 mcp_servers={
-                    **jawafdehi_server,
                     **_FETCH_SERVER,
                     **_OPEN_WEBSEARCH_SERVER,
                 },
+                mcp_servers_fn=_jserver,
                 mcp_tool_filter=[
                     "fetch",
                     "fetchWebContent",
@@ -449,7 +532,7 @@ in {case_dir}/MEMORY.md for use in subsequent steps.
 NOTE: along with the case title, you MUST update the Key allegations, Timeline, case start, case end dates.
 """,
                 tools=[fix_encoding],
-                mcp_servers=jawafdehi_server,
+                mcp_servers_fn=_jserver,
                 mcp_tool_filter=[
                     "create_jawafdehi_case",
                     "patch_jawafdehi_case",
@@ -493,7 +576,7 @@ Step 4 — Confirm the link.
 Record all entity IDs created or linked in {case_dir}/MEMORY.md.
 """,
                 tools=[fix_encoding],
-                mcp_servers=jawafdehi_server,
+                mcp_servers_fn=_jserver,
                 mcp_tool_filter=[
                     "search_jawafdehi_cases",
                     "search_jawaf_entities",
@@ -575,7 +658,7 @@ Then patch missing or incomplete fields from {case_dir}/draft.md:
 All patch operations for these fields can be combined into a single patch_jawafdehi_case call.
 """,
                 tools=[fix_encoding],
-                mcp_servers=jawafdehi_server,
+                mcp_servers_fn=_jserver,
                 mcp_tool_filter=[
                     "create_jawafdehi_case",
                     "search_jawafdehi_cases",

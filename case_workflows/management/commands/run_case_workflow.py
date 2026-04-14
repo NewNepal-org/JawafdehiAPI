@@ -320,4 +320,4 @@ class Command(BaseCommand):
                 printer.warn("Status unclear")
 
         # ---- Summary ----
-        printer.print_summary(len(case_ids), success_count, skip_count, fail_count)
+        printer.print_summary(len(target_runs), success_count, skip_count, fail_count)

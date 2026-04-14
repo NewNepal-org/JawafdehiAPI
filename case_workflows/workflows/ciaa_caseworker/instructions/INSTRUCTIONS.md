@@ -50,7 +50,8 @@ Sample dates:
 - https://ciaa.gov.np/pressrelease/2000: मिति २०७८/०६/१९ गते ।
 - https://ciaa.gov.np/pressrelease/3000: मिति २०८१/१२/१४ गते।
 
-To download the file, use `curl` or equivalent tools.
+To download the file, use the `download_file` tool (preferred) or the `run_command` tool
+(e.g. `run_command("curl -L -o sources/raw/ciaa-press-release-<id>.pdf <url>")`).
 
 > NOTE: CIAA press releases are also available in `data/ciaa-press-releases.csv` (columns: press_id, publication_date, title, source_url). Use `read_file` to read the CSV — do NOT use grep, as grep only returns file paths and not the matching line content. Find the row whose title contains the defendant name and read the source_url field.
 
@@ -68,9 +69,10 @@ The publication date is usually when CIAA publishes the press release; it's also
 
 > NOTE: AG charge sheets are also available in `data/ag_index.csv` (columns: case_number, title, filing_date, pdf_url, court_office). Use `read_file` to read the CSV — do NOT use grep, as grep only returns file paths and not the matching line content. Find the row where case_number matches your case number and read the pdf_url field.
 
-Once you identify the year and month, you can use a curl like this to download the charge sheet:
+Once you identify the year and month, you can use the `download_file` tool or `run_command`
+to download the charge sheet, e.g.:
 
-curl 'https://ag.gov.np/abhiyogpatras?month_id=50&code=sgao&description=undefined'.
+`run_command("curl -L -o sources/raw/charge-sheet-<case-number>.pdf 'https://ag.gov.np/abhiyogpatras?month_id=50&code=sgao&description=undefined'")`
 
 The month ID is determined as follows:
 2078 baisakh = 1

@@ -408,8 +408,11 @@ NES_DB_PATH = os.getenv("NES_DB_PATH")
 NGM_QUERY_MAX_ROWS = int(os.getenv("NGM_QUERY_MAX_ROWS", "500"))
 
 # Case Workflow Configuration
-CASE_WORKFLOWS_WORK_DIR = os.getenv(
-    "CASE_WORKFLOWS_WORK_DIR", BASE_DIR / "workflow-runs"
+_case_workflows_work_dir_env = os.getenv("CASE_WORKFLOWS_WORK_DIR")
+CASE_WORKFLOWS_WORK_DIR = (
+    Path(_case_workflows_work_dir_env)
+    if _case_workflows_work_dir_env
+    else BASE_DIR / "workflow-runs"
 )
 
 # Cache Configuration
