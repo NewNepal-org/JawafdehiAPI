@@ -126,6 +126,19 @@ class TestFixFileEncoding:
         assert err["status"] == "error"
         assert "outside allowed base directory" in err["details"]
 
+    def test_tool_returns_error_when_work_dir_unset(self, tmp_path, monkeypatch):
+        """LangChain tool returns error status when JAWAFDEHI_ALLOWED_WORK_DIR is absent."""
+        f = tmp_path / "test.md"
+        f.write_text("hello", encoding="utf-8")
+
+        monkeypatch.delenv("JAWAFDEHI_ALLOWED_WORK_DIR", raising=False)
+        tool = create_fix_encoding_tool()
+
+        result = tool.invoke({"file_path": str(f)})
+
+        assert result["status"] == "error"
+        assert "JAWAFDEHI_ALLOWED_WORK_DIR" in result["details"]
+
 
 def test_create_fix_encoding_tool():
     """create_fix_encoding_tool returns a LangChain tool."""

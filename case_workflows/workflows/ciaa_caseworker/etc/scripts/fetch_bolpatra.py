@@ -9,6 +9,7 @@ import requests
 import re
 import os
 import sys
+import tempfile
 from bs4 import BeautifulSoup
 import time
 import urllib3
@@ -258,37 +259,41 @@ class BolpatraFetcher:
                     print(f"  Empty response body for {url}; skipping")
                     return None
 
-                if not first_chunk.startswith(b"%PDF"):
+                if len(first_chunk) < 4 or not first_chunk.startswith(b"%PDF"):
                     print(
                         f"  Response for {url} is not a valid PDF (missing %PDF signature); skipping"
                     )
                     return None
 
-                with open(filepath, "wb") as f:
-                    f.write(first_chunk)
-                    for chunk in iterator:
-                        if chunk:
-                            f.write(chunk)
+                # Write atomically: stream to a temp file in the same directory,
+                # then os.replace() to final path so a partial download is never
+                # left at `filepath` if the process is interrupted mid-write.
+                tmp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(
+                        dir=self.output_dir, suffix=".tmp", delete=False
+                    ) as tmp_f:
+                        tmp_path = tmp_f.name
+                        tmp_f.write(first_chunk)
+                        for chunk in iterator:
+                            if chunk:
+                                tmp_f.write(chunk)
+                    os.replace(tmp_path, filepath)
+                    tmp_path = None  # replaced successfully; nothing to clean up
+                finally:
+                    if tmp_path and os.path.exists(tmp_path):
+                        try:
+                            os.remove(tmp_path)
+                        except OSError:
+                            pass
 
             print(f"  Saved to: {filepath}")
             return filepath
         except requests.exceptions.RequestException as e:
             print(f"  Error downloading from {url}: {e}")
-            # Clean up partial file
-            try:
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-            except OSError:
-                pass
             return None
         except OSError as e:
             print(f"  File I/O error writing to {filepath}: {e}")
-            # Clean up partial file
-            try:
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-            except OSError:
-                pass
             return None
 
     def fetch_all_documents(self, ifb_number):

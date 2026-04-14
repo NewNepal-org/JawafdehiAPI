@@ -241,6 +241,20 @@ class Command(BaseCommand):
                 skip_count += 1
                 continue
 
+            if (
+                not created
+                and run.started_at is not None
+                and not run.is_complete
+                and not run.has_failed
+            ):
+                printer.warn(
+                    f"Skipping {cid}: run is already in progress "
+                    f"(started {run.started_at.isoformat()}). "
+                    "Use --resume to retry a failed run."
+                )
+                skip_count += 1
+                continue
+
             printer.print_case_header(cid, created)
 
             try:

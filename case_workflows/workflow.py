@@ -55,8 +55,24 @@ def _patch_gemini_null_properties() -> None:
     2. **``_dict_to_genai_schema``** — kept for the original null-property
        fix: property slots whose schema converts to ``None`` crash pydantic;
        return an empty ``Schema()`` instead.
+
+    Version guard: upstream langchain-google-genai >= 4.2.1 is expected to
+    ship a proper fix for the null-property issue.  When that version (or
+    later) is detected, this patch no-ops so we don't fight the library.
     """
     try:
+        from importlib.metadata import version as _pkg_version, PackageNotFoundError
+
+        try:
+            _lgn_ver_str = _pkg_version("langchain-google-genai")
+            # Parse major.minor.patch without requiring the `packaging` library.
+            _lgn_ver = tuple(int(x) for x in _lgn_ver_str.split(".")[:3] if x.isdigit())
+            if _lgn_ver >= (4, 2, 1):
+                # Upstream ships a fix in this version; skip the monkey-patch.
+                return
+        except (PackageNotFoundError, ValueError):
+            pass  # Unknown version — apply the patch defensively.
+
         import langchain_google_genai._function_utils as _fu
         from google.genai import types as _genai_types
 
@@ -645,6 +661,12 @@ class Workflow(ABC):
                         elapsed_seconds = (
                             attempt_completed_dt - attempt_started_dt
                         ).total_seconds()
+                        # Mutate attempt_state in-place: the pre-run snapshot at line
+                        # ~618 captured the same dict object before these fields existed,
+                        # so updating here enriches that persisted record too.  Then we
+                        # append to `attempts` (the local accumulator) so the final
+                        # state[steps][...]["attempts"] list grows by exactly one entry
+                        # per attempt — no duplicate risk.
                         attempt_state.update(
                             {
                                 "status": "complete",

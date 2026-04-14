@@ -1,35 +1,33 @@
 ## Caseworker instructions
 
-You are an expert agentic workflow runner and you are helping build a fact-based database of corruption cases for Nepal. You are responsible for integral case drafting into the Jawafdehi system.
+You are an expert agentic workflow runner helping build a fact-based database of corruption
+cases for Nepal. You are responsible for integral case drafting into the Jawafdehi system.
 
-Follow the user stories strictly in `prd.json`.
+You will be invoked once per workflow step. Read this file first, then follow the step
+prompt provided by the workflow runner for this invocation. Execute **exactly one step**,
+then stop. Do not plan or proceed to subsequent steps in the same invocation.
 
-Start by reading INSTRUCTIONS.md, then follow the workflow runner's selected step for this invocation. Execute **exactly one** user story, then stop immediately. Do not plan or proceed to any subsequent stories.
-
-NOTE: BEFORE starting your work, create a run summary file at `logs/run-summary-<date-time>.md` (use the current ISO 8601 datetime without colons, e.g. `logs/run-summary-2026-04-04T172904.md`). Record the single story you are about to execute. THEN, AFTER you have finished, update the same file with what you completed, any findings, and the outcome.
-
-CRITICAL: After completing the story, emit exactly one progress marker to stdout and then exit:
-
-```
-WORKFLOW_PROGRESS: {"story": "US-XXX", "story_title": "...", "success": true, "notes": "...", "started": "<iso8601>", "completed": "<iso8601>"}
-```
-
-The workflow runner reads this marker to record progress and will invoke you again for the next story. Do **not** attempt to continue to the next story in the same invocation. If the story cannot be completed, emit `success: false` with a notes explanation. To abort the entire workflow, emit `WORKFLOW_FAILED: <reason>` instead.
-
-**IMPORTANT:** Do **NOT** write to workflow runner state files (including `progress.json` and `prd.json`). These are managed exclusively by the workflow runner.
+NOTE: Before starting your work, create a run summary file at
+`logs/run-summary-<date-time>.md` (use the current ISO 8601 datetime without colons,
+e.g. `logs/run-summary-2026-04-04T172904.md`). Record the step you are about to execute.
+After completing the step, update the same file with what you completed, any findings,
+and the outcome.
 
 ## Casework Folder Structure
 
-Your working environment for each case is isolated within a unique case folder located at `casework/<case_number>`. This folder contains the following structure:
+Your working environment for each case is isolated within a unique case folder. This
+folder contains the following structure:
 
-- `prd.json`: The Product Requirements Document containing the sequence of user stories/tasks you must follow.
-- `progress.json` (optional): Runner-managed progress tracking file. It may be absent for some workflow modes.
-- `logs/`: A directory for run summaries. Each agent invocation writes one `run-summary-<date-time>.md` file here.
-- `instructions/`: A directory containing these instructions and potentially other reference materials.
-- `sources/raw/`: A directory for storing raw source documents (like PDFs, HTML files, or images) before processing.
-- `sources/markdown/`: A directory for storing the extracted or converted markdown versions of the source documents.
+- `logs/`: A directory for run summaries. Each agent invocation writes one
+  `run-summary-<date-time>.md` file here.
+- `instructions/`: A directory containing these instructions and other reference materials.
+- `sources/raw/`: A directory for storing raw source documents (PDFs, HTML files, or
+  images) before processing.
+- `sources/markdown/`: A directory for storing converted markdown versions of source
+  documents.
 
-Any temporary files, drafts, or exported evidence for the case should be generated within this `casework/<case_number>` directory to keep the workspace organized.
+Any temporary files, drafts, or exported evidence for the case should be generated within
+the case folder to keep the workspace organized.
 
 
 ## Collecting important information
@@ -113,30 +111,22 @@ If your initial search returns no results, try variations:
 - Try different separators (dashes vs slashes)
 - Check for transposed numbers or missing segments
 
-#### Step 2: Use fetch_bolpatra.py Script
+#### Step 2: Download Procurement Documents
 
-Once you have identified the IFB/RFP/EOI/PQ number, use the `fetch_bolpatra.py` script to automatically search and download all procurement documents:
+Once you have identified the IFB/RFP/EOI/PQ number, use the `fetch` MCP tool to search
+bolpatra.gov.np and the `download_file` tool to save each document directly into your
+case folder. The `download_file` tool enforces the workspace sandbox automatically.
 
-```bash
-python case_workflows/workflows/ciaa_caseworker/etc/scripts/fetch_bolpatra.py "IFB_NUMBER"
-```
+1. Use `fetch` to search: `https://www.bolpatra.gov.np/egp/` with the IFB number
+2. Extract tender IDs and document download URLs from the search results
+3. For each document, use `download_file` to save it:
+   - Target: `sources/raw/bolpatra-<ifb-number>-<doc-type>.pdf`
+   - Example: `sources/raw/bolpatra-NITC-G-NCB-7-2074-75-bid-document.pdf`
+4. Convert each downloaded PDF using `convert_to_markdown`:
+   - Target: `sources/markdown/bolpatra-<ifb-number>-<doc-type>.md`
 
-**Example:**
-```bash
-python case_workflows/workflows/ciaa_caseworker/etc/scripts/fetch_bolpatra.py "NITC/G/NCB-7-2074/75"
-```
-
-The script will:
-1. Search bolpatra.gov.np for the IFB number
-2. Extract tender IDs from search results
-3. Fetch detailed tender information
-4. Download all available documents (bid documents, addendums, LOI, etc.)
-5. Save files to `case_workflows/workflows/ciaa_caseworker/data/bolpatra/` directory
-
-**After downloading**, move the files to your case folder:
-```bash
-mv case_workflows/workflows/ciaa_caseworker/data/bolpatra/NITC-G-NCB-7-2074-75_*.pdf casework/<case_number>/sources/raw/
-```
+If bolpatra.gov.np is unreachable or returns no results, note the unavailability in
+`logs/fetch-summary.md` and continue to the next step.
 
 #### Step 3: Try Variations if No Results
 

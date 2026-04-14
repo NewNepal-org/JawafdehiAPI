@@ -79,14 +79,17 @@ def download_file(url: str, output_path: str) -> str:
 
         out = Path(output_path).resolve()
         allowed_work_dir = os.environ.get(_WORK_DIR_ENV)
-        if allowed_work_dir:
-            base = Path(allowed_work_dir).resolve()
-            if not base.is_dir():
-                return f"Configured work directory is invalid: {base}"
-            try:
-                out.relative_to(base)
-            except ValueError:
-                return f"Output path is outside allowed work directory: {out} (base: {base})"
+        if not allowed_work_dir:
+            return f"download_file requires {_WORK_DIR_ENV} to be set"
+        base = Path(allowed_work_dir).resolve()
+        if not base.is_dir():
+            return f"Configured work directory is invalid: {base}"
+        try:
+            out.relative_to(base)
+        except ValueError:
+            return (
+                f"Output path is outside allowed work directory: {out} (base: {base})"
+            )
 
         req = urllib.request.Request(
             url,
@@ -237,7 +240,7 @@ The Jawafdehi case ID is: {case_dir.name}
 
 First read {case_dir}/instructions/INSTRUCTIONS.md for detailed caseworker guidance before proceeding.
 
-Verify this case exists in the NGM database and is eligible for processing as a CIAA Special Court corruption case. Use the ngm_extract_case_data MCP tool with file_path={case_dir}/case_details-<court-case-number>.md. Ensure the required directories exist: {case_dir}/sources/raw/, {case_dir}/sources/markdown/, {case_dir}/logs/. Write a brief initialization note to {case_dir}/logs/case-summary.md summarising the case number and some basic case details. For example, note the defendant name(s), registration date (both in BS and in AD), and any other key details you find. This information will be useful for searching for related documents and news articles in later steps.
+Verify this case exists in the NGM database and is eligible for processing as a CIAA Special Court corruption case. Use the ngm_extract_case_data MCP tool with file_path={case_dir}/case_details-{case_dir.name}.md. Ensure the required directories exist: {case_dir}/sources/raw/, {case_dir}/sources/markdown/, {case_dir}/logs/. Write a brief initialization note to {case_dir}/logs/case-summary.md summarising the case number and some basic case details. For example, note the defendant name(s), registration date (both in BS and in AD), and any other key details you find. This information will be useful for searching for related documents and news articles in later steps.
 """,
                 mcp_servers=jawafdehi_server,
                 mcp_tool_filter=["ngm_extract_case_data"],

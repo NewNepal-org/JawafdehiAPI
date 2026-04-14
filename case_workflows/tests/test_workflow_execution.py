@@ -11,13 +11,26 @@ import pytest
 from case_workflows.models import CaseWorkflowRun
 from case_workflows.registry import get_workflow
 from case_workflows.workflow import Workflow, WorkflowStep
+from cases.models import Case, CaseState, CaseType
 
 
 @pytest.mark.django_db
 class TestWorkflowSetupWorkDir:
     """Tests for Workflow.setup_work_dir()."""
 
+    def _make_case(self, case_id="case-testcase01", court_case="special:081-CR-0001"):
+        return Case.objects.get_or_create(
+            case_id=case_id,
+            defaults={
+                "title": f"CIAA Test Case {case_id}",
+                "case_type": CaseType.CORRUPTION,
+                "state": CaseState.DRAFT,
+                "court_cases": [court_case],
+            },
+        )[0]
+
     def _make_run(self, case_id="case-testcase01"):
+        self._make_case(case_id)
         return CaseWorkflowRun.objects.create(
             case_id=case_id,
             workflow_id="ciaa_caseworker",
@@ -68,14 +81,16 @@ class TestWorkflowSetupWorkDir:
         shutil.rmtree(tmp_path, ignore_errors=True)
 
     def test_setup_work_dir_path_structure(self, tmp_path, settings):
-        """Work dir follows <base>/<workflow_id>/<case_id>/ pattern."""
+        """Work dir follows <base>/<workflow_id>/<ciaa_court_case_number>/ pattern."""
         settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
         workflow = get_workflow("ciaa_caseworker")
+        # CIAA workflow uses the Special Court case number (not case_id) as the dir name.
+        self._make_case("case-abc123", court_case="special:081-CR-0099")
         run = self._make_run(case_id="case-abc123")
 
         work_dir = workflow.setup_work_dir(run)
 
-        assert work_dir == tmp_path / "ciaa_caseworker" / "case-abc123"
+        assert work_dir == tmp_path / "ciaa_caseworker" / "081-CR-0099"
 
         shutil.rmtree(tmp_path, ignore_errors=True)
 
@@ -139,7 +154,19 @@ class TestWorkflowSetupWorkDir:
 class TestWorkflowExecute:
     """Tests for Workflow.execute() — mocks the deep agent to avoid real API calls."""
 
+    def _make_case(self, case_id="case-testexec01", court_case="special:081-CR-0002"):
+        return Case.objects.get_or_create(
+            case_id=case_id,
+            defaults={
+                "title": f"CIAA Test Case {case_id}",
+                "case_type": CaseType.CORRUPTION,
+                "state": CaseState.DRAFT,
+                "court_cases": [court_case],
+            },
+        )[0]
+
     def _make_run(self, case_id="case-testexec01"):
+        self._make_case(case_id)
         return CaseWorkflowRun.objects.create(
             case_id=case_id,
             workflow_id="ciaa_caseworker",
@@ -242,7 +269,7 @@ class TestWorkflowExecute:
         settings.CASE_WORKFLOWS_WORK_DIR = str(tmp_path)
         workflow = get_workflow("ciaa_caseworker")
         run = self._make_run()
-        workflow.setup_work_dir(run)
+        case_dir = workflow.setup_work_dir(run)
 
         class DummyAgent:
             async def ainvoke(self, invocation, config=None):
@@ -271,6 +298,9 @@ class TestWorkflowExecute:
             patch.object(run, "mark_started"),
             patch.object(run, "save"),
             patch.object(run, "mark_failed") as mock_mark_failed,
+            # get_work_dir does a synchronous DB query inside the async context;
+            # patch it to return the already-created directory directly.
+            patch.object(workflow, "get_work_dir", return_value=case_dir),
         ):
             with pytest.raises(RuntimeError, match="did not produce required outputs"):
                 asyncio.run(

@@ -161,6 +161,14 @@ def create_fix_encoding_tool():
             Status report: {status, file_path, encoding, details, bytes_invalid}
         """
         allow_base_path = os.environ.get(_WORK_DIR_ENV)
+        if not allow_base_path:
+            return {
+                "status": "error",
+                "file_path": file_path,
+                "encoding": encoding,
+                "details": f"fix_file_encoding requires {_WORK_DIR_ENV} to be set",
+                "bytes_invalid": 0,
+            }
         return fix_file_encoding(
             file_path,
             encoding,
