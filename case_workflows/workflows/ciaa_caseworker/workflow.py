@@ -296,11 +296,16 @@ class CIAACaseworkerWorkflow(Workflow):
 
     def get_work_dir(self, run: "CaseWorkflowRun") -> Path:
         """Use CIAA Special Court case number (not Jawafdehi case_id) as directory."""
-        from cases.models import Case
-
         base_dir = super().get_work_dir(run).parent
-        case = Case.objects.only("case_id", "court_cases").get(case_id=run.case_id)
-        ciaa_case_number = _extract_ciaa_case_number(case)
+
+        if run.case_id.startswith("case-"):
+            from cases.models import Case
+
+            case = Case.objects.only("case_id", "court_cases").get(case_id=run.case_id)
+            ciaa_case_number = _extract_ciaa_case_number(case)
+        else:
+            ciaa_case_number = run.case_id
+
         return base_dir / ciaa_case_number
 
     @property
