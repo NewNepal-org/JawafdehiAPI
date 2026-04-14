@@ -37,6 +37,8 @@ urlpatterns = [
     path("api/", include("cases.urls")),
     path("api/", include("nesq.urls")),
     path("api/", include("ngm.urls")),
+    # Case Workflows routes
+    path("api/case-workflows/", include("case_workflows.urls")),
     # Caseworker Agent routes
     path("api/caseworker/", include("caseworker.urls")),
     path(
