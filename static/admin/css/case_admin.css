@@ -69,3 +69,57 @@
     display: block !important;
     margin-bottom: 0.5rem;
 }
+
+/* Case action buttons styling */
+.case-action-button {
+    padding: 5px 10px;
+    text-decoration: none !important;
+    border-radius: 4px;
+    display: inline-block;
+    font-size: 13px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.2s, opacity 0.2s;
+    font-weight: normal;
+}
+
+/* Edit button */
+.case-action-button--edit,
+.case-action-button--edit:link,
+.case-action-button--edit:visited,
+.case-action-button--edit:active {
+    background-color: #417690 !important;
+    color: white !important;
+    margin-right: 5px;
+}
+
+.case-action-button--edit:hover,
+.case-action-button--edit:focus {
+    background-color: #356073 !important;
+    color: white !important;
+    text-decoration: none !important;
+}
+
+/* View button */
+.case-action-button--view,
+.case-action-button--view:link,
+.case-action-button--view:visited,
+.case-action-button--view:active {
+    background-color: #28a745 !important;
+    color: white !important;
+}
+
+.case-action-button--view:hover,
+.case-action-button--view:focus {
+    background-color: #218838 !important;
+    color: white !important;
+    text-decoration: none !important;
+}
+
+/* Disabled button */
+.case-action-button--disabled {
+    background-color: #cccccc !important;
+    color: #666666 !important;
+    cursor: not-allowed;
+    opacity: 0.6;
+}

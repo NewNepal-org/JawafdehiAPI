@@ -16,6 +16,7 @@ RUN poetry config virtualenvs.create false && poetry install --only main --extra
 COPY manage.py ./
 COPY config ./config
 COPY cases ./cases
+COPY case_workflows ./case_workflows
 COPY nesq ./nesq
 COPY ngm ./ngm
 COPY caseworker ./caseworker

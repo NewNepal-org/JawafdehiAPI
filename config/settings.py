@@ -134,6 +134,7 @@ INSTALLED_APPS = [
     "nesq",
     "ngm",
     "caseworker",
+    "case_workflows",
 ]
 
 MIDDLEWARE = [
@@ -405,6 +406,14 @@ NES_DB_PATH = os.getenv("NES_DB_PATH")
 
 # NGM Database Configuration (for read-only SQL endpoint)
 NGM_QUERY_MAX_ROWS = int(os.getenv("NGM_QUERY_MAX_ROWS", "500"))
+
+# Case Workflow Configuration
+_case_workflows_work_dir_env = os.getenv("CASE_WORKFLOWS_WORK_DIR")
+CASE_WORKFLOWS_WORK_DIR = (
+    Path(_case_workflows_work_dir_env)
+    if _case_workflows_work_dir_env
+    else BASE_DIR / "workflow-runs"
+)
 
 # Cache Configuration
 CACHES = {
