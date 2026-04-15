@@ -56,6 +56,7 @@ from .serializers import (
     FeedbackSerializer,
     JawafEntitySerializer,
 )
+from .utils import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,8 @@ logger = logging.getLogger(__name__)
         description="""
         Retrieve detailed information about a specific case.
         
+        The endpoint accepts either a numeric ID (deprecated) or a slug (preferred format: kebab-case).
+        
         This endpoint includes complete case data (title, description, allegations,
         evidence, timeline) and any internal notes.
         
@@ -145,6 +148,15 @@ logger = logging.getLogger(__name__)
         
         Returns 404 if the case doesn't exist or if the user is not authorized to view it.
         """,
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description="Case identifier - either numeric ID (deprecated) or slug",
+                required=True,
+            ),
+        ],
         tags=["cases"],
     ),
 )
@@ -282,42 +294,39 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             # Numeric ID lookup (deprecated)
             try:
                 obj = queryset.get(id=int(lookup_value))
+                self.check_object_permissions(self.request, obj)
 
                 # Track deprecation
                 self.request._used_numeric_id = True
                 self._log_numeric_id_deprecation(lookup_value)
 
                 return obj
-            except (Case.DoesNotExist, ValueError):
-                raise Http404("Not found.")
+            except (Case.DoesNotExist, ValueError) as exc:
+                raise Http404("Not found.") from exc
         else:
             # Slug lookup (preferred)
             try:
                 obj = queryset.get(slug=lookup_value)
+                self.check_object_permissions(self.request, obj)
                 return obj
-            except Case.DoesNotExist:
-                raise Http404("Not found.")
+            except Case.DoesNotExist as exc:
+                raise Http404("Not found.") from exc
 
-    def _log_numeric_id_deprecation(self, case_id):
+    def _log_numeric_id_deprecation(self, case_pk):
         """
         Log deprecation warning for numeric ID access.
 
         Args:
-            case_id: The numeric case ID used in the request
+            case_pk: The numeric case ID used in the request
         """
         client_ip = self._get_client_ip()
         logger.warning(
-            f"Deprecated numeric ID access: case_id={case_id}, ip={client_ip}"
+            "Deprecated numeric ID access", extra={"case_pk": case_pk, "client_ip": client_ip}
         )
 
     def _get_client_ip(self):
         """Extract client IP address from request."""
-        x_forwarded_for = self.request.META.get("HTTP_X_FORWARDED_FOR")
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(",")[0].strip()
-        else:
-            ip = self.request.META.get("REMOTE_ADDR", "unknown")
-        return ip
+        return get_client_ip(self.request)
 
     def finalize_response(self, request, response, *args, **kwargs):
         """
@@ -1045,7 +1054,7 @@ class FeedbackView(APIView):
         if serializer.is_valid():
             # Capture metadata
             feedback = serializer.save(
-                ip_address=self.get_client_ip(request),
+                ip_address=get_client_ip(request),
                 user_agent=request.META.get("HTTP_USER_AGENT", ""),
             )
 
@@ -1057,12 +1066,3 @@ class FeedbackView(APIView):
             {"error": "Validation error", "details": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
         )
-
-    def get_client_ip(self, request):
-        """Extract client IP address from request."""
-        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(",")[0].strip()
-        else:
-            ip = request.META.get("REMOTE_ADDR")
-        return ip
