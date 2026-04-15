@@ -321,7 +321,8 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         """
         client_ip = self._get_client_ip()
         logger.warning(
-            "Deprecated numeric ID access", extra={"case_pk": case_pk, "client_ip": client_ip}
+            "Deprecated numeric ID access",
+            extra={"case_pk": case_pk, "client_ip": client_ip},
         )
 
     def _get_client_ip(self):
