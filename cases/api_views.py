@@ -56,7 +56,6 @@ from .serializers import (
     FeedbackSerializer,
     JawafEntitySerializer,
 )
-from .utils import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +149,7 @@ logger = logging.getLogger(__name__)
         """,
         parameters=[
             OpenApiParameter(
-                name="id",
+                name="lookup",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.PATH,
                 description="Case identifier - either numeric ID (deprecated) or slug",
@@ -185,6 +184,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["case_type"]
     search_fields = ["title", "description", "key_allegations"]
+    lookup_field = "lookup"
     authentication_classes = [
         JWTAuthentication,
         TokenAuthentication,
@@ -298,7 +298,6 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
                 # Track deprecation
                 self.request._used_numeric_id = True
-                self._log_numeric_id_deprecation(lookup_value)
 
                 return obj
             except (Case.DoesNotExist, ValueError) as exc:
@@ -311,23 +310,6 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 return obj
             except Case.DoesNotExist as exc:
                 raise Http404("Not found.") from exc
-
-    def _log_numeric_id_deprecation(self, case_pk):
-        """
-        Log deprecation warning for numeric ID access.
-
-        Args:
-            case_pk: The numeric case ID used in the request
-        """
-        client_ip = self._get_client_ip()
-        logger.warning(
-            "Deprecated numeric ID access",
-            extra={"case_pk": case_pk, "client_ip": client_ip},
-        )
-
-    def _get_client_ip(self):
-        """Extract client IP address from request."""
-        return get_client_ip(self.request)
 
     def finalize_response(self, request, response, *args, **kwargs):
         """
@@ -1055,7 +1037,7 @@ class FeedbackView(APIView):
         if serializer.is_valid():
             # Capture metadata
             feedback = serializer.save(
-                ip_address=get_client_ip(request),
+                ip_address=self.get_client_ip(request),
                 user_agent=request.META.get("HTTP_USER_AGENT", ""),
             )
 
@@ -1067,3 +1049,12 @@ class FeedbackView(APIView):
             {"error": "Validation error", "details": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    def get_client_ip(self, request):
+        """Extract client IP address from request."""
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(",")[0].strip()
+        else:
+            ip = request.META.get("REMOTE_ADDR")
+        return ip
