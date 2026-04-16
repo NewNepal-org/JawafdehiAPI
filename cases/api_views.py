@@ -149,7 +149,7 @@ logger = logging.getLogger(__name__)
         """,
         parameters=[
             OpenApiParameter(
-                name="lookup",
+                name="id",
                 type=OpenApiTypes.STR,
                 location=OpenApiParameter.PATH,
                 description="Case identifier - either numeric ID (deprecated) or slug",
@@ -408,7 +408,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(case)
         return Response(serializer.data)
 
-    def partial_update(self, request, pk=None):
+    def partial_update(self, request, *args, **kwargs):
         """
         PATCH /api/cases/{id}/
 
@@ -538,7 +538,8 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 field: validated[field] for field in scalar_fields if field in validated
             }
             if scalar_updates:
-                Case.objects.filter(pk=pk).update(**scalar_updates)
+                case = self.get_object()
+                Case.objects.filter(pk=case.pk).update(**scalar_updates)
 
             # Persist entity relationship changes only when a /entities op
             # was explicitly included — avoids unnecessary delete/recreate on
