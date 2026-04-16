@@ -184,7 +184,6 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["case_type"]
     search_fields = ["title", "description", "key_allegations"]
-    lookup_field = "lookup"
     authentication_classes = [
         JWTAuthentication,
         TokenAuthentication,
