@@ -4,10 +4,12 @@ API ViewSets for the Jawafdehi accountability platform.
 See: .kiro/specs/accountability-platform-core/design.md
 """
 
+import logging
 import jsonpatch
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import connection, transaction
+from django.http import Http404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -54,6 +56,8 @@ from .serializers import (
     FeedbackSerializer,
     JawafEntitySerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -131,6 +135,8 @@ from .serializers import (
         description="""
         Retrieve detailed information about a specific case.
         
+        The endpoint accepts either a numeric ID (deprecated) or a slug (preferred format: kebab-case).
+        
         This endpoint includes complete case data (title, description, allegations,
         evidence, timeline) and any internal notes.
         
@@ -141,6 +147,15 @@ from .serializers import (
         
         Returns 404 if the case doesn't exist or if the user is not authorized to view it.
         """,
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description="Case identifier - either numeric ID (deprecated) or slug",
+                required=True,
+            ),
+        ],
         tags=["cases"],
     ),
 )
@@ -252,6 +267,64 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
             "entity_relationships__entity",
         ).order_by("-created_at")
 
+    def get_object(self):
+        """
+        Override to support lookup by either numeric id or slug.
+
+        Lookup disambiguation:
+        - If lookup_value is purely numeric → query by id
+        - Otherwise → query by slug
+
+        Deprecation tracking:
+        - Numeric ID lookups trigger deprecation warning
+        - Sets request._used_numeric_id flag for response header
+
+        Returns:
+            Case: The retrieved case object
+
+        Raises:
+            Http404: If no case matches the lookup value
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        lookup_value = self.kwargs.get(self.lookup_field)
+
+        # Disambiguation logic
+        if lookup_value.isdigit():
+            # Numeric ID lookup (deprecated)
+            try:
+                obj = queryset.get(id=int(lookup_value))
+                self.check_object_permissions(self.request, obj)
+
+                # Track deprecation
+                self.request._used_numeric_id = True
+
+                return obj
+            except (Case.DoesNotExist, ValueError) as exc:
+                raise Http404("Not found.") from exc
+        else:
+            # Slug lookup (preferred)
+            try:
+                obj = queryset.get(slug=lookup_value)
+                self.check_object_permissions(self.request, obj)
+                return obj
+            except Case.DoesNotExist as exc:
+                raise Http404("Not found.") from exc
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        """
+        Override to add deprecation header for numeric ID lookups.
+
+        Checks for _used_numeric_id flag set by get_object() and adds
+        the Deprecation header if present.
+        """
+        response = super().finalize_response(request, response, *args, **kwargs)
+
+        # Add deprecation header if numeric ID was used
+        if getattr(request, "_used_numeric_id", False):
+            response["Deprecation"] = "true"
+
+        return response
+
     def create(self, request, *args, **kwargs):
         """
         POST /api/cases/
@@ -334,7 +407,7 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = self.get_serializer(case)
         return Response(serializer.data)
 
-    def partial_update(self, request, pk=None):
+    def partial_update(self, request, *args, **kwargs):
         """
         PATCH /api/cases/{id}/
 
@@ -464,7 +537,8 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
                 field: validated[field] for field in scalar_fields if field in validated
             }
             if scalar_updates:
-                Case.objects.filter(pk=pk).update(**scalar_updates)
+                case = self.get_object()
+                Case.objects.filter(pk=case.pk).update(**scalar_updates)
 
             # Persist entity relationship changes only when a /entities op
             # was explicitly included — avoids unnecessary delete/recreate on
