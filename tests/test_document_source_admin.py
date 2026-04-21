@@ -12,7 +12,7 @@ import pytest
 from django.contrib import admin
 
 from cases.admin import DocumentSourceAdmin, DocumentSourceAdminForm
-from cases.models import DocumentSource, CaseType
+from cases.models import DocumentSource, CaseType, SourceType
 from tests.conftest import (
     create_document_source_with_entities,
     create_case_with_entities,
@@ -103,6 +103,13 @@ class TestDocumentSourceAdmin:
         assert "uploaded_filename" not in basic_fieldset_fields
         assert "uploaded_content_type" not in basic_fieldset_fields
         assert "uploaded_file_size" not in basic_fieldset_fields
+
+    def test_fieldsets_include_publication_date(self, db):
+        """Admin fieldsets should expose publication_date for media/news validation."""
+        admin_instance = admin.site._registry[DocumentSource]
+        basic_fieldset_fields = admin_instance.fieldsets[0][1]["fields"]
+
+        assert "publication_date" in basic_fieldset_fields
 
     def test_upload_inline_is_configured(self, db):
         """DocumentSource admin should expose inline uploads for multi-file support."""
@@ -253,6 +260,26 @@ class TestDocumentSourcePermissions:
 
 class TestDocumentSourceAdminForm:
     """Test DocumentSource admin form validation."""
+
+    def test_admin_generated_form_surfaces_publication_date_error(self, db, admin_user):
+        """Admin form should include publication_date so model validation can attach errors."""
+        admin_instance = admin.site._registry[DocumentSource]
+        request = create_mock_request(admin_user)
+        admin_form_class = admin_instance.get_form(request)
+
+        form = admin_form_class(
+            data={
+                "title": "News Coverage",
+                "description": "Coverage without a publication date",
+                "source_type": SourceType.MEDIA_NEWS,
+                "is_deleted": False,
+                "url": [],
+            }
+        )
+
+        assert "publication_date" in form.fields
+        assert not form.is_valid()
+        assert "publication_date" in form.errors
 
     def test_form_validates_empty_title(self, db):
         """Test that form rejects empty title."""

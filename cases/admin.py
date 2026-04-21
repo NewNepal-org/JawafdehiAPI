@@ -811,6 +811,7 @@ class DocumentSourceAdmin(admin.ModelAdmin):
                     "title",
                     "description",
                     "source_type",
+                    "publication_date",
                     "related_entities",
                     "contributors",
                 )
