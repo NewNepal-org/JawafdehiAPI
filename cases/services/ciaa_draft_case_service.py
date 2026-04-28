@@ -340,13 +340,14 @@ class CIAADraftCaseService:
                             logger.debug(f"Reusing source: {title}")
                             return source
 
-        # Try to find by title
-        if source := DocumentSource.objects.filter(
-            title=title, is_deleted=False
-        ).first():
-            self.stats["sources_reused"] += 1
-            logger.debug(f"Reusing source: {title}")
-            return source
+        # Try to find by title (only if no URL provided)
+        if not url_list:
+            if source := DocumentSource.objects.filter(
+                title=title, is_deleted=False
+            ).first():
+                self.stats["sources_reused"] += 1
+                logger.debug(f"Reusing source: {title}")
+                return source
 
         # Create new source
         source = DocumentSource.objects.create(

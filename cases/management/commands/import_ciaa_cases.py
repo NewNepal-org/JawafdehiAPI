@@ -57,9 +57,15 @@ class Command(BaseCommand):
                 "AWS_S3_ENDPOINT_URL"
             )
             if endpoint_url:
+                access_key = os.getenv("AWS_ACCESS_KEY_ID")
+                secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+                if not access_key or not secret_key:
+                    raise CommandError(
+                        "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required for S3 access"
+                    )
                 S3Client(
-                    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-                    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
                     endpoint_url=endpoint_url,
                 ).set_as_default_client()
                 logger.info(f"Configured S3Client with endpoint: {endpoint_url}")
@@ -104,8 +110,10 @@ class Command(BaseCommand):
             if total_failed > 0:
                 raise CommandError(f"Import completed with {total_failed} failures")
 
+        except CommandError:
+            raise
         except Exception as e:
-            raise CommandError(f"Import failed: {e}")
+            raise CommandError(f"Import failed: {e}") from e
 
     def _discover_fiscal_years(self, base_path: AnyPath) -> list[str]:
         """Discover all fiscal year directories in base path."""
