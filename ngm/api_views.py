@@ -120,13 +120,17 @@ class NGMJudicialQueryView(APIView):
         try:
             result = execute_select_query(query, timeout)
         except ValueError as exc:
-            # Expected validation errors (e.g., "NGM database is not configured")
+            # Map ValueError to appropriate status code based on message
             message = str(exc)
-            status_code = (
-                status.HTTP_503_SERVICE_UNAVAILABLE
-                if "not configured" in message.lower()
-                else status.HTTP_400_BAD_REQUEST
-            )
+            message_lower = message.lower()
+
+            if "not configured" in message_lower:
+                status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            elif "database" in message_lower or "query failed" in message_lower:
+                status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            else:
+                status_code = status.HTTP_400_BAD_REQUEST
+
             return Response(
                 {
                     "success": False,
@@ -203,8 +207,17 @@ class CourtCaseDetailView(APIView):
             )
 
         parts = case_id.split(":", 1)
-        court_identifier = parts[0]
-        case_number_raw = parts[1]
+        court_identifier = parts[0].strip()
+        case_number_raw = parts[1].strip()
+
+        # Validate that both parts are non-empty
+        if not court_identifier or not case_number_raw:
+            return Response(
+                {
+                    "error": "Invalid case_id format. Both court identifier and case number are required"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Normalize case number to standard format
         try:
@@ -218,13 +231,17 @@ class CourtCaseDetailView(APIView):
         try:
             result = get_court_case_details(court_identifier, case_number)
         except ValueError as exc:
-            # Expected validation errors (e.g., "NGM database is not configured")
+            # Map ValueError to appropriate status code based on message
             message = str(exc)
-            status_code = (
-                status.HTTP_503_SERVICE_UNAVAILABLE
-                if "not configured" in message.lower()
-                else status.HTTP_400_BAD_REQUEST
-            )
+            message_lower = message.lower()
+
+            if "not configured" in message_lower:
+                status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            elif "database" in message_lower or "query failed" in message_lower:
+                status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            else:
+                status_code = status.HTTP_400_BAD_REQUEST
+
             return Response(
                 {"error": message},
                 status=status_code,
