@@ -9,7 +9,10 @@ import pytest
 
 # Set DATABASE_URL before Django settings are loaded so tests run without a
 # real PostgreSQL instance. This is intentionally only set here (test context).
-os.environ.setdefault("DATABASE_URL", "sqlite:///db.sqlite3")
+# Force SQLite for tests, overriding any DATABASE_URL from .env or CI.
+# This ensures tests run consistently across all environments without requiring
+# database permissions or external database services.
+os.environ["DATABASE_URL"] = "sqlite:///db.sqlite3"
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission

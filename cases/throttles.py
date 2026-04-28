@@ -32,6 +32,13 @@ class StrictIPRateThrottle(AnonRateThrottle):
 
     rate = "20/hour"
 
+    def get_cache_key(self, request, view):
+        """
+        Use IP address as the throttle key.
+        """
+        ident = self.get_ident(request)
+        return self.cache_format % {"scope": self.scope, "ident": ident}
+
 
 class FeedbackRateThrottle(AnonRateThrottle):
     """
@@ -41,3 +48,10 @@ class FeedbackRateThrottle(AnonRateThrottle):
     """
 
     rate = "5/hour"
+
+    def get_cache_key(self, request, view):
+        """
+        Use IP address as the throttle key.
+        """
+        ident = self.get_ident(request)
+        return self.cache_format % {"scope": self.scope, "ident": ident}
