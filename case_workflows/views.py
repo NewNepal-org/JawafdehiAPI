@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from cases.models import Case
+from cases.throttles import IPBasedRateThrottle, StrictIPRateThrottle
 
 from .models import CaseWorkflowRun
 from .permissions import IsAdminOrModerator
@@ -22,6 +23,10 @@ class CaseWorkflowRunViewSet(viewsets.ReadOnlyModelViewSet):
     List and retrieve CaseWorkflowRun records.
 
     Accessible by Admin and Moderator users only.
+
+    Rate limiting:
+    - Read operations: 100 requests per hour per IP
+    - Resume action: 20 requests per hour per IP
     """
 
     authentication_classes = [TokenAuthentication]
@@ -33,6 +38,12 @@ class CaseWorkflowRunViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.SearchFilter]
     filterset_fields = ["workflow_id", "is_complete", "has_failed"]
     search_fields = ["case_id", "run_id"]
+
+    def get_throttles(self):
+        """Apply stricter rate limiting for resume action."""
+        if self.action == "resume":
+            return [StrictIPRateThrottle()]
+        return [IPBasedRateThrottle()]
 
     def get_serializer_class(self):
         if self.action == "resume":
@@ -92,10 +103,13 @@ class EligibleCasesView(APIView):
         ]
 
     Accessible by Admin and Moderator users only.
+
+    Rate limiting: 100 requests per hour per IP
     """
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAdminOrModerator]
+    throttle_classes = [IPBasedRateThrottle]
 
     def get(self, request):
         workflows = list_workflows()

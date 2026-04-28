@@ -25,11 +25,11 @@ from rest_framework.authentication import SessionAuthentication, TokenAuthentica
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .admin import CaseAdminForm
+from .throttles import FeedbackRateThrottle, IPBasedRateThrottle, StrictIPRateThrottle
 from .caseworker_serializers import (
     BLOCKED_PATH_PREFIXES,
     CaseCreateSerializer,
@@ -178,6 +178,10 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
 
     Only published cases (state=PUBLISHED) are accessible.
     The detail endpoint also includes IN_REVIEW cases.
+
+    Rate limiting:
+    - List/Retrieve: 100 requests per hour per IP
+    - Create/Update: 20 requests per hour per IP
     """
 
     serializer_class = CaseSerializer
@@ -189,6 +193,12 @@ class CaseViewSet(viewsets.ReadOnlyModelViewSet):
         TokenAuthentication,
         SessionAuthentication,
     ]
+
+    def get_throttles(self):
+        """Apply stricter rate limiting for write operations."""
+        if self.action in ("create", "partial_update"):
+            return [StrictIPRateThrottle()]
+        return [IPBasedRateThrottle()]
 
     def get_permissions(self):
         if self.action in ("create", "partial_update"):
@@ -674,10 +684,20 @@ class DocumentSourceViewSet(
 
     The retrieve endpoint accepts either the database id or the source_id.
     Only sources associated with published or in-review cases are accessible.
+
+    Rate limiting:
+    - List/Retrieve: 100 requests per hour per IP
+    - Create: 20 requests per hour per IP
     """
 
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     lookup_field = "pk"
+
+    def get_throttles(self):
+        """Apply stricter rate limiting for create operations."""
+        if self.action == "create":
+            return [StrictIPRateThrottle()]
+        return [IPBasedRateThrottle()]
 
     def get_permissions(self):
         if self.action == "create":
@@ -830,10 +850,20 @@ class JawafEntityViewSet(
 
     Only entities associated with published cases are returned in list view.
     Entities must appear in alleged_entities or related_entities (not locations).
+
+    Rate limiting:
+    - List/Retrieve: 100 requests per hour per IP
+    - Create: 20 requests per hour per IP
     """
 
     filter_backends = [filters.SearchFilter]
     search_fields = ["nes_id", "display_name"]
+
+    def get_throttles(self):
+        """Apply stricter rate limiting for create operations."""
+        if self.action == "create":
+            return [StrictIPRateThrottle()]
+        return [IPBasedRateThrottle()]
 
     def get_permissions(self):
         if self.action == "create":
@@ -941,7 +971,11 @@ class StatisticsView(APIView):
 
     Provides aggregate counts of cases by state and unique entities tracked.
     Results are cached for 5 minutes using LocMemCache.
+
+    Rate limiting: 100 requests per hour per IP
     """
+
+    throttle_classes = [IPBasedRateThrottle]
 
     def get(self, request):
         """
@@ -969,12 +1003,6 @@ class StatisticsView(APIView):
         cache.set(cache_key, stats, timeout=300)
 
         return Response(stats)
-
-
-class FeedbackRateThrottle(AnonRateThrottle):
-    """Rate throttle for feedback submissions: 5 per hour."""
-
-    rate = "5/hour"
 
 
 @extend_schema(

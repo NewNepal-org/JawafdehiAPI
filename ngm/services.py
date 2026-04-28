@@ -8,6 +8,20 @@ from django.db.utils import DatabaseError
 
 logger = logging.getLogger(__name__)
 
+# Devanagari digit to ASCII digit mapping
+DEVANAGARI_TO_ASCII = {
+    "०": "0",
+    "१": "1",
+    "२": "2",
+    "३": "3",
+    "४": "4",
+    "५": "5",
+    "६": "6",
+    "७": "7",
+    "८": "8",
+    "९": "9",
+}
+
 ALLOWED_TABLES = {
     "courts",
     "court_cases",
@@ -26,6 +40,61 @@ FORBIDDEN_KEYWORDS = [
     "grant",
     "revoke",
 ]
+
+
+def normalize_case_number(case_number: str) -> str:
+    """
+    Normalize a court case number to standard format: XXX-YY-XXXX
+
+    Accepts various formats:
+    - 081-CR-0081 (already normalized)
+    - 081-cr-0081 (lowercase)
+    - 81-cr-0081 (missing leading zero)
+    - ०८१-CR-००८१ (Devanagari numerals)
+    - 81-CR-81 (missing leading zeros)
+
+    Returns normalized format: 081-CR-0081 (uppercase, zero-padded)
+
+    Args:
+        case_number: The case number to normalize
+
+    Returns:
+        Normalized case number in format XXX-YY-XXXX
+
+    Raises:
+        ValueError: If case number format is invalid
+    """
+    if not case_number:
+        raise ValueError("Case number cannot be empty")
+
+    # Convert Devanagari digits to ASCII
+    normalized = case_number
+    for devanagari, ascii_digit in DEVANAGARI_TO_ASCII.items():
+        normalized = normalized.replace(devanagari, ascii_digit)
+
+    # Convert to uppercase
+    normalized = normalized.upper()
+
+    # Match pattern: digits-letters-digits
+    # Allow flexible digit counts (will be padded later)
+    pattern = r"^(\d+)-([A-Z]+)-(\d+)$"
+    match = re.match(pattern, normalized)
+
+    if not match:
+        raise ValueError(
+            f"Invalid case number format: {case_number}. "
+            "Expected format: XXX-YY-XXXX (e.g., 081-CR-0081)"
+        )
+
+    first_part, middle_part, last_part = match.groups()
+
+    # Pad first part to 3 digits
+    first_part = first_part.zfill(3)
+
+    # Pad last part to 4 digits
+    last_part = last_part.zfill(4)
+
+    return f"{first_part}-{middle_part}-{last_part}"
 
 
 def validate_query(query: str) -> tuple[bool, str | None]:

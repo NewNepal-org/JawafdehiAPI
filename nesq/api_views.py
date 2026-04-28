@@ -23,6 +23,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from cases.rules.predicates import is_admin_or_moderator
+from cases.throttles import IPBasedRateThrottle, StrictIPRateThrottle
 
 from nesq.models import NESQueueItem, QueueAction, QueueStatus
 from nesq.serializers import NESQueueItemSerializer, NESQueueSubmitSerializer
@@ -71,10 +72,13 @@ class SubmitNESChangeView(APIView):
     Contributors who attempt ``auto_approve=True`` receive a 403 response.
 
     Supported actions: ADD_NAME, CREATE_ENTITY, UPDATE_ENTITY.
+
+    Rate limiting: 20 requests per hour per IP
     """
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
+    throttle_classes = [StrictIPRateThrottle]
 
     def post(self, request):
         """Handle POST /api/submit_nes_change.
@@ -206,10 +210,13 @@ class ListMySubmissionsView(APIView):
     Query parameters:
         page — Page number (default: 1).
         page_size — Items per page (default: 20, max: 100).
+
+    Rate limiting: 100 requests per hour per IP
     """
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
+    throttle_classes = [IPBasedRateThrottle]
 
     def get(self, request):
         """Handle GET /api/my_nes_submissions.

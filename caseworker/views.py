@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 
+from cases.throttles import IPBasedRateThrottle, StrictIPRateThrottle
 from .models import MCPServer, Skill, Summary, Draft, DraftVersion, LLMProvider
 from .serializers import (
     CurrentUserSerializer,
@@ -31,9 +32,14 @@ class UserViewSet(viewsets.ViewSet):
 
 
 class QueryViewSet(viewsets.ViewSet):
-    """Query processing and case data retrieval."""
+    """
+    Query processing and case data retrieval.
+
+    Rate limiting: 100 requests per hour per IP
+    """
 
     permission_classes = [IsAuthenticated]
+    throttle_classes = [IPBasedRateThrottle]
 
     @action(detail=False, methods=["post"])
     def extract_case_number(self, request):
@@ -99,8 +105,22 @@ class SkillViewSet(viewsets.ModelViewSet):
 
 
 class SummaryViewSet(viewsets.ModelViewSet):
+    """
+    Summary generation and management.
+
+    Rate limiting:
+    - Read operations: 100 requests per hour per IP
+    - Generate: 20 requests per hour per IP
+    """
+
     serializer_class = SummarySerializer
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+
+    def get_throttles(self):
+        """Apply stricter rate limiting for generate action."""
+        if self.action == "generate":
+            return [StrictIPRateThrottle()]
+        return [IPBasedRateThrottle()]
 
     def get_queryset(self):
         user = self.request.user
@@ -153,8 +173,28 @@ class SummaryViewSet(viewsets.ModelViewSet):
 
 
 class DraftViewSet(viewsets.ModelViewSet):
+    """
+    Draft management with versioning.
+
+    Rate limiting:
+    - Read operations: 100 requests per hour per IP
+    - Write operations: 20 requests per hour per IP
+    """
+
     serializer_class = DraftSerializer
     permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
+
+    def get_throttles(self):
+        """Apply stricter rate limiting for write operations."""
+        if self.action in (
+            "create",
+            "update",
+            "partial_update",
+            "destroy",
+            "restore_version",
+        ):
+            return [StrictIPRateThrottle()]
+        return [IPBasedRateThrottle()]
 
     def get_queryset(self):
         user = self.request.user

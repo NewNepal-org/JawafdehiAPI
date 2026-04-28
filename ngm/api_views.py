@@ -7,7 +7,12 @@ from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from ngm.serializers import CourtCaseDetailSerializer, NGMQuerySerializer
-from ngm.services import execute_select_query, get_court_case_details, validate_query
+from ngm.services import (
+    execute_select_query,
+    get_court_case_details,
+    normalize_case_number,
+    validate_query,
+)
 
 
 class NGMQueryRateThrottle(SimpleRateThrottle):
@@ -182,7 +187,16 @@ class CourtCaseDetailView(APIView):
 
         parts = case_id.split(":", 1)
         court_identifier = parts[0]
-        case_number = parts[1]
+        case_number_raw = parts[1]
+
+        # Normalize case number to standard format
+        try:
+            case_number = normalize_case_number(case_number_raw)
+        except ValueError as exc:
+            return Response(
+                {"error": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             result = get_court_case_details(court_identifier, case_number)
