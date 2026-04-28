@@ -118,7 +118,7 @@ def test_query_endpoint_returns_500_for_unexpected_execution_errors(
     assert payload == {
         "success": False,
         "data": None,
-        "error": "unexpected failure",
+        "error": "Internal server error",
         "query_time_ms": 0,
     }
 

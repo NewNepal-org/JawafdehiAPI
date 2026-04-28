@@ -308,3 +308,19 @@ def create_user_with_role(username, email, role, password="testpass123"):
         user.user_permissions.add(*user_perms)
 
     return user
+
+
+@pytest.fixture(autouse=True)
+def clear_throttle_cache():
+    """
+    Clear throttle cache before each test to prevent rate limiting issues.
+
+    This is necessary because SimpleRateThrottle throttles all requests
+    (authenticated and anonymous), and tests can hit rate limits when
+    running in parallel or sequentially.
+    """
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()

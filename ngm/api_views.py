@@ -1,3 +1,5 @@
+import logging
+
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
@@ -13,6 +15,8 @@ from ngm.services import (
     normalize_case_number,
     validate_query,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class NGMQueryRateThrottle(SimpleRateThrottle):
@@ -115,12 +119,13 @@ class NGMJudicialQueryView(APIView):
 
         try:
             result = execute_select_query(query, timeout)
-        except Exception as exc:
+        except ValueError as exc:
+            # Expected validation errors (e.g., "NGM database is not configured")
             message = str(exc)
             status_code = (
                 status.HTTP_503_SERVICE_UNAVAILABLE
                 if "not configured" in message.lower()
-                else status.HTTP_500_INTERNAL_SERVER_ERROR
+                else status.HTTP_400_BAD_REQUEST
             )
             return Response(
                 {
@@ -130,6 +135,18 @@ class NGMJudicialQueryView(APIView):
                     "query_time_ms": 0,
                 },
                 status=status_code,
+            )
+        except Exception:
+            # Unexpected errors - log full details but return generic message
+            logger.exception("Unexpected error executing NGM query")
+            return Response(
+                {
+                    "success": False,
+                    "data": None,
+                    "error": "Internal server error",
+                    "query_time_ms": 0,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         return Response(
@@ -200,16 +217,24 @@ class CourtCaseDetailView(APIView):
 
         try:
             result = get_court_case_details(court_identifier, case_number)
-        except Exception as exc:
+        except ValueError as exc:
+            # Expected validation errors (e.g., "NGM database is not configured")
             message = str(exc)
             status_code = (
                 status.HTTP_503_SERVICE_UNAVAILABLE
                 if "not configured" in message.lower()
-                else status.HTTP_500_INTERNAL_SERVER_ERROR
+                else status.HTTP_400_BAD_REQUEST
             )
             return Response(
                 {"error": message},
                 status=status_code,
+            )
+        except Exception:
+            # Unexpected errors - log full details but return generic message
+            logger.exception("Unexpected error fetching court case details")
+            return Response(
+                {"error": "Internal server error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         if result is None:
@@ -225,10 +250,9 @@ class CourtCaseDetailView(APIView):
             "entities": result["entities"],
         }
 
-        serializer = CourtCaseDetailSerializer(data=response_data)
-        serializer.is_valid(raise_exception=True)
+        serializer = CourtCaseDetailSerializer(response_data)
 
         return Response(
-            serializer.validated_data,
+            serializer.data,
             status=status.HTTP_200_OK,
         )
