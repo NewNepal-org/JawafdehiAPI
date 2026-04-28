@@ -7,6 +7,7 @@ from rest_framework.test import APIClient
 from ngm import api_views
 
 QUERY_URL = "/api/ngm/query_judicial"
+CASE_DETAIL_URL_TEMPLATE = "/api/ngm/court_case/{case_id}"
 User = get_user_model()
 
 
@@ -202,3 +203,138 @@ def test_query_endpoint_rate_limited_per_token(authenticated_client, monkeypatch
     assert first.status_code == 200
     assert second.status_code == 200
     assert third.status_code == 429
+
+
+@pytest.mark.django_db
+def test_court_case_detail_requires_authentication(api_client):
+    response = api_client.get(
+        CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:081-CR-0081")
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.django_db
+def test_court_case_detail_invalid_format(authenticated_client):
+    response = authenticated_client.get(
+        CASE_DETAIL_URL_TEMPLATE.format(case_id="invalid-format")
+    )
+    assert response.status_code == 400
+    payload = response.json()
+    assert "Invalid case_id format" in payload["error"]
+
+
+@pytest.mark.django_db
+def test_court_case_detail_not_found(authenticated_client, monkeypatch):
+    def fake_get_details(court_identifier, case_number):
+        return None
+
+    monkeypatch.setattr(api_views, "get_court_case_details", fake_get_details)
+
+    response = authenticated_client.get(
+        CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:999-XX-9999")
+    )
+    assert response.status_code == 404
+    payload = response.json()
+    assert "Case not found" in payload["error"]
+
+
+@pytest.mark.django_db
+def test_court_case_detail_success(authenticated_client, monkeypatch):
+    def fake_get_details(court_identifier, case_number):
+        assert court_identifier == "supreme"
+        assert case_number == "081-CR-0081"
+        return {
+            "case": {
+                "case_number": "081-CR-0081",
+                "court_identifier": "supreme",
+                "registration_date_bs": "2081-01-15",
+                "registration_date_ad": None,
+                "case_type": "Criminal",
+                "division": None,
+                "category": None,
+                "section": None,
+                "plaintiff": "State",
+                "defendant": "John Doe",
+                "original_case_number": None,
+                "case_id": "supreme-081-CR-0081",
+                "priority": None,
+                "registration_number": "12345",
+                "case_status": "Pending",
+                "verdict_date_bs": None,
+                "verdict_date_ad": None,
+                "verdict_judge": None,
+                "status": "active",
+            },
+            "hearings": [
+                {
+                    "id": 1,
+                    "case_number": "081-CR-0081",
+                    "court_identifier": "supreme",
+                    "hearing_date_bs": "2081-02-01",
+                    "hearing_date_ad": None,
+                    "bench": "Bench 1",
+                    "bench_type": "Single",
+                    "judge_names": "Judge A",
+                    "lawyer_names": "Lawyer B",
+                    "serial_no": "1",
+                    "case_status": "Hearing",
+                    "decision_type": None,
+                    "remarks": "First hearing",
+                }
+            ],
+            "entities": [
+                {
+                    "id": 1,
+                    "case_number": "081-CR-0081",
+                    "court_identifier": "supreme",
+                    "side": "plaintiff",
+                    "name": "State",
+                    "address": None,
+                    "nes_id": None,
+                },
+                {
+                    "id": 2,
+                    "case_number": "081-CR-0081",
+                    "court_identifier": "supreme",
+                    "side": "defendant",
+                    "name": "John Doe",
+                    "address": "Kathmandu",
+                    "nes_id": None,
+                },
+            ],
+        }
+
+    monkeypatch.setattr(api_views, "get_court_case_details", fake_get_details)
+
+    response = authenticated_client.get(
+        CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:081-CR-0081")
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["case_number"] == "081-CR-0081"
+    assert payload["court_identifier"] == "supreme"
+    assert payload["plaintiff"] == "State"
+    assert payload["defendant"] == "John Doe"
+    assert len(payload["hearings"]) == 1
+    assert len(payload["entities"]) == 2
+    assert payload["hearings"][0]["judge_names"] == "Judge A"
+    assert payload["entities"][0]["side"] == "plaintiff"
+    assert payload["entities"][1]["side"] == "defendant"
+
+
+@pytest.mark.django_db
+def test_court_case_detail_returns_503_when_ngm_not_configured(
+    authenticated_client, monkeypatch
+):
+    def raise_not_configured(court_identifier, case_number):
+        raise ValueError("NGM database is not configured")
+
+    monkeypatch.setattr(api_views, "get_court_case_details", raise_not_configured)
+
+    response = authenticated_client.get(
+        CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:081-CR-0081")
+    )
+    assert response.status_code == 503
+    payload = response.json()
+    assert "not configured" in payload["error"].lower()

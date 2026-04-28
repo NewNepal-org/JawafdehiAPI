@@ -104,3 +104,78 @@ def execute_select_query(query: str, timeout_seconds: float) -> dict:
         "max_rows": max_rows,
         "query_time_ms": query_time_ms,
     }
+
+
+def get_court_case_details(court_identifier: str, case_number: str) -> dict | None:
+    """
+    Fetch complete case details including hearings and entities.
+
+    Returns None if case not found, otherwise returns dict with:
+    - case: dict of case details
+    - hearings: list of hearing dicts
+    - entities: list of entity dicts
+    """
+    ensure_ngm_database_configured()
+
+    try:
+        with connections["ngm"].cursor() as cursor:
+            # Fetch case details
+            cursor.execute(
+                """
+                SELECT case_number, court_identifier, registration_date_bs, 
+                       registration_date_ad, case_type, division, category, section,
+                       plaintiff, defendant, original_case_number, case_id, priority,
+                       registration_number, case_status, verdict_date_bs, 
+                       verdict_date_ad, verdict_judge, status
+                FROM court_cases
+                WHERE court_identifier = %s AND case_number = %s
+                """,
+                [court_identifier, case_number],
+            )
+            case_row = cursor.fetchone()
+
+            if not case_row:
+                return None
+
+            case_columns = [col[0] for col in cursor.description]
+            case_data = dict(zip(case_columns, case_row))
+
+            # Fetch hearings
+            cursor.execute(
+                """
+                SELECT id, case_number, court_identifier, hearing_date_bs, 
+                       hearing_date_ad, bench, bench_type, judge_names, lawyer_names,
+                       serial_no, case_status, decision_type, remarks
+                FROM court_case_hearings
+                WHERE court_identifier = %s AND case_number = %s
+                ORDER BY hearing_date_ad DESC NULLS LAST
+                """,
+                [court_identifier, case_number],
+            )
+            hearing_rows = cursor.fetchall()
+            hearing_columns = [col[0] for col in cursor.description]
+            hearings = [dict(zip(hearing_columns, row)) for row in hearing_rows]
+
+            # Fetch entities
+            cursor.execute(
+                """
+                SELECT id, case_number, court_identifier, side, name, address, nes_id
+                FROM court_case_entities
+                WHERE court_identifier = %s AND case_number = %s
+                ORDER BY side, name
+                """,
+                [court_identifier, case_number],
+            )
+            entity_rows = cursor.fetchall()
+            entity_columns = [col[0] for col in cursor.description]
+            entities = [dict(zip(entity_columns, row)) for row in entity_rows]
+
+            return {
+                "case": case_data,
+                "hearings": hearings,
+                "entities": entities,
+            }
+
+    except DatabaseError as exc:
+        logger.exception("Failed to fetch court case details")
+        raise ValueError("Database query failed") from exc

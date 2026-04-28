@@ -6,8 +6,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
-from ngm.serializers import NGMQuerySerializer
-from ngm.services import execute_select_query, validate_query
+from ngm.serializers import CourtCaseDetailSerializer, NGMQuerySerializer
+from ngm.services import execute_select_query, get_court_case_details, validate_query
 
 
 class NGMQueryRateThrottle(SimpleRateThrottle):
@@ -139,5 +139,82 @@ class NGMJudicialQueryView(APIView):
                 "error": None,
                 "query_time_ms": result["query_time_ms"],
             },
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema(
+    summary="Get court case details by court and case number",
+    description="""
+    Retrieves complete case details including hearings and entities.
+    
+    URL format: /api/ngm/court_case/{case_id}
+    where {case_id} = {court_identifier}:{case_number}
+    
+    Example: /api/ngm/court_case/supreme:081-CR-0081
+    
+    Returns:
+    - Case details (registration, verdict, parties, etc.)
+    - All hearings for the case (ordered by date, newest first)
+    - All entities involved (plaintiffs, defendants, etc.)
+    
+    Returns 404 if case does not exist.
+    """,
+    responses={
+        200: CourtCaseDetailSerializer,
+        404: {"description": "Case not found"},
+    },
+)
+class CourtCaseDetailView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [NGMQueryRateThrottle]
+
+    def get(self, request, case_id):
+        # Parse case_id format: court_identifier:case_number
+        if ":" not in case_id:
+            return Response(
+                {
+                    "error": "Invalid case_id format. Expected format: {court}:{case_number}"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        parts = case_id.split(":", 1)
+        court_identifier = parts[0]
+        case_number = parts[1]
+
+        try:
+            result = get_court_case_details(court_identifier, case_number)
+        except Exception as exc:
+            message = str(exc)
+            status_code = (
+                status.HTTP_503_SERVICE_UNAVAILABLE
+                if "not configured" in message.lower()
+                else status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+            return Response(
+                {"error": message},
+                status=status_code,
+            )
+
+        if result is None:
+            return Response(
+                {"error": f"Case not found: {case_id}"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Combine case data with hearings and entities
+        response_data = {
+            **result["case"],
+            "hearings": result["hearings"],
+            "entities": result["entities"],
+        }
+
+        serializer = CourtCaseDetailSerializer(data=response_data)
+        serializer.is_valid(raise_exception=True)
+
+        return Response(
+            serializer.validated_data,
             status=status.HTTP_200_OK,
         )
