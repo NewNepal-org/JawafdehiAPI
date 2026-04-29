@@ -479,9 +479,10 @@ colorama = {version = "*", markers = "platform_system == \"Windows\""}
 name = "cloudpathlib"
 version = "0.20.0"
 description = "pathlib-style classes for cloud storage services."
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
+markers = "extra == \"s3\""
 files = [
     {file = "cloudpathlib-0.20.0-py3-none-any.whl", hash = "sha256:7af3bcefbf73392ae7f31c08b3660ec31607f8c01b7f6262d4d73469a845f641"},
     {file = "cloudpathlib-0.20.0.tar.gz", hash = "sha256:f6ef7ca409a510f7ba4639ba50ab3fc5b6dee82d6dff0d7f5715fd0c9ab35891"},
@@ -5007,8 +5008,9 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 
 [extras]
 llm-all = ["langchain", "langchain-google-genai", "langchain-openai", "openai"]
+s3 = ["cloudpathlib"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "23593c8902ecca0c79bc15b4a757935a7081e008cf476268cc46b169884f4083"
+content-hash = "83c495ec2b3b822f2b4b2f74959ebb769db261be8ff6de1e5ab29228b51c2c10"

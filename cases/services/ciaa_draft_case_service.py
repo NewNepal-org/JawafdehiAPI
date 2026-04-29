@@ -97,9 +97,10 @@ class CIAADraftCaseService:
             )
 
         except Exception as e:
-            return ImportResult(
-                status="failed", message=f"Import failed: {str(e)}", errors=[str(e)]
-            )
+            case_no = ciaa_json.get("case_no", "Unknown")
+            error_msg = f"Import failed: {e!s}"
+            logger.exception(f"Import failed for case {case_no}: {e!s}")
+            return ImportResult(status="failed", message=error_msg, errors=[f"{e!s}"])
 
     def validate_ciaa_json(self, json_dict: dict) -> list[str]:
         """Validate CIAA JSON structure. Returns list of error messages."""

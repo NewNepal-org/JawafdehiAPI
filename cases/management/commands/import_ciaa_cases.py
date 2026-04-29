@@ -5,7 +5,14 @@ import logging
 import os
 import sys
 
-from cloudpathlib import AnyPath, S3Client
+try:
+    from cloudpathlib import AnyPath, S3Client
+except ImportError as e:
+    raise ImportError(
+        "cloudpathlib is required for this command. "
+        "Install it with: pip install jawafdehi-api[s3]"
+    ) from e
+
 from django.core.management.base import BaseCommand, CommandError
 
 from cases.services.ciaa_draft_case_service import CIAADraftCaseService
@@ -53,24 +60,41 @@ class Command(BaseCommand):
 
         # Configure S3Client for R2 if using S3
         if base_path.startswith("s3://"):
+            # Always validate credentials for S3 access
+            access_key = os.getenv("AWS_ACCESS_KEY_ID")
+            secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
+            if not access_key or not secret_key:
+                raise CommandError(
+                    "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required for S3 access. "
+                    "Please set these environment variables."
+                )
+
             endpoint_url = os.getenv("AWS_ENDPOINT_URL") or os.getenv(
                 "AWS_S3_ENDPOINT_URL"
             )
+
             if endpoint_url:
-                access_key = os.getenv("AWS_ACCESS_KEY_ID")
-                secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-                if not access_key or not secret_key:
-                    raise CommandError(
-                        "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required for S3 access"
-                    )
+                # Custom endpoint (R2, MinIO, etc.)
                 S3Client(
                     aws_access_key_id=access_key,
                     aws_secret_access_key=secret_key,
                     endpoint_url=endpoint_url,
                 ).set_as_default_client()
-                logger.info(f"Configured S3Client with endpoint: {endpoint_url}")
+                logger.info("Configured S3Client for R2/S3 storage")
+            else:
+                # Standard AWS S3
+                S3Client(
+                    aws_access_key_id=access_key,
+                    aws_secret_access_key=secret_key,
+                ).set_as_default_client()
+                logger.info("Configured S3Client for AWS S3")
 
-        logger.info(f"Starting import from: {base_path}")
+        # Mask sensitive path info - only show bucket name
+        bucket_name = (
+            base_path.split("/")[2] if base_path.startswith("s3://") else "local"
+        )
+        logger.info(f"Starting import from bucket: {bucket_name}")
         if dry_run:
             logger.warning("DRY-RUN MODE: No changes will be saved")
 
@@ -123,15 +147,25 @@ class Command(BaseCommand):
                 if item.is_dir() and "-" in item.name:
                     fiscal_years.append(item.name)
             return sorted(fiscal_years)
+        except FileNotFoundError as e:
+            raise CommandError(f"Base path not found: {base_path}") from e
+        except PermissionError as e:
+            raise CommandError(f"Permission denied accessing {base_path}") from e
         except Exception as e:
-            logger.error(f"Failed to discover fiscal years: {e}")
-            return []
+            raise CommandError(f"Failed to discover fiscal years: {e}") from e
 
     def _import_fiscal_year(
         self, base_path: AnyPath, fiscal_year: str, dry_run: bool
     ) -> tuple[int, int, int]:
         """Import cases for a single fiscal year. Returns (created, skipped, failed)."""
         source_dir = base_path / fiscal_year
+
+        # Validate fiscal year directory exists
+        if not source_dir.exists():
+            raise CommandError(
+                f"Fiscal year directory not found: {fiscal_year}\n"
+                f"Check that the directory exists in the base path."
+            )
 
         json_files = list(source_dir.rglob("*.json"))
         json_files = [f for f in json_files if f.name != "index.json"]
@@ -165,10 +199,20 @@ class Command(BaseCommand):
 
                 if result.status == "created":
                     created += 1
-                    logger.info(f"DRAFTED: {case_no}")
+                    # Get stats from service
+                    entities_count = len(
+                        ciaa_json.get("court_case", {}).get("defendants", [])
+                    )
+                    sources_count = len(
+                        ciaa_json.get("ciaa", {}).get("press_releases", [])
+                    ) + len(ciaa_json.get("court_case", {}).get("faisala_link", []))
+                    logger.info(
+                        f"DRAFTED: {case_no} | "
+                        f"{entities_count} defendant(s), {sources_count} source(s)"
+                    )
                 elif result.status == "skipped":
                     skipped += 1
-                    logger.debug(f"SKIPPED: {case_no}")
+                    logger.info(f"SKIPPED: {case_no} (already exists)")
                 else:
                     failed += 1
                     logger.error(f"FAILED: {case_no} - {result.message}")
@@ -188,12 +232,35 @@ class Command(BaseCommand):
         return created, skipped, failed
 
     def _log_summary(self, created, skipped, failed, dry_run):
+        """Log detailed import summary with statistics."""
         logger.info("\n" + "=" * 60)
         logger.info("IMPORT SUMMARY")
         logger.info("=" * 60)
         if dry_run:
             logger.warning("DRY-RUN MODE (no changes saved)")
-        logger.info(f"Created: {created}")
-        logger.info(f"Skipped: {skipped}")
-        logger.info(f"Failed: {failed}")
+
+        total = created + skipped + failed
+        logger.info(f"Total processed: {total}")
+        logger.info(
+            f"Created:       {created} ({created/total*100:.1f}%)"
+            if total > 0
+            else f"Created:       {created}"
+        )
+        logger.info(
+            f"Skipped:       {skipped} ({skipped/total*100:.1f}%)"
+            if total > 0
+            else f"Skipped:       {skipped}"
+        )
+        logger.info(
+            f"Failed:        {failed} ({failed/total*100:.1f}%)"
+            if total > 0
+            else f"Failed:        {failed}"
+        )
         logger.info("=" * 60)
+
+        if created > 0:
+            logger.info(f"Successfully drafted {created} new case(s)")
+        if skipped > 0:
+            logger.info(f"Skipped {skipped} existing case(s)")
+        if failed > 0:
+            logger.error(f"{failed} case(s) failed to import")
