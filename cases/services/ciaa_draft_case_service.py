@@ -120,22 +120,35 @@ class CIAADraftCaseService:
 
         return errors
 
+    def _primary_ciaa_court_case(self, court_cases: list[str]) -> Optional[str]:
+        """Extract the primary CIAA court case reference (special:*) for idempotency checks.
+        
+        CIAA cases are expected to have exactly one special:* entry in court_cases.
+        This is the unique idempotency key and should be used for duplicate detection.
+        
+        Args:
+            court_cases: List of court case references
+            
+        Returns:
+            The special:* reference if found, otherwise the first court case reference, or None
+        """
+        for cc in court_cases:
+            if cc.startswith("special:"):
+                return cc
+        return court_cases[0] if court_cases else None
+
     def check_case_exists(self, court_cases: list[str]) -> Optional[Case]:
         """Check if case already exists by court_cases field. Returns existing Case or None."""
-        if not court_cases:
+        primary = self._primary_ciaa_court_case(court_cases)
+        if not primary:
             return None
 
         if connection.vendor == "postgresql":
-            for court_case in court_cases:
-                case = Case.objects.filter(court_cases__contains=[court_case]).first()
-                if case:
-                    return case
+            return Case.objects.filter(court_cases__contains=[primary]).first()
         else:
             for case in Case.objects.exclude(court_cases__isnull=True):
-                if isinstance(case.court_cases, list):
-                    for court_case in court_cases:
-                        if court_case in case.court_cases:
-                            return case
+                if isinstance(case.court_cases, list) and primary in case.court_cases:
+                    return case
         return None
 
     def map_json_to_case(self, ciaa_json: dict) -> dict:
