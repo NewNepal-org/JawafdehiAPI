@@ -122,13 +122,13 @@ class CIAADraftCaseService:
 
     def _primary_ciaa_court_case(self, court_cases: list[str]) -> Optional[str]:
         """Extract the primary CIAA court case reference (special:*) for idempotency checks.
-        
+
         CIAA cases are expected to have exactly one special:* entry in court_cases.
         This is the unique idempotency key and should be used for duplicate detection.
-        
+
         Args:
             court_cases: List of court case references
-            
+
         Returns:
             The special:* reference if found, otherwise the first court case reference, or None
         """
