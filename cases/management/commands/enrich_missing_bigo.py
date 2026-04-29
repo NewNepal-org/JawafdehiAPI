@@ -140,15 +140,27 @@ class Command(BaseCommand):
                         )
                     )
                 else:
-                    self._patch_case_bigo(
-                        case=case,
-                        bigo=bigo,
-                        api_base_url=options["api_base_url"],
-                        api_token=options["api_token"],
-                    )
-                    self.stdout.write(
-                        self.style.SUCCESS(f"[UPDATED] {case.case_id}: BIGO={bigo}")
-                    )
+                    fresh_case = Case.objects.get(pk=case.pk)
+                    if fresh_case.state == CaseState.DRAFT and (
+                        fresh_case.bigo is None or fresh_case.bigo == 0
+                    ):
+                        self._patch_case_bigo(
+                            case=fresh_case,
+                            bigo=bigo,
+                            api_base_url=options["api_base_url"],
+                            api_token=options["api_token"],
+                        )
+                        self.stdout.write(
+                            self.style.SUCCESS(f"[UPDATED] {case.case_id}: BIGO={bigo}")
+                        )
+                    else:
+                        skipped += 1
+                        self.stdout.write(
+                            self.style.WARNING(
+                                f"[SKIP] {case.case_id}: case no longer eligible (state={fresh_case.state} bigo={fresh_case.bigo})"
+                            )
+                        )
+                        continue
                 updated += 1
             except Exception as exc:  # noqa: BLE001
                 failed += 1
@@ -173,16 +185,17 @@ class Command(BaseCommand):
             )
 
     def _validate_runtime_inputs(self, options: dict[str, Any]) -> None:
+        if not options["anthropic_api_key"]:
+            raise CommandError(
+                "Anthropic API key is required. Set --anthropic-api-key or ANTHROPIC_API_KEY."
+            )
+
         if options["dry_run"]:
             return
 
         if not options["api_token"]:
             raise CommandError(
                 "JAWAFDEHI API token is required. Set --api-token or JAWAFDEHI_API_TOKEN."
-            )
-        if not options["anthropic_api_key"]:
-            raise CommandError(
-                "Anthropic API key is required. Set --anthropic-api-key or ANTHROPIC_API_KEY."
             )
 
     def _select_press_release_source(self, case: Case) -> DocumentSource | None:
@@ -269,6 +282,7 @@ class Command(BaseCommand):
                 raise CommandError(
                     f"No downloadable source found for source_id={source.source_id}."
                 )
+            self._validate_url_scheme(source_url)
             result = converter.convert_uri(source_url)
             return result.markdown
 
@@ -298,6 +312,7 @@ class Command(BaseCommand):
         if not source_url:
             return None
 
+        self._validate_url_scheme(source_url)
         parsed = urllib.parse.urlparse(source_url)
         guessed_name = Path(parsed.path).name or f"{source.source_id}.bin"
         out_path = output_dir / guessed_name
@@ -395,10 +410,14 @@ Press release markdown:
     def _coerce_bigo_int(self, value: Any) -> int | None:
         if value is None:
             return None
+        if isinstance(value, bool):
+            return None
         if isinstance(value, int):
             return value if value > 0 else None
         if isinstance(value, float):
-            return int(value) if value > 0 else None
+            if not value.is_integer() or value <= 0:
+                return None
+            return int(value)
         if not isinstance(value, str):
             return None
 
