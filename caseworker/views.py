@@ -6,15 +6,26 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 
-from .models import MCPServer, Skill, Summary, Draft, DraftVersion, LLMProvider
+from .models import (
+    MCPServer,
+    Prompt,
+    Skill,
+    Summary,
+    Draft,
+    DraftVersion,
+    LLMProvider,
+    PublicChatConfig,
+)
 from .serializers import (
     CurrentUserSerializer,
     MCPServerSerializer,
+    PromptSerializer,
     SkillSerializer,
     SummarySerializer,
     DraftSerializer,
     DraftVersionSerializer,
     LLMProviderSerializer,
+    PublicChatConfigSerializer,
 )
 from .permissions import IsAdminOrReadOnly, IsOwnerOrAdmin
 from .services import MCPService, LLMService, SummaryGenerationService
@@ -92,6 +103,12 @@ class MCPServerViewSet(viewsets.ModelViewSet):
         return Response({"connected": is_connected})
 
 
+class PromptViewSet(viewsets.ModelViewSet):
+    queryset = Prompt.objects.all()
+    serializer_class = PromptSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]
+
+
 class SkillViewSet(viewsets.ModelViewSet):
     queryset = Skill.objects.all()
     serializer_class = SkillSerializer
@@ -111,33 +128,33 @@ class SummaryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"])
     def generate(self, request):
         case_number = request.data.get("case_number")
-        skill_id = request.data.get("skill_id")
+        prompt_id = request.data.get("prompt_id") or request.data.get("skill_id")
         query = request.data.get("query", "")
 
-        if not case_number or not skill_id:
+        if not case_number or not prompt_id:
             return Response(
-                {"error": "case_number and skill_id are required"},
+                {"error": "case_number and prompt_id are required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
-            skill = get_object_or_404(Skill, id=skill_id)
+            prompt = get_object_or_404(Prompt, id=prompt_id)
 
             summary_service = SummaryGenerationService()
-            is_valid, message = summary_service.validate_skill_prompt(skill)
+            is_valid, message = summary_service.validate_prompt(prompt)
             if not is_valid:
                 return Response(
-                    {"error": f"Invalid skill prompt: {message}"},
+                    {"error": f"Invalid prompt: {message}"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             case_data = MCPService().retrieve_case_data(case_number)
-            content = summary_service.generate_summary(case_data, skill, query)
+            content = summary_service.generate_summary(case_data, prompt, query)
 
             summary = Summary.objects.create(
                 user=request.user,
                 case_number=case_number,
-                skill=skill,
+                prompt=prompt,
                 content=content,
             )
             return Response(
@@ -198,3 +215,9 @@ class LLMProviderViewSet(viewsets.ModelViewSet):
         provider = self.get_object()
         is_connected = LLMService().test_connection(provider)
         return Response({"connected": is_connected})
+
+
+class PublicChatConfigViewSet(viewsets.ModelViewSet):
+    queryset = PublicChatConfig.objects.select_related("prompt", "llm_provider").all()
+    serializer_class = PublicChatConfigSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrReadOnly]

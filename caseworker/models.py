@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -42,16 +43,50 @@ class MCPServer(models.Model):
 
 
 class Skill(models.Model):
+    """Reusable instruction block that can be attached to prompts."""
+
     name = models.CharField(max_length=255, unique=True)
     display_name = models.CharField(
         max_length=255,
         unique=True,
         null=True,
         blank=True,
-        help_text="Custom name for loading skill with /display_name syntax (no spaces, use hyphens)",
+        help_text="Human-friendly skill name",
+    )
+    description = models.TextField()
+    content = models.TextField(
+        help_text="Instruction content loaded into selected prompts"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.display_name or self.name
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class Prompt(models.Model):
+    """Reusable prompt profile for LLM-backed features."""
+
+    name = models.CharField(max_length=255, unique=True)
+    display_name = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text="Custom name for loading prompt profiles with /display_name syntax",
     )
     description = models.TextField()
     prompt = models.TextField()
+    skills = models.ManyToManyField(
+        Skill,
+        blank=True,
+        related_name="prompts",
+        help_text="Optional instruction blocks loaded with this prompt",
+    )
     # Model should be set by application logic based on configured provider
     model = models.CharField(max_length=100)
     temperature = models.FloatField(default=0.7)
@@ -71,7 +106,7 @@ class Summary(models.Model):
         User, on_delete=models.CASCADE, related_name="cw_summaries"
     )
     case_number = models.CharField(max_length=100)
-    skill = models.ForeignKey(Skill, on_delete=models.SET_NULL, null=True, blank=True)
+    prompt = models.ForeignKey(Prompt, on_delete=models.SET_NULL, null=True, blank=True)
     content = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -92,7 +127,7 @@ class Draft(models.Model):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="cw_drafts")
     case_number = models.CharField(max_length=100)
-    skill = models.ForeignKey(Skill, on_delete=models.SET_NULL, null=True, blank=True)
+    prompt = models.ForeignKey(Prompt, on_delete=models.SET_NULL, null=True, blank=True)
     content = models.TextField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="draft")
     external_reference_id = models.CharField(max_length=255, null=True, blank=True)
@@ -156,3 +191,79 @@ class LLMProvider(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class PublicChatConfig(models.Model):
+    """Admin-managed prompt, provider, quota, and context limits for public chat."""
+
+    class QuotaScope(models.TextChoices):
+        IP_SESSION = "ip_session", "IP + Session"
+        SESSION = "session", "Session"
+        IP = "ip", "IP"
+
+    name = models.CharField(max_length=255, unique=True)
+    is_active = models.BooleanField(default=True)
+    enabled = models.BooleanField(default=True)
+    prompt = models.ForeignKey(
+        Prompt,
+        on_delete=models.PROTECT,
+        related_name="public_chat_configs",
+    )
+    llm_provider = models.ForeignKey(
+        LLMProvider,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="public_chat_configs",
+        help_text="Optional provider override. Falls back to the active provider.",
+    )
+    quota_scope = models.CharField(
+        max_length=20,
+        choices=QuotaScope.choices,
+        default=QuotaScope.IP_SESSION,
+    )
+    quota_limit = models.PositiveIntegerField(default=10)
+    quota_window_seconds = models.PositiveIntegerField(default=86400)
+    max_question_chars = models.PositiveIntegerField(default=1000)
+    max_history_turns = models.PositiveIntegerField(default=6)
+    max_history_chars = models.PositiveIntegerField(default=4000)
+    max_mcp_results = models.PositiveIntegerField(default=5)
+    max_tool_calls = models.PositiveIntegerField(default=3)
+    max_evidence_chars = models.PositiveIntegerField(default=8000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        errors = {}
+        for field in [
+            "quota_limit",
+            "quota_window_seconds",
+            "max_question_chars",
+            "max_history_turns",
+            "max_history_chars",
+            "max_mcp_results",
+            "max_tool_calls",
+            "max_evidence_chars",
+        ]:
+            if getattr(self, field) < 1:
+                errors[field] = "Must be at least 1."
+
+        if self.is_active:
+            queryset = PublicChatConfig.objects.filter(is_active=True)
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
+            if queryset.exists():
+                errors["is_active"] = "Only one public chat config can be active."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    class Meta:
+        ordering = ["-is_active", "-created_at"]

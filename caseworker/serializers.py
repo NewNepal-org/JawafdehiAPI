@@ -2,11 +2,13 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import (
     MCPServer,
+    Prompt,
     Skill,
     Summary,
     Draft,
     DraftVersion,
     LLMProvider,
+    PublicChatConfig,
     PROVIDERS_REQUIRING_API_KEY,
 )
 
@@ -48,7 +50,24 @@ class SkillSerializer(serializers.ModelSerializer):
             "name",
             "display_name",
             "description",
+            "content",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class PromptSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Prompt
+        fields = [
+            "id",
+            "name",
+            "display_name",
+            "description",
             "prompt",
+            "skills",
             "model",
             "temperature",
             "max_tokens",
@@ -59,24 +78,24 @@ class SkillSerializer(serializers.ModelSerializer):
 
 
 class SummarySerializer(serializers.ModelSerializer):
-    skill_name = serializers.SerializerMethodField()
+    prompt_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Summary
         fields = [
             "id",
             "case_number",
-            "skill",
-            "skill_name",
+            "prompt",
+            "prompt_name",
             "content",
             "created_at",
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
-    def get_skill_name(self, obj):
-        """Return skill name or None if skill is not set."""
-        return obj.skill.name if obj.skill else None
+    def get_prompt_name(self, obj):
+        """Return prompt name or None if prompt is not set."""
+        return obj.prompt.name if obj.prompt else None
 
 
 class DraftVersionSerializer(serializers.ModelSerializer):
@@ -87,7 +106,7 @@ class DraftVersionSerializer(serializers.ModelSerializer):
 
 
 class DraftSerializer(serializers.ModelSerializer):
-    skill_name = serializers.SerializerMethodField()
+    prompt_name = serializers.SerializerMethodField()
     versions = DraftVersionSerializer(many=True, read_only=True)
 
     class Meta:
@@ -95,8 +114,8 @@ class DraftSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "case_number",
-            "skill",
-            "skill_name",
+            "prompt",
+            "prompt_name",
             "content",
             "status",
             "external_reference_id",
@@ -112,9 +131,9 @@ class DraftSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-    def get_skill_name(self, obj):
-        """Return skill name or None if skill is not set."""
-        return obj.skill.name if obj.skill else None
+    def get_prompt_name(self, obj):
+        """Return prompt name or None if prompt is not set."""
+        return obj.prompt.name if obj.prompt else None
 
 
 class LLMProviderSerializer(serializers.ModelSerializer):
@@ -136,8 +155,10 @@ class LLMProviderSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """Validate that api_key is provided for providers that require it."""
-        provider_type = data.get("provider_type")
-        api_key = data.get("api_key")
+        provider_type = data.get(
+            "provider_type", getattr(self.instance, "provider_type", None)
+        )
+        api_key = data.get("api_key", getattr(self.instance, "api_key", None))
 
         if provider_type in PROVIDERS_REQUIRING_API_KEY and not api_key:
             raise serializers.ValidationError(
@@ -145,3 +166,28 @@ class LLMProviderSerializer(serializers.ModelSerializer):
             )
 
         return data
+
+
+class PublicChatConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PublicChatConfig
+        fields = [
+            "id",
+            "name",
+            "is_active",
+            "enabled",
+            "prompt",
+            "llm_provider",
+            "quota_scope",
+            "quota_limit",
+            "quota_window_seconds",
+            "max_question_chars",
+            "max_history_turns",
+            "max_history_chars",
+            "max_mcp_results",
+            "max_tool_calls",
+            "max_evidence_chars",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]

@@ -1,5 +1,14 @@
 from django.contrib import admin
-from .models import MCPServer, Skill, Summary, Draft, DraftVersion, LLMProvider
+from .models import (
+    MCPServer,
+    Prompt,
+    Skill,
+    Summary,
+    Draft,
+    DraftVersion,
+    LLMProvider,
+    PublicChatConfig,
+)
 
 
 @admin.register(MCPServer)
@@ -12,8 +21,8 @@ class MCPServerAdmin(admin.ModelAdmin):
     readonly_fields = ["status", "created_at", "updated_at"]
 
 
-@admin.register(Skill)
-class SkillAdmin(admin.ModelAdmin):
+@admin.register(Prompt)
+class PromptAdmin(admin.ModelAdmin):
     list_display = [
         "name",
         "display_name",
@@ -23,19 +32,27 @@ class SkillAdmin(admin.ModelAdmin):
         "created_at",
     ]
     search_fields = ["name", "description"]
+    filter_horizontal = ["skills"]
+
+
+@admin.register(Skill)
+class SkillAdmin(admin.ModelAdmin):
+    list_display = ["name", "display_name", "is_active", "created_at"]
+    list_filter = ["is_active"]
+    search_fields = ["name", "display_name", "description", "content"]
 
 
 @admin.register(Summary)
 class SummaryAdmin(admin.ModelAdmin):
-    list_display = ["case_number", "user", "skill", "created_at"]
-    list_filter = ["skill"]
+    list_display = ["case_number", "user", "prompt", "created_at"]
+    list_filter = ["prompt"]
     search_fields = ["case_number", "user__username"]
 
 
 @admin.register(Draft)
 class DraftAdmin(admin.ModelAdmin):
-    list_display = ["case_number", "user", "skill", "status", "created_at"]
-    list_filter = ["status", "skill"]
+    list_display = ["case_number", "user", "prompt", "status", "created_at"]
+    list_filter = ["status", "prompt"]
     search_fields = ["case_number", "user__username"]
 
 
@@ -58,4 +75,21 @@ class LLMProviderAdmin(admin.ModelAdmin):
     list_filter = ["provider_type", "is_active"]
     # Exclude api_key from admin forms to prevent displaying secrets
     exclude = ["api_key"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+@admin.register(PublicChatConfig)
+class PublicChatConfigAdmin(admin.ModelAdmin):
+    list_display = [
+        "name",
+        "enabled",
+        "is_active",
+        "prompt",
+        "llm_provider",
+        "quota_scope",
+        "quota_limit",
+        "quota_window_seconds",
+    ]
+    list_filter = ["enabled", "is_active", "quota_scope"]
+    search_fields = ["name", "prompt__name", "prompt__display_name"]
     readonly_fields = ["created_at", "updated_at"]

@@ -174,27 +174,27 @@ class AnthropicWrapper:
 
 
 class SummaryGenerationService:
-    """Service for generating summaries using an LLM and a skill prompt."""
+    """Service for generating summaries using an LLM and a prompt profile."""
 
     MAX_RETRIES = 3
 
-    def generate_summary(self, case_data, skill, query):
+    def generate_summary(self, case_data, prompt, query):
         try:
-            return self._generate_with_retry(case_data, skill, query)
+            return self._generate_with_retry(case_data, prompt, query)
         except Exception as e:
             logger.error(f"Failed to generate summary: {e}")
             return f"Error generating summary: {e}"
 
-    def _generate_with_retry(self, case_data, skill, query, retry_count=0):
+    def _generate_with_retry(self, case_data, prompt, query, retry_count=0):
         try:
             llm_service = LLMService()
             llm = llm_service.get_llm()
-            prompt = self._render_prompt(skill.prompt, case_data, query)
-            return llm_service._call_llm(llm, prompt)
+            rendered_prompt = self._render_prompt(prompt.prompt, case_data, query)
+            return llm_service._call_llm(llm, rendered_prompt)
         except Exception:
             if retry_count < self.MAX_RETRIES:
                 return self._generate_with_retry(
-                    case_data, skill, query, retry_count + 1
+                    case_data, prompt, query, retry_count + 1
                 )
             raise
 
@@ -207,7 +207,11 @@ class SummaryGenerationService:
         except KeyError:
             return template
 
-    def validate_skill_prompt(self, skill):
-        if not skill.prompt:
+    def validate_prompt(self, prompt):
+        if not prompt.prompt:
             return False, "Prompt is empty"
         return True, "Prompt is valid"
+
+    def validate_skill_prompt(self, prompt):
+        """Backward-compatible alias for older callers."""
+        return self.validate_prompt(prompt)
