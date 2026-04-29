@@ -90,6 +90,52 @@ def build_media_url(
     return "/media/"
 
 
+def build_public_chat_mcp_servers():
+    command = os.getenv("PUBLIC_CHAT_MCP_COMMAND")
+    args = get_env_list("PUBLIC_CHAT_MCP_ARGS")
+    local_path = Path(
+        os.getenv("PUBLIC_CHAT_MCP_LOCAL_PATH") or BASE_DIR.parent / "jawafdehi-mcp"
+    )
+
+    if not command and not args and local_path.exists():
+        command = "uv"
+        args = ["run", "--directory", str(local_path), "jawafdehi-mcp"]
+
+    if not command or not args:
+        return {}
+
+    return {
+        "jawafdehi": {
+            "command": command,
+            "args": args,
+            "transport": "stdio",
+            "env": {
+                "JAWAFDEHI_API_BASE_URL": PUBLIC_CHAT_MCP_API_BASE_URL,
+            },
+        }
+    }
+
+
+def build_public_chat_quota_cache():
+    backend = os.getenv("PUBLIC_CHAT_QUOTA_CACHE_BACKEND", "locmem").strip().lower()
+    if backend == "database":
+        return {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": os.getenv(
+                "PUBLIC_CHAT_QUOTA_CACHE_TABLE",
+                "public_chat_quota_cache",
+            ),
+        }
+    if backend == "locmem":
+        return {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "jawafdehi-public-chat-quota",
+        }
+    raise ValueError(
+        "PUBLIC_CHAT_QUOTA_CACHE_BACKEND must be either 'locmem' or 'database'."
+    )
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -135,6 +181,7 @@ INSTALLED_APPS = [
     "ngm",
     "caseworker",
     "case_workflows",
+    "public_chat",
 ]
 
 MIDDLEWARE = [
@@ -415,13 +462,21 @@ CASE_WORKFLOWS_WORK_DIR = (
     else BASE_DIR / "workflow-runs"
 )
 
+# Public Chat MCP Configuration
+PUBLIC_CHAT_MCP_API_BASE_URL = os.getenv(
+    "PUBLIC_CHAT_MCP_API_BASE_URL",
+    os.getenv("JAWAFDEHI_API_BASE_URL", "https://portal.jawafdehi.org"),
+)
+PUBLIC_CHAT_MCP_SERVERS = build_public_chat_mcp_servers()
+
 # Cache Configuration
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
         "LOCATION": "jawafdehi-cache",
         "TIMEOUT": 300,  # 5 minutes default
-    }
+    },
+    "public_chat_quota": build_public_chat_quota_cache(),
 }
 
 # Jazzmin Configuration
