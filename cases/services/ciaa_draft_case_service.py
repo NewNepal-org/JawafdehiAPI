@@ -118,6 +118,17 @@ class CIAADraftCaseService:
         elif meta["match_status"] not in ["confirmed", "needs_review", "unmatched"]:
             errors.append(f"Invalid match_status '{meta['match_status']}'")
 
+        # Validate that CIAA cases have a special:* court case reference
+        court_case = json_dict.get("court_case", {})
+        court = court_case.get("court")
+        case_no = court_case.get("case_no")
+        if court and case_no:
+            court_case_ref = f"{court}:{case_no}"
+            if not court_case_ref.startswith("special:"):
+                errors.append(
+                    f"Missing required CIAA idempotency key: court_case must be a special:* reference, got '{court_case_ref}'"
+                )
+
         return errors
 
     def _primary_ciaa_court_case(self, court_cases: list[str]) -> Optional[str]:
@@ -130,12 +141,12 @@ class CIAADraftCaseService:
             court_cases: List of court case references
 
         Returns:
-            The special:* reference if found, otherwise the first court case reference, or None
+            The special:* reference if found, otherwise None
         """
         for cc in court_cases:
             if cc.startswith("special:"):
                 return cc
-        return court_cases[0] if court_cases else None
+        return None
 
     def check_case_exists(self, court_cases: list[str]) -> Optional[Case]:
         """Check if case already exists by court_cases field. Returns existing Case or None."""
@@ -253,7 +264,7 @@ class CIAADraftCaseService:
         if name in self.entity_cache:
             return self.entity_cache[name]
 
-        entity = JawafEntity.objects.filter(display_name=name).first()
+        entity = JawafEntity.objects.filter(display_name__iexact=name).first()
         if entity:
             self.stats["entities_reused"] += 1
             logger.debug(f"Reusing entity: {name}")
