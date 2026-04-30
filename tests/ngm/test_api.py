@@ -206,16 +206,62 @@ def test_query_endpoint_rate_limited_per_token(authenticated_client, monkeypatch
 
 
 @pytest.mark.django_db
-def test_court_case_detail_requires_authentication(api_client):
+def test_court_case_detail_public_access_and_throttling(api_client, monkeypatch):
+    """Test that court case detail endpoint is public and throttled."""
+    # Mock the service to return a valid case
+    def fake_get_details(court_identifier, case_number):
+        return {
+            "case": {
+                "case_number": "081-CR-0081",
+                "court_identifier": "supreme",
+                "registration_date_bs": "2081-01-15",
+                "registration_date_ad": None,
+                "case_type": "Criminal",
+                "division": None,
+                "category": None,
+                "section": None,
+                "plaintiff": "State",
+                "defendant": "John Doe",
+                "original_case_number": None,
+                "case_id": "supreme-081-CR-0081",
+                "priority": None,
+                "registration_number": "12345",
+                "case_status": "Pending",
+                "verdict_date_bs": None,
+                "verdict_date_ad": None,
+                "verdict_judge": None,
+                "status": "active",
+            },
+            "hearings": [],
+            "entities": [],
+        }
+
+    monkeypatch.setattr(api_views, "get_court_case_details", fake_get_details)
+
+    # Test 1: Unauthenticated request should succeed (public endpoint)
     response = api_client.get(
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:081-CR-0081")
     )
-    assert response.status_code == 401
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["case_number"] == "081-CR-0081"
+
+    # Test 2: Throttling - make many requests to trigger rate limit
+    # NGMQueryRateThrottle default is 60/hour, so we need to exceed that
+    for _ in range(65):
+        response = api_client.get(
+            CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:081-CR-0081")
+        )
+        if response.status_code == 429:
+            break
+
+    # Should eventually get throttled
+    assert response.status_code == 429
 
 
 @pytest.mark.django_db
-def test_court_case_detail_invalid_format(authenticated_client):
-    response = authenticated_client.get(
+def test_court_case_detail_invalid_format(api_client):
+    response = api_client.get(
         CASE_DETAIL_URL_TEMPLATE.format(case_id="invalid-format")
     )
     assert response.status_code == 400
@@ -224,13 +270,13 @@ def test_court_case_detail_invalid_format(authenticated_client):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_not_found(authenticated_client, monkeypatch):
+def test_court_case_detail_not_found(api_client, monkeypatch):
     def fake_get_details(court_identifier, case_number):
         return None
 
     monkeypatch.setattr(api_views, "get_court_case_details", fake_get_details)
 
-    response = authenticated_client.get(
+    response = api_client.get(
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:999-XX-9999")
     )
     assert response.status_code == 404
@@ -239,7 +285,7 @@ def test_court_case_detail_not_found(authenticated_client, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_success(authenticated_client, monkeypatch):
+def test_court_case_detail_success(api_client, monkeypatch):
     def fake_get_details(court_identifier, case_number):
         assert court_identifier == "supreme"
         assert case_number == "081-CR-0081"
@@ -306,7 +352,8 @@ def test_court_case_detail_success(authenticated_client, monkeypatch):
 
     monkeypatch.setattr(api_views, "get_court_case_details", fake_get_details)
 
-    response = authenticated_client.get(
+    response = api_client.get(
+
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:081-CR-0081")
     )
 
@@ -325,14 +372,15 @@ def test_court_case_detail_success(authenticated_client, monkeypatch):
 
 @pytest.mark.django_db
 def test_court_case_detail_returns_503_when_ngm_not_configured(
-    authenticated_client, monkeypatch
+    api_client, monkeypatch
 ):
     def raise_not_configured(court_identifier, case_number):
         raise ValueError("NGM database is not configured")
 
     monkeypatch.setattr(api_views, "get_court_case_details", raise_not_configured)
 
-    response = authenticated_client.get(
+    response = api_client.get(
+
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:081-CR-0081")
     )
     assert response.status_code == 503
@@ -341,7 +389,7 @@ def test_court_case_detail_returns_503_when_ngm_not_configured(
 
 
 @pytest.mark.django_db
-def test_court_case_detail_lowercase_normalization(authenticated_client, monkeypatch):
+def test_court_case_detail_lowercase_normalization(api_client, monkeypatch):
     """Test that lowercase case numbers are normalized to uppercase."""
 
     def fake_get_details(court_identifier, case_number):
@@ -374,7 +422,8 @@ def test_court_case_detail_lowercase_normalization(authenticated_client, monkeyp
 
     monkeypatch.setattr(api_views, "get_court_case_details", fake_get_details)
 
-    response = authenticated_client.get(
+    response = api_client.get(
+
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:081-cr-0081")
     )
     assert response.status_code == 200
@@ -382,7 +431,7 @@ def test_court_case_detail_lowercase_normalization(authenticated_client, monkeyp
 
 @pytest.mark.django_db
 def test_court_case_detail_missing_zeros_normalization(
-    authenticated_client, monkeypatch
+    api_client, monkeypatch
 ):
     """Test that case numbers with missing leading zeros are normalized."""
 
@@ -416,14 +465,15 @@ def test_court_case_detail_missing_zeros_normalization(
 
     monkeypatch.setattr(api_views, "get_court_case_details", fake_get_details)
 
-    response = authenticated_client.get(
+    response = api_client.get(
+
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:81-cr-81")
     )
     assert response.status_code == 200
 
 
 @pytest.mark.django_db
-def test_court_case_detail_devanagari_normalization(authenticated_client, monkeypatch):
+def test_court_case_detail_devanagari_normalization(api_client, monkeypatch):
     """Test that Devanagari numerals are normalized to ASCII."""
 
     def fake_get_details(court_identifier, case_number):
@@ -456,16 +506,17 @@ def test_court_case_detail_devanagari_normalization(authenticated_client, monkey
 
     monkeypatch.setattr(api_views, "get_court_case_details", fake_get_details)
 
-    response = authenticated_client.get(
+    response = api_client.get(
+
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:०८१-CR-००८१")
     )
     assert response.status_code == 200
 
 
 @pytest.mark.django_db
-def test_court_case_detail_invalid_case_number_format(authenticated_client):
+def test_court_case_detail_invalid_case_number_format(api_client):
     """Test that invalid case number format returns 400."""
-    response = authenticated_client.get(
+    response = api_client.get(
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:invalid-format")
     )
     assert response.status_code == 400
@@ -473,7 +524,7 @@ def test_court_case_detail_invalid_case_number_format(authenticated_client):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_combined_normalization(authenticated_client, monkeypatch):
+def test_court_case_detail_combined_normalization(api_client, monkeypatch):
     """Test normalization with Devanagari, lowercase, and missing zeros."""
 
     def fake_get_details(court_identifier, case_number):
@@ -507,7 +558,8 @@ def test_court_case_detail_combined_normalization(authenticated_client, monkeypa
     monkeypatch.setattr(api_views, "get_court_case_details", fake_get_details)
 
     # Test with Devanagari and missing zeros
-    response = authenticated_client.get(
+    response = api_client.get(
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:८१-cr-८१")
     )
     assert response.status_code == 200
+
