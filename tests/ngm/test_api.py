@@ -1,6 +1,7 @@
 import pytest
 from django.contrib.auth.models import Group
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
 
@@ -20,6 +21,14 @@ def add_user_to_groups(user, *group_names):
 @pytest.fixture
 def api_client():
     return APIClient()
+
+
+@pytest.fixture
+def clear_cache():
+    """Clear cache before and after each test to prevent throttle carryover."""
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture
@@ -206,7 +215,9 @@ def test_query_endpoint_rate_limited_per_token(authenticated_client, monkeypatch
 
 
 @pytest.mark.django_db
-def test_court_case_detail_public_access_and_throttling(api_client, monkeypatch):
+def test_court_case_detail_public_access_and_throttling(
+    api_client, clear_cache, monkeypatch
+):
     """Test that court case detail endpoint is public and throttled."""
 
     # Mock the service to return a valid case
@@ -261,7 +272,7 @@ def test_court_case_detail_public_access_and_throttling(api_client, monkeypatch)
 
 
 @pytest.mark.django_db
-def test_court_case_detail_invalid_format(api_client):
+def test_court_case_detail_invalid_format(api_client, clear_cache):
     response = api_client.get(CASE_DETAIL_URL_TEMPLATE.format(case_id="invalid-format"))
     assert response.status_code == 400
     payload = response.json()
@@ -269,7 +280,7 @@ def test_court_case_detail_invalid_format(api_client):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_not_found(api_client, monkeypatch):
+def test_court_case_detail_not_found(api_client, clear_cache, monkeypatch):
     def fake_get_details(court_identifier, case_number):
         return None
 
@@ -284,7 +295,7 @@ def test_court_case_detail_not_found(api_client, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_success(api_client, monkeypatch):
+def test_court_case_detail_success(api_client, clear_cache, monkeypatch):
     def fake_get_details(court_identifier, case_number):
         assert court_identifier == "supreme"
         assert case_number == "081-CR-0081"
@@ -369,7 +380,9 @@ def test_court_case_detail_success(api_client, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_returns_503_when_ngm_not_configured(api_client, monkeypatch):
+def test_court_case_detail_returns_503_when_ngm_not_configured(
+    api_client, clear_cache, monkeypatch
+):
     def raise_not_configured(court_identifier, case_number):
         raise ValueError("NGM database is not configured")
 
@@ -384,7 +397,9 @@ def test_court_case_detail_returns_503_when_ngm_not_configured(api_client, monke
 
 
 @pytest.mark.django_db
-def test_court_case_detail_lowercase_normalization(api_client, monkeypatch):
+def test_court_case_detail_lowercase_normalization(
+    api_client, clear_cache, monkeypatch
+):
     """Test that lowercase case numbers are normalized to uppercase."""
 
     def fake_get_details(court_identifier, case_number):
@@ -424,7 +439,9 @@ def test_court_case_detail_lowercase_normalization(api_client, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_missing_zeros_normalization(api_client, monkeypatch):
+def test_court_case_detail_missing_zeros_normalization(
+    api_client, clear_cache, monkeypatch
+):
     """Test that case numbers with missing leading zeros are normalized."""
 
     def fake_get_details(court_identifier, case_number):
@@ -464,7 +481,9 @@ def test_court_case_detail_missing_zeros_normalization(api_client, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_devanagari_normalization(api_client, monkeypatch):
+def test_court_case_detail_devanagari_normalization(
+    api_client, clear_cache, monkeypatch
+):
     """Test that Devanagari numerals are normalized to ASCII."""
 
     def fake_get_details(court_identifier, case_number):
@@ -504,7 +523,7 @@ def test_court_case_detail_devanagari_normalization(api_client, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_invalid_case_number_format(api_client):
+def test_court_case_detail_invalid_case_number_format(api_client, clear_cache):
     """Test that invalid case number format returns 400."""
     response = api_client.get(
         CASE_DETAIL_URL_TEMPLATE.format(case_id="supreme:invalid-format")
@@ -514,7 +533,7 @@ def test_court_case_detail_invalid_case_number_format(api_client):
 
 
 @pytest.mark.django_db
-def test_court_case_detail_combined_normalization(api_client, monkeypatch):
+def test_court_case_detail_combined_normalization(api_client, clear_cache, monkeypatch):
     """Test normalization with Devanagari, lowercase, and missing zeros."""
 
     def fake_get_details(court_identifier, case_number):
