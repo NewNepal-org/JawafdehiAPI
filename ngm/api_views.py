@@ -192,8 +192,8 @@ class NGMJudicialQueryView(APIView):
     },
 )
 class CourtCaseDetailView(APIView):
-    authentication_classes = [TokenAuthentication]
-    permission_classes = [IsAuthenticated]
+    authentication_classes = []
+    permission_classes = []
     throttle_classes = [NGMQueryRateThrottle]
 
     def get(self, request, case_id):
