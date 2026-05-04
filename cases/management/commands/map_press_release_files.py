@@ -14,7 +14,6 @@ Usage:
 
 import logging
 import requests
-import uuid
 from typing import Optional
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -391,8 +390,7 @@ class Command(BaseCommand):
                 )
 
         # Build URL list: file URL + press release web page URL
-        from urllib.parse import quote
-        
+
         url_list = []
         if file_url and str(file_url).strip():
             # URL-encode spaces and special characters in the file URL
@@ -400,7 +398,7 @@ class Command(BaseCommand):
             # Replace spaces with %20
             file_url_str = file_url_str.replace(" ", "%20")
             url_list.append(file_url_str)
-            
+
         if press_release_url and str(press_release_url).strip():
             url_list.append(str(press_release_url).strip())
 

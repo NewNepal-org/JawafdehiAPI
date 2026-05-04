@@ -59,7 +59,7 @@ class TestMapPressReleaseFiles:
             "children": [
                 {
                     "name": "ciaa-press-releases",
-                    "$ref": "https://ngm-store.jawafdehi.org/indices/2026-05-04/index.ciaa-press-releases.json"
+                    "$ref": "https://ngm-store.jawafdehi.org/indices/2026-05-04/index.ciaa-press-releases.json",
                 }
             ]
         }
@@ -90,7 +90,10 @@ class TestMapPressReleaseFiles:
         return case, pr_source
 
     def test_dry_run_mode(
-        self, mock_root_index, mock_press_release_index, case_with_press_release_evidence
+        self,
+        mock_root_index,
+        mock_press_release_index,
+        case_with_press_release_evidence,
     ):
         """Test that dry-run mode doesn't modify database."""
         case, pr_source = case_with_press_release_evidence
@@ -117,7 +120,10 @@ class TestMapPressReleaseFiles:
             assert "[DRY RUN]" in output
 
     def test_map_press_release_evidence(
-        self, mock_root_index, mock_press_release_index, case_with_press_release_evidence
+        self,
+        mock_root_index,
+        mock_press_release_index,
+        case_with_press_release_evidence,
     ):
         """Test that command maps press release evidence to actual files."""
         case, pr_source = case_with_press_release_evidence
@@ -192,7 +198,10 @@ class TestMapPressReleaseFiles:
             assert case.evidence == original_evidence
 
     def test_specific_case_id(
-        self, mock_root_index, mock_press_release_index, case_with_press_release_evidence
+        self,
+        mock_root_index,
+        mock_press_release_index,
+        case_with_press_release_evidence,
     ):
         """Test mapping a specific case by case_id."""
         case, pr_source = case_with_press_release_evidence
