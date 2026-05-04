@@ -6,8 +6,10 @@ from django.test import override_settings
 from rest_framework.test import APIClient
 
 from caseworker.models import Prompt, PublicChatConfig, Skill
+from config.mcp_servers import build_public_chat_mcp_servers
 from public_chat.mcp_client import PublicChatMCPClient, PublicChatMCPError
 from public_chat.quota import QUOTA_CACHE_NAME, check_and_increment_quota
+from public_chat.routing import PUBLIC_CHAT_MCP_TOOLS, route_question
 
 PUBLIC_CHAT_URL = "/api/chat/public/"
 
@@ -55,6 +57,66 @@ def published_case_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+def test_public_chat_mcp_config_defaults_to_workflow_stdio_shape():
+    servers = build_public_chat_mcp_servers(api_base_url="http://127.0.0.1:8000")
+
+    assert servers == {
+        "jawafdehi": {
+            "command": "uvx",
+            "args": [
+                "--from",
+                "git+https://github.com/Jawafdehi/jawafdehi-mcp.git",
+                "jawafdehi-mcp",
+            ],
+            "transport": "stdio",
+            "env": {"JAWAFDEHI_API_BASE_URL": "http://127.0.0.1:8000"},
+        }
+    }
+    assert "JAWAFDEHI_API_TOKEN" not in servers["jawafdehi"]["env"]
+
+
+def test_public_chat_mcp_config_supports_full_env_override():
+    servers = build_public_chat_mcp_servers(
+        api_base_url="http://127.0.0.1:8000",
+        servers_json=(
+            '{"jawafdehi": {"command": "uv", "args": ["run", "--directory", '
+            '"/tmp/jawafdehi-mcp", "jawafdehi-mcp"], "transport": "stdio", '
+            '"env": {"JAWAFDEHI_API_BASE_URL": "http://127.0.0.1:8000"}}}'
+        ),
+    )
+
+    assert servers["jawafdehi"]["command"] == "uv"
+    assert servers["jawafdehi"]["args"] == [
+        "run",
+        "--directory",
+        "/tmp/jawafdehi-mcp",
+        "jawafdehi-mcp",
+    ]
+    assert servers["jawafdehi"]["transport"] == "stdio"
+    assert servers["jawafdehi"]["env"] == {
+        "JAWAFDEHI_API_BASE_URL": "http://127.0.0.1:8000"
+    }
+
+
+def test_public_chat_routing_owns_public_mcp_tool_policy():
+    assert PUBLIC_CHAT_MCP_TOOLS == frozenset(
+        {
+            "public_search_published_cases",
+            "public_get_published_case",
+            "public_search_jawaf_entities",
+        }
+    )
+    assert (
+        route_question("How many procurement cases are published?").tool_name
+        == "public_search_published_cases"
+    )
+    assert (
+        route_question("Show person entities related to procurement").tool_name
+        == "public_search_jawaf_entities"
+    )
+    assert route_question("What is in the 2078 annual report?").tool_name is None
 
 
 def test_mcp_client_parses_json_text_content():
