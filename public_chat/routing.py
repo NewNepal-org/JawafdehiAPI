@@ -57,12 +57,21 @@ STOP_PHRASES = [
     "?",
 ]
 
+PUBLIC_CHAT_MCP_TOOLS = frozenset(
+    {
+        "public_search_published_cases",
+        "public_get_published_case",
+        "public_search_jawaf_entities",
+    }
+)
+
 
 @dataclass(frozen=True)
 class RouteDecision:
     route: str
     search: str
     reason: str
+    tool_name: str | None = None
 
 
 def normalize_search(question: str) -> str:
@@ -82,9 +91,24 @@ def route_question(question: str) -> RouteDecision:
         )
 
     if any(keyword in lowered for keyword in COUNT_KEYWORDS):
-        return RouteDecision("case_count", normalize_search(question), "count")
+        return RouteDecision(
+            "case_count",
+            normalize_search(question),
+            "count",
+            "public_search_published_cases",
+        )
 
     if any(keyword in lowered for keyword in ENTITY_KEYWORDS):
-        return RouteDecision("entity_search", normalize_search(question), "entity")
+        return RouteDecision(
+            "entity_search",
+            normalize_search(question),
+            "entity",
+            "public_search_jawaf_entities",
+        )
 
-    return RouteDecision("case_search", normalize_search(question), "case")
+    return RouteDecision(
+        "case_search",
+        normalize_search(question),
+        "case",
+        "public_search_published_cases",
+    )
