@@ -15,6 +15,7 @@ import os
 from dotenv import load_dotenv
 from datetime import timedelta
 import dj_database_url
+from config.mcp_servers import build_public_chat_mcp_servers
 
 load_dotenv()
 
@@ -88,32 +89,6 @@ def build_media_url(
         return f"{ensure_trailing_slash(endpoint_url)}{bucket_name}/"
 
     return "/media/"
-
-
-def build_public_chat_mcp_servers():
-    command = os.getenv("PUBLIC_CHAT_MCP_COMMAND")
-    args = get_env_list("PUBLIC_CHAT_MCP_ARGS")
-    local_path = Path(
-        os.getenv("PUBLIC_CHAT_MCP_LOCAL_PATH") or BASE_DIR.parent / "jawafdehi-mcp"
-    )
-
-    if not command and not args and local_path.exists():
-        command = "uv"
-        args = ["run", "--directory", str(local_path), "jawafdehi-mcp"]
-
-    if not command or not args:
-        return {}
-
-    return {
-        "jawafdehi": {
-            "command": command,
-            "args": args,
-            "transport": "stdio",
-            "env": {
-                "JAWAFDEHI_API_BASE_URL": PUBLIC_CHAT_MCP_API_BASE_URL,
-            },
-        }
-    }
 
 
 def build_public_chat_quota_cache():
@@ -467,7 +442,10 @@ PUBLIC_CHAT_MCP_API_BASE_URL = os.getenv(
     "PUBLIC_CHAT_MCP_API_BASE_URL",
     os.getenv("JAWAFDEHI_API_BASE_URL", "https://portal.jawafdehi.org"),
 )
-PUBLIC_CHAT_MCP_SERVERS = build_public_chat_mcp_servers()
+PUBLIC_CHAT_MCP_SERVERS = build_public_chat_mcp_servers(
+    api_base_url=PUBLIC_CHAT_MCP_API_BASE_URL,
+    servers_json=os.getenv("PUBLIC_CHAT_MCP_SERVERS_JSON"),
+)
 
 # Cache Configuration
 CACHES = {
