@@ -103,24 +103,26 @@ class Command(BaseCommand):
             response = requests.get(NGM_ROOT_INDEX_URL, timeout=30)
             response.raise_for_status()
             root_data = response.json()
-            
+
             # Find ciaa-press-releases child and get its $ref URL
             press_release_url = None
             for child in root_data.get("children", []):
                 if child.get("name") == "ciaa-press-releases":
                     press_release_url = child.get("$ref")
                     break
-            
+
             if not press_release_url:
-                self.stdout.write(self.style.ERROR("Could not find ciaa-press-releases in root index"))
+                self.stdout.write(
+                    self.style.ERROR("Could not find ciaa-press-releases in root index")
+                )
                 return False
-            
+
             self.stdout.write(f"Found press release index: {press_release_url}")
-            
+
             # Load all pages of press releases
             current_url = press_release_url
             page_num = 1
-            
+
             while current_url:
                 self.stdout.write(f"  Loading page {page_num}...")
                 response = requests.get(current_url, timeout=30)
@@ -145,7 +147,7 @@ class Command(BaseCommand):
                                 "file_name": manuscript.get("file_name"),
                             }
                         )
-                
+
                 # Check for next page
                 current_url = data.get("next")
                 if current_url:
@@ -206,11 +208,13 @@ class Command(BaseCommand):
     def process_case(self, case: Case, dry_run: bool):
         """Process a single case and map its press release evidence to actual files."""
         self.stats["cases_processed"] += 1
-        self.stdout.write(f"\n[{self.stats['cases_processed']}] Processing: {case.case_id} - {case.title[:80]}...")
+        self.stdout.write(
+            f"\n[{self.stats['cases_processed']}] Processing: {case.case_id} - {case.title[:80]}..."
+        )
 
         if not case.evidence:
             self.stats["cases_skipped"] += 1
-            self.stdout.write(self.style.WARNING(f"  ⊘ Skipped: No evidence"))
+            self.stdout.write(self.style.WARNING("  ⊘ Skipped: No evidence"))
             return
 
         updated_evidence = []
@@ -267,6 +271,7 @@ class Command(BaseCommand):
                 )
 
                 # Create DocumentSource for each file and add to evidence
+                files_processed = 0
                 for file_data in pr_data["files"]:
                     file_url = file_data.get("url")
                     file_name = file_data.get("file_name", "")
@@ -280,7 +285,9 @@ class Command(BaseCommand):
                                 file_url=file_url,
                                 file_name=file_name,
                                 press_release_url=press_release_url,
-                                title=pr_data.get("title", "CIAA Press Release Document"),
+                                title=pr_data.get(
+                                    "title", "CIAA Press Release Document"
+                                ),
                                 publication_date=pr_data.get("publication_date"),
                             )
                             self.stats["sources_created"] += 1
@@ -292,12 +299,16 @@ class Command(BaseCommand):
                                     "description": f"CIAA Press Release Document - {file_name}",
                                 }
                             )
+                            files_processed += 1
                     else:
                         self.stdout.write(
                             f"    [DRY RUN] Would create source for: {file_name}"
                         )
+                        files_processed += 1
 
-                evidence_changed = True
+                # Only mark as changed if we actually processed files
+                if files_processed > 0:
+                    evidence_changed = True
 
             except DocumentSource.DoesNotExist:
                 # Source doesn't exist, keep evidence as is
@@ -323,7 +334,7 @@ class Command(BaseCommand):
                 )
         else:
             self.stats["cases_skipped"] += 1
-            self.stdout.write(self.style.WARNING(f"  ⊘ Skipped: No changes needed"))
+            self.stdout.write(self.style.WARNING("  ⊘ Skipped: No changes needed"))
 
     def extract_press_id(self, url: str) -> Optional[int]:
         """Extract press_id from CIAA press release URL."""
@@ -345,7 +356,7 @@ class Command(BaseCommand):
         """Get or create DocumentSource for a press release file."""
         # Check if source already exists by URL (database-agnostic)
         from django.db import connection
-        
+
         if connection.vendor == "postgresql":
             existing = DocumentSource.objects.filter(
                 url__contains=[file_url], is_deleted=False
@@ -375,34 +386,36 @@ class Command(BaseCommand):
                     year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
                     pub_date = nepalidate(year, month, day).to_datetime().date()
             except Exception as e:
-                logger.warning(f"Failed to parse publication date {publication_date}: {e}")
+                logger.warning(
+                    f"Failed to parse publication date {publication_date}: {e}"
+                )
 
         # Build URL list: file URL + press release web page URL
+        from urllib.parse import quote
+        
         url_list = []
         if file_url and str(file_url).strip():
-            url_list.append(str(file_url).strip())
+            # URL-encode spaces and special characters in the file URL
+            file_url_str = str(file_url).strip()
+            # Replace spaces with %20
+            file_url_str = file_url_str.replace(" ", "%20")
+            url_list.append(file_url_str)
+            
         if press_release_url and str(press_release_url).strip():
             url_list.append(str(press_release_url).strip())
-        
+
         if not url_list:
             logger.error(f"No valid URLs for file {file_name}")
             raise ValueError(f"No valid URLs for file {file_name}")
-        
-        # Create new source, bypassing custom save() logic
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y%m%d")
-        source_id = f"source:{timestamp}:{uuid.uuid4().hex[:8]}"
-        
-        source = DocumentSource(
-            source_id=source_id,
+
+        # Create new source (save() will generate source_id and validate)
+        source = DocumentSource.objects.create(
             title=f"{title[:250]} - {file_name[:50]}"[:300],
             description=f"Document from CIAA press release: {press_release_url}",
             source_type=source_type,
             url=url_list,
             publication_date=pub_date,
         )
-        # Skip full_clean() validation and save directly
-        super(DocumentSource, source).save()
 
         logger.info(f"Created new source: {source.source_id} for {file_name}")
         return source

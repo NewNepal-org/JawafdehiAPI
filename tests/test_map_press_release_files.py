@@ -53,6 +53,18 @@ class TestMapPressReleaseFiles:
         }
 
     @pytest.fixture
+    def mock_root_index(self):
+        """Mock NGM root index response."""
+        return {
+            "children": [
+                {
+                    "name": "ciaa-press-releases",
+                    "$ref": "https://ngm-store.jawafdehi.org/indices/2026-05-04/index.ciaa-press-releases.json"
+                }
+            ]
+        }
+
+    @pytest.fixture
     def case_with_press_release_evidence(self):
         """Create a case with press release evidence."""
         # Create press release source
@@ -77,14 +89,17 @@ class TestMapPressReleaseFiles:
 
         return case, pr_source
 
-    def test_dry_run_mode(self, mock_press_release_index, case_with_press_release_evidence):
+    def test_dry_run_mode(
+        self, mock_root_index, mock_press_release_index, case_with_press_release_evidence
+    ):
         """Test that dry-run mode doesn't modify database."""
         case, pr_source = case_with_press_release_evidence
         original_evidence = case.evidence.copy()
 
         with patch("requests.get") as mock_get:
             mock_response = MagicMock()
-            mock_response.json.return_value = mock_press_release_index
+            # First call returns root index, second call returns press release index
+            mock_response.json.side_effect = [mock_root_index, mock_press_release_index]
             mock_response.raise_for_status.return_value = None
             mock_get.return_value = mock_response
 
@@ -101,13 +116,16 @@ class TestMapPressReleaseFiles:
             output = out.getvalue()
             assert "[DRY RUN]" in output
 
-    def test_map_press_release_evidence(self, mock_press_release_index, case_with_press_release_evidence):
+    def test_map_press_release_evidence(
+        self, mock_root_index, mock_press_release_index, case_with_press_release_evidence
+    ):
         """Test that command maps press release evidence to actual files."""
         case, pr_source = case_with_press_release_evidence
 
         with patch("requests.get") as mock_get:
             mock_response = MagicMock()
-            mock_response.json.return_value = mock_press_release_index
+            # First call returns root index, second call returns press release index
+            mock_response.json.side_effect = [mock_root_index, mock_press_release_index]
             mock_response.raise_for_status.return_value = None
             mock_get.return_value = mock_response
 
@@ -122,7 +140,9 @@ class TestMapPressReleaseFiles:
 
             # Check that new sources were created
             for evidence_entry in case.evidence:
-                source = DocumentSource.objects.get(source_id=evidence_entry["source_id"])
+                source = DocumentSource.objects.get(
+                    source_id=evidence_entry["source_id"]
+                )
                 # Source should have file URL
                 assert any("ngm-store.jawafdehi.org" in url for url in source.url)
                 # Source should also have press release URL for reference
@@ -130,9 +150,9 @@ class TestMapPressReleaseFiles:
 
             # Output should indicate success
             output = out.getvalue()
-            assert "✓ Cases fixed:" in output
+            assert "✓ Cases mapped:" in output
 
-    def test_skip_cases_without_press_release_evidence(self):
+    def test_skip_cases_without_press_release_evidence(self, mock_root_index):
         """Test that cases without press release evidence are skipped."""
         # Create case with regular evidence (not press release)
         regular_source = DocumentSource.objects.create(
@@ -157,7 +177,8 @@ class TestMapPressReleaseFiles:
 
         with patch("requests.get") as mock_get:
             mock_response = MagicMock()
-            mock_response.json.return_value = {"manuscripts": []}
+            # First call returns root index, second call returns empty press release index
+            mock_response.json.side_effect = [mock_root_index, {"manuscripts": []}]
             mock_response.raise_for_status.return_value = None
             mock_get.return_value = mock_response
 
@@ -170,7 +191,9 @@ class TestMapPressReleaseFiles:
             # Evidence should not be changed
             assert case.evidence == original_evidence
 
-    def test_specific_case_id(self, mock_press_release_index, case_with_press_release_evidence):
+    def test_specific_case_id(
+        self, mock_root_index, mock_press_release_index, case_with_press_release_evidence
+    ):
         """Test mapping a specific case by case_id."""
         case, pr_source = case_with_press_release_evidence
 
@@ -195,7 +218,8 @@ class TestMapPressReleaseFiles:
 
         with patch("requests.get") as mock_get:
             mock_response = MagicMock()
-            mock_response.json.return_value = mock_press_release_index
+            # First call returns root index, second call returns press release index
+            mock_response.json.side_effect = [mock_root_index, mock_press_release_index]
             mock_response.raise_for_status.return_value = None
             mock_get.return_value = mock_response
 
@@ -216,7 +240,7 @@ class TestMapPressReleaseFiles:
             # Other case should not be changed
             assert other_case.evidence == other_original_evidence
 
-    def test_limit_option(self, mock_press_release_index):
+    def test_limit_option(self, mock_root_index, mock_press_release_index):
         """Test that limit option works correctly."""
         # Create multiple cases with press release evidence
         cases = []
@@ -241,7 +265,8 @@ class TestMapPressReleaseFiles:
 
         with patch("requests.get") as mock_get:
             mock_response = MagicMock()
-            mock_response.json.return_value = mock_press_release_index
+            # First call returns root index, second call returns press release index
+            mock_response.json.side_effect = [mock_root_index, mock_press_release_index]
             mock_response.raise_for_status.return_value = None
             mock_get.return_value = mock_response
 
@@ -252,7 +277,9 @@ class TestMapPressReleaseFiles:
             output = out.getvalue()
             assert "Cases processed:     2" in output
 
-    def test_handle_missing_press_release_in_index(self, case_with_press_release_evidence):
+    def test_handle_missing_press_release_in_index(
+        self, mock_root_index, case_with_press_release_evidence
+    ):
         """Test handling of press releases not found in NGM index."""
         case, pr_source = case_with_press_release_evidence
         original_evidence = case.evidence.copy()
@@ -260,7 +287,8 @@ class TestMapPressReleaseFiles:
         # Mock empty index (press release not found)
         with patch("requests.get") as mock_get:
             mock_response = MagicMock()
-            mock_response.json.return_value = {"manuscripts": []}
+            # First call returns root index, second call returns empty press release index
+            mock_response.json.side_effect = [mock_root_index, {"manuscripts": []}]
             mock_response.raise_for_status.return_value = None
             mock_get.return_value = mock_response
 
