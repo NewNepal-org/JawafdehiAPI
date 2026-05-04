@@ -33,7 +33,7 @@ Contributors to this repository should be aware of the [Jawafdehi meta-repositor
 
 3. **Activate the virtual environment**
    ```bash
-   poetry shell
+     eval $(poetry env activate)
    ```
 
 4. **Verify Django installation**
