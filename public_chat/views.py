@@ -21,7 +21,7 @@ from .response_builder import (
     build_related_case,
     refusal_response,
 )
-from .routing import route_question
+from .routing import PUBLIC_CHAT_MCP_TOOLS, RouteDecision, route_question
 from .serializers import PublicChatRequestSerializer, PublicChatResponseSerializer
 
 
@@ -80,7 +80,7 @@ class PublicChatView(APIView):
             return Response(response_data)
 
         try:
-            evidence = self._retrieve_evidence(decision.route, decision.search, config)
+            evidence = self._retrieve_evidence(decision, config)
         except PublicChatMCPError as exc:
             return Response(
                 {"detail": f"Public chat retrieval failed: {exc}"},
@@ -143,34 +143,32 @@ class PublicChatView(APIView):
             result.append(item)
         return list(reversed(result))
 
-    def _retrieve_evidence(self, route: str, search: str, config) -> dict[str, Any]:
-        client = PublicChatMCPClient()
-        if route == "entity_search":
-            data = client.call_tool(
-                "public_search_jawaf_entities",
-                {"search": search, "page": 1},
-            )
+    def _retrieve_evidence(self, decision: RouteDecision, config) -> dict[str, Any]:
+        if not decision.tool_name:
+            raise PublicChatMCPError("No MCP tool is configured for this route")
+
+        client = PublicChatMCPClient(allowed_tools=PUBLIC_CHAT_MCP_TOOLS)
+        data = client.call_tool(
+            decision.tool_name, {"search": decision.search, "page": 1}
+        )
+        if decision.route == "entity_search":
             entities = list(data.get("results", []))[: config.max_mcp_results]
             return {
-                "route": route,
-                "search": search,
+                "route": decision.route,
+                "search": decision.search,
                 "entities": entities,
                 "cases": [],
                 "sources": [],
             }
 
-        data = client.call_tool(
-            "public_search_published_cases",
-            {"search": search, "page": 1},
-        )
         cases = [
             case for case in data.get("results", []) if case.get("state") == "PUBLISHED"
         ][: config.max_mcp_results]
         sources = [build_case_source(case) for case in cases]
 
         return {
-            "route": route,
-            "search": search,
+            "route": decision.route,
+            "search": decision.search,
             "count": data.get("count", len(cases)),
             "cases": cases,
             "entities": [],
