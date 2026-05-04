@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from typing import Any
 
 from asgiref.sync import async_to_sync
@@ -12,13 +13,10 @@ class PublicChatMCPError(RuntimeError):
 
 
 class PublicChatMCPClient:
-    """Small MCP facade for public chat allow-listed tools."""
+    """Small MCP facade for caller allow-listed tools."""
 
-    allowed_tools = {
-        "public_search_published_cases",
-        "public_get_published_case",
-        "public_search_jawaf_entities",
-    }
+    def __init__(self, *, allowed_tools: Iterable[str] | None = None) -> None:
+        self.allowed_tools = frozenset(allowed_tools or [])
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name not in self.allowed_tools:
@@ -39,7 +37,11 @@ class PublicChatMCPClient:
 
         client = MultiServerMCPClient(servers)
         tools = await client.get_tools()
-        tool_map = {tool.name: tool for tool in tools}
+        for tool in tools:
+            tool.handle_tool_error = True
+        tool_map = {
+            tool.name: tool for tool in tools if tool.name in self.allowed_tools
+        }
         tool = tool_map.get(name)
         if tool is None:
             raise PublicChatMCPError(f"MCP tool {name} was not found")
