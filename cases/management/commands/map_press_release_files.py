@@ -80,10 +80,26 @@ class Command(BaseCommand):
         cases = self.find_cases_with_press_release_evidence(case_id, limit)
         self.stdout.write(f"Found {len(cases)} case(s) to process")
 
+        # Bulk fetch all DocumentSources for these cases to avoid N+1 queries
+        all_source_ids = set()
+        for case in cases:
+            if case.evidence:
+                for evidence_entry in case.evidence:
+                    source_id = evidence_entry.get("source_id")
+                    if source_id:
+                        all_source_ids.add(source_id)
+
+        source_lookup = {
+            source.source_id: source
+            for source in DocumentSource.objects.filter(
+                source_id__in=all_source_ids, is_deleted=False
+            )
+        }
+
         # Process each case
         for case in cases:
             try:
-                self.process_case(case, dry_run)
+                self.process_case(case, dry_run, source_lookup)
             except Exception as e:
                 self.stats["errors"] += 1
                 logger.exception(f"Error processing case {case.case_id}: {e}")
@@ -173,6 +189,23 @@ class Command(BaseCommand):
         if case_id:
             queryset = queryset.filter(case_id=case_id)
 
+        # Collect all source_ids from all cases to bulk fetch DocumentSources
+        all_source_ids = set()
+        for case in queryset:
+            if case.evidence:
+                for evidence_entry in case.evidence:
+                    source_id = evidence_entry.get("source_id")
+                    if source_id:
+                        all_source_ids.add(source_id)
+
+        # Bulk fetch all DocumentSources
+        source_lookup = {
+            source.source_id: source
+            for source in DocumentSource.objects.filter(
+                source_id__in=all_source_ids, is_deleted=False
+            )
+        }
+
         # Filter cases with evidence containing ciaa.gov.np/pressrelease URLs
         cases_with_pr_evidence = []
         for case in queryset:
@@ -183,30 +216,27 @@ class Command(BaseCommand):
             for evidence_entry in case.evidence:
                 source_id = evidence_entry.get("source_id")
                 if source_id:
-                    try:
-                        source = DocumentSource.objects.get(
-                            source_id=source_id, is_deleted=False
-                        )
+                    source = source_lookup.get(source_id)
+                    if not source:
+                        continue
 
-                        # Skip if source is already file-backed (has NGM file URL)
-                        is_file_backed = False
-                        if isinstance(source.url, list):
-                            for url in source.url:
-                                if "ngm-store.jawafdehi.org" in url:
-                                    is_file_backed = True
-                                    break
+                    # Skip if source is already file-backed (has NGM file URL)
+                    is_file_backed = False
+                    if isinstance(source.url, list):
+                        for url in source.url:
+                            if "ngm-store.jawafdehi.org" in url:
+                                is_file_backed = True
+                                break
 
-                        if is_file_backed:
-                            continue
+                    if is_file_backed:
+                        continue
 
-                        # Check if source URL contains press release URL
-                        if isinstance(source.url, list):
-                            for url in source.url:
-                                if "ciaa.gov.np/pressrelease/" in url:
-                                    has_pr_evidence = True
-                                    break
-                    except DocumentSource.DoesNotExist:
-                        pass
+                    # Check if source URL contains press release URL
+                    if isinstance(source.url, list):
+                        for url in source.url:
+                            if "ciaa.gov.np/pressrelease/" in url:
+                                has_pr_evidence = True
+                                break
 
             if has_pr_evidence:
                 cases_with_pr_evidence.append(case)
@@ -216,8 +246,14 @@ class Command(BaseCommand):
 
         return cases_with_pr_evidence
 
-    def process_case(self, case: Case, dry_run: bool):
-        """Process a single case and map its press release evidence to actual files."""
+    def process_case(self, case: Case, dry_run: bool, source_lookup: dict):
+        """Process a single case and map its press release evidence to actual files.
+
+        Args:
+            case: The Case instance to process
+            dry_run: Whether to run in dry-run mode
+            source_lookup: Dict mapping source_id to DocumentSource for efficient lookups
+        """
         self.stats["cases_processed"] += 1
         self.stdout.write(
             f"\n[{self.stats['cases_processed']}] Processing: {case.case_id} - {case.title[:80]}..."
@@ -237,107 +273,106 @@ class Command(BaseCommand):
                 updated_evidence.append(evidence_entry)
                 continue
 
-            try:
-                source = DocumentSource.objects.get(
-                    source_id=source_id, is_deleted=False
-                )
+            source = source_lookup.get(source_id)
+            if not source:
+                # Source doesn't exist, keep evidence as is
+                updated_evidence.append(evidence_entry)
+                continue
 
-                # Check if this is a press release source
-                press_release_url = None
-                if isinstance(source.url, list):
-                    for url in source.url:
-                        if "ciaa.gov.np/pressrelease/" in url:
-                            press_release_url = url
-                            break
+                source = source_lookup.get(source_id)
+            if not source:
+                # Source doesn't exist, keep evidence as is
+                updated_evidence.append(evidence_entry)
+                continue
 
-                if not press_release_url:
-                    # Not a press release source, keep as is
-                    updated_evidence.append(evidence_entry)
-                    continue
+            # Check if this is a press release source
+            press_release_url = None
+            if isinstance(source.url, list):
+                for url in source.url:
+                    if "ciaa.gov.np/pressrelease/" in url:
+                        press_release_url = url
+                        break
 
-                # Extract press_id from URL
-                press_id = self.extract_press_id(press_release_url)
-                if not press_id:
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"  ⊘ Could not extract press_id from {press_release_url}"
-                        )
-                    )
-                    updated_evidence.append(evidence_entry)
-                    continue
+            if not press_release_url:
+                # Not a press release source, keep as is
+                updated_evidence.append(evidence_entry)
+                continue
 
-                # Find press release files in index
-                pr_data = self.press_release_index.get(press_id)
-                if not pr_data or not pr_data.get("files"):
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"  ⊘ No files found for press_id {press_id}"
-                        )
-                    )
-                    updated_evidence.append(evidence_entry)
-                    continue
-
+            # Extract press_id from URL
+            press_id = self.extract_press_id(press_release_url)
+            if not press_id:
                 self.stdout.write(
-                    f"  → Found {len(pr_data['files'])} file(s) for press release {press_id}"
+                    self.style.WARNING(
+                        f"  ⊘ Could not extract press_id from {press_release_url}"
+                    )
                 )
+                updated_evidence.append(evidence_entry)
+                continue
 
-                # Create DocumentSource for each file and add to evidence
-                files_processed = 0
-                for file_data in pr_data["files"]:
-                    file_url = file_data.get("url")
-                    file_name = file_data.get("file_name", "")
+            # Find press release files in index
+            pr_data = self.press_release_index.get(press_id)
+            if not pr_data or not pr_data.get("files"):
+                self.stdout.write(
+                    self.style.WARNING(f"  ⊘ No files found for press_id {press_id}")
+                )
+                updated_evidence.append(evidence_entry)
+                continue
 
-                    if not file_url:
-                        continue
+            self.stdout.write(
+                f"  → Found {len(pr_data['files'])} file(s) for press release {press_id}"
+            )
 
-                    if not dry_run:
-                        with transaction.atomic():
-                            file_source, created = self.get_or_create_file_source(
-                                file_url=file_url,
-                                file_name=file_name,
-                                press_release_url=press_release_url,
-                                title=pr_data.get(
-                                    "title", "CIAA Press Release Document"
-                                ),
-                                publication_date=pr_data.get("publication_date"),
-                            )
-                            if created:
-                                self.stats["sources_created"] += 1
+            # Create DocumentSource for each file and add to evidence
+            files_processed = 0
+            for file_data in pr_data["files"]:
+                file_url = file_data.get("url")
+                file_name = file_data.get("file_name", "")
 
-                            # Add to updated evidence
-                            updated_evidence.append(
-                                {
-                                    "source_id": file_source.source_id,
-                                    "description": f"CIAA Press Release Document - {file_name}",
-                                }
-                            )
-                            files_processed += 1
-                    else:
-                        self.stdout.write(
-                            f"    [DRY RUN] Would create source for: {file_name}"
+                if not file_url:
+                    continue
+
+                if not dry_run:
+                    with transaction.atomic():
+                        file_source, created = self.get_or_create_file_source(
+                            file_url=file_url,
+                            file_name=file_name,
+                            press_release_url=press_release_url,
+                            title=pr_data.get("title", "CIAA Press Release Document"),
+                            publication_date=pr_data.get("publication_date"),
                         )
-                        # In dry-run mode, append synthetic entry to updated_evidence
+                        if created:
+                            self.stats["sources_created"] += 1
+
+                        # Add to updated evidence
                         updated_evidence.append(
                             {
-                                "source_id": f"dry-run-{file_name}",
+                                "source_id": file_source.source_id,
                                 "description": f"CIAA Press Release Document - {file_name}",
                             }
                         )
                         files_processed += 1
+                else:
+                    self.stdout.write(
+                        f"    [DRY RUN] Would create source for: {file_name}"
+                    )
+                    # In dry-run mode, append synthetic entry to updated_evidence
+                    updated_evidence.append(
+                        {
+                            "source_id": f"dry-run-{file_name}",
+                            "description": f"CIAA Press Release Document - {file_name}",
+                        }
+                    )
+                    files_processed += 1
 
-                # Only mark as changed if we actually processed files
-                if files_processed > 0:
-                    evidence_changed = True
-
-            except DocumentSource.DoesNotExist:
-                # Source doesn't exist, keep evidence as is
-                updated_evidence.append(evidence_entry)
+            # Only mark as changed if we actually processed files
+            if files_processed > 0:
+                evidence_changed = True
 
         # Update case evidence if changed
         if evidence_changed:
             if not dry_run:
                 case.evidence = updated_evidence
-                case.save()
+                case.save(update_fields=["evidence"])
                 self.stats["evidence_updated"] += 1
                 self.stats["cases_fixed"] += 1
                 self.stdout.write(
@@ -385,9 +420,13 @@ class Command(BaseCommand):
                 url__contains=[file_url], is_deleted=False
             ).first()
         else:
-            # Fallback for SQLite and other databases
+            # Fallback for SQLite and other databases - filter candidates at DB level first
             existing = None
-            for source in DocumentSource.objects.filter(is_deleted=False):
+            # Use text containment to narrow down candidates at DB level
+            candidates = DocumentSource.objects.filter(
+                url__icontains=file_url, is_deleted=False
+            )
+            for source in candidates:
                 if isinstance(source.url, list) and file_url in source.url:
                     existing = source
                     break
@@ -414,17 +453,46 @@ class Command(BaseCommand):
                 )
 
         # Build URL list: file URL + press release web page URL
+        import urllib.parse
 
         url_list = []
         if file_url and str(file_url).strip():
-            # URL-encode spaces and special characters in the file URL
+            # Properly URL-encode the file URL
             file_url_str = str(file_url).strip()
-            # Replace spaces with %20
-            file_url_str = file_url_str.replace(" ", "%20")
-            url_list.append(file_url_str)
+            parsed = urllib.parse.urlsplit(file_url_str)
+            # Encode path, query, and fragment components
+            encoded_path = urllib.parse.quote(parsed.path, safe="/")
+            encoded_query = urllib.parse.quote(parsed.query, safe="=&")
+            encoded_fragment = urllib.parse.quote(parsed.fragment, safe="")
+            # Rebuild the URL
+            encoded_url = urllib.parse.urlunsplit(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    encoded_path,
+                    encoded_query,
+                    encoded_fragment,
+                )
+            )
+            url_list.append(encoded_url)
 
         if press_release_url and str(press_release_url).strip():
-            url_list.append(str(press_release_url).strip())
+            # Properly URL-encode the press release URL
+            pr_url_str = str(press_release_url).strip()
+            parsed = urllib.parse.urlsplit(pr_url_str)
+            encoded_path = urllib.parse.quote(parsed.path, safe="/")
+            encoded_query = urllib.parse.quote(parsed.query, safe="=&")
+            encoded_fragment = urllib.parse.quote(parsed.fragment, safe="")
+            encoded_url = urllib.parse.urlunsplit(
+                (
+                    parsed.scheme,
+                    parsed.netloc,
+                    encoded_path,
+                    encoded_query,
+                    encoded_fragment,
+                )
+            )
+            url_list.append(encoded_url)
 
         if not url_list:
             logger.error(f"No valid URLs for file {file_name}")
