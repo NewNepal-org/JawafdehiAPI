@@ -187,7 +187,7 @@ class Command(BaseCommand):
                         source = DocumentSource.objects.get(
                             source_id=source_id, is_deleted=False
                         )
-                        
+
                         # Skip if source is already file-backed (has NGM file URL)
                         is_file_backed = False
                         if isinstance(source.url, list):
@@ -195,10 +195,10 @@ class Command(BaseCommand):
                                 if "ngm-store.jawafdehi.org" in url:
                                     is_file_backed = True
                                     break
-                        
+
                         if is_file_backed:
                             continue
-                        
+
                         # Check if source URL contains press release URL
                         if isinstance(source.url, list):
                             for url in source.url:
@@ -373,7 +373,7 @@ class Command(BaseCommand):
         publication_date: Optional[str],
     ) -> tuple[DocumentSource, bool]:
         """Get or create DocumentSource for a press release file.
-        
+
         Returns:
             tuple: (DocumentSource, created) where created is True if a new source was created
         """
