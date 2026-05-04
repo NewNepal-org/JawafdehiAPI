@@ -279,12 +279,6 @@ class Command(BaseCommand):
                 updated_evidence.append(evidence_entry)
                 continue
 
-                source = source_lookup.get(source_id)
-            if not source:
-                # Source doesn't exist, keep evidence as is
-                updated_evidence.append(evidence_entry)
-                continue
-
             # Check if this is a press release source
             press_release_url = None
             if isinstance(source.url, list):
