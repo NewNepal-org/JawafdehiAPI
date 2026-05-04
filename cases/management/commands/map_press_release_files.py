@@ -187,6 +187,18 @@ class Command(BaseCommand):
                         source = DocumentSource.objects.get(
                             source_id=source_id, is_deleted=False
                         )
+                        
+                        # Skip if source is already file-backed (has NGM file URL)
+                        is_file_backed = False
+                        if isinstance(source.url, list):
+                            for url in source.url:
+                                if "ngm-store.jawafdehi.org" in url:
+                                    is_file_backed = True
+                                    break
+                        
+                        if is_file_backed:
+                            continue
+                        
                         # Check if source URL contains press release URL
                         if isinstance(source.url, list):
                             for url in source.url:
@@ -280,7 +292,7 @@ class Command(BaseCommand):
 
                     if not dry_run:
                         with transaction.atomic():
-                            file_source = self.get_or_create_file_source(
+                            file_source, created = self.get_or_create_file_source(
                                 file_url=file_url,
                                 file_name=file_name,
                                 press_release_url=press_release_url,
@@ -289,7 +301,8 @@ class Command(BaseCommand):
                                 ),
                                 publication_date=pr_data.get("publication_date"),
                             )
-                            self.stats["sources_created"] += 1
+                            if created:
+                                self.stats["sources_created"] += 1
 
                             # Add to updated evidence
                             updated_evidence.append(
@@ -302,6 +315,13 @@ class Command(BaseCommand):
                     else:
                         self.stdout.write(
                             f"    [DRY RUN] Would create source for: {file_name}"
+                        )
+                        # In dry-run mode, append synthetic entry to updated_evidence
+                        updated_evidence.append(
+                            {
+                                "source_id": f"dry-run-{file_name}",
+                                "description": f"CIAA Press Release Document - {file_name}",
+                            }
                         )
                         files_processed += 1
 
@@ -351,8 +371,12 @@ class Command(BaseCommand):
         press_release_url: str,
         title: str,
         publication_date: Optional[str],
-    ) -> DocumentSource:
-        """Get or create DocumentSource for a press release file."""
+    ) -> tuple[DocumentSource, bool]:
+        """Get or create DocumentSource for a press release file.
+        
+        Returns:
+            tuple: (DocumentSource, created) where created is True if a new source was created
+        """
         # Check if source already exists by URL (database-agnostic)
         from django.db import connection
 
@@ -370,7 +394,7 @@ class Command(BaseCommand):
 
         if existing:
             logger.debug(f"Reusing existing source: {existing.source_id}")
-            return existing
+            return existing, False
 
         source_type = SourceType.LEGAL_PROCEDURAL
 
@@ -416,7 +440,7 @@ class Command(BaseCommand):
         )
 
         logger.info(f"Created new source: {source.source_id} for {file_name}")
-        return source
+        return source, True
 
     def print_summary(self, dry_run: bool):
         """Print summary statistics."""
