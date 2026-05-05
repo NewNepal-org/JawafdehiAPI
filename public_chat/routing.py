@@ -30,6 +30,14 @@ KNOWLEDGE_RAG_KEYWORDS = [
 ]
 
 BS_YEAR_PATTERN = re.compile(r"\b(20[0-9]{2})(?:[/\-.।](?:[0-9]{2,4}))?\b")
+CASE_ID_PATTERN = re.compile(
+    r"\bcase(?:\s+id)?\s*[:#-]?\s*([A-Za-z0-9][A-Za-z0-9_-]{1,80})\b",
+    flags=re.IGNORECASE,
+)
+CASE_LOOKUP_PREFIX_PATTERN = re.compile(
+    r"^\s*case(?:\s+id)?(?:\s+|[:#]\s*)(?P<identifier>.+?)\s*$",
+    flags=re.IGNORECASE,
+)
 
 COUNT_KEYWORDS = [
     "how many",
@@ -83,6 +91,9 @@ class RouteDecision:
     search: str
     reason: str
     tool_name: str | None = None
+    classifier_source: str = "deterministic"
+    confidence: float | None = None
+    classifier_error: str | None = None
 
 
 def normalize_search(question: str) -> str:
@@ -98,16 +109,54 @@ def extract_bs_year(question: str) -> str | None:
     return match.group(1) if match else None
 
 
-def route_question(question: str) -> RouteDecision:
+def extract_case_identifier(question: str) -> str | None:
+    match = CASE_ID_PATTERN.search(question)
+    return match.group(1) if match else None
+
+
+def normalize_case_lookup_identifier(value: str) -> str:
+    """Strip conversational case prefixes without damaging slug-like ids."""
+    normalized = value.strip()
+    match = CASE_LOOKUP_PREFIX_PATTERN.match(normalized)
+    if not match:
+        return normalized
+
+    identifier = match.group("identifier").strip()
+    return identifier.removeprefix("#").strip() or normalized
+
+
+def route_question(
+    question: str, *, default_to_case_search: bool = True
+) -> RouteDecision:
     lowered = question.lower()
     year = extract_bs_year(question)
+    case_identifier = extract_case_identifier(question)
+
+    if case_identifier and any(
+        keyword in lowered
+        for keyword in ["get", "show", "detail", "details", "case", "fetch"]
+    ):
+        return RouteDecision(
+            "case_get",
+            case_identifier,
+            "case",
+            "public_get_published_case",
+            classifier_source="deterministic",
+            confidence=0.9,
+        )
 
     if any(keyword in lowered for keyword in KNOWLEDGE_RAG_KEYWORDS) or (
         year
         and "registered" in lowered
         and any(word in lowered for word in ["type", "kind"])
     ):
-        return RouteDecision("knowledge_rag", normalize_search(question), "knowledge")
+        return RouteDecision(
+            "knowledge_rag",
+            normalize_search(question),
+            "knowledge",
+            classifier_source="deterministic",
+            confidence=0.9,
+        )
 
     if any(keyword in lowered for keyword in COUNT_KEYWORDS):
         return RouteDecision(
@@ -115,6 +164,8 @@ def route_question(question: str) -> RouteDecision:
             normalize_search(question),
             "count",
             "public_search_published_cases",
+            classifier_source="deterministic",
+            confidence=0.85,
         )
 
     if any(keyword in lowered for keyword in ENTITY_KEYWORDS):
@@ -123,6 +174,17 @@ def route_question(question: str) -> RouteDecision:
             normalize_search(question),
             "entity",
             "public_search_jawaf_entities",
+            classifier_source="deterministic",
+            confidence=0.85,
+        )
+
+    if not default_to_case_search:
+        return RouteDecision(
+            "clarify",
+            normalize_search(question),
+            "uncertain",
+            classifier_source="deterministic",
+            confidence=0.0,
         )
 
     return RouteDecision(
@@ -130,4 +192,6 @@ def route_question(question: str) -> RouteDecision:
         normalize_search(question),
         "case",
         "public_search_published_cases",
+        classifier_source="deterministic",
+        confidence=0.5,
     )
