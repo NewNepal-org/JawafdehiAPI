@@ -1,24 +1,35 @@
+import re
 from dataclasses import dataclass
 
-DOCUMENT_RAG_KEYWORDS = [
+KNOWLEDGE_RAG_KEYWORDS = [
     "annual report",
+    "annual-report",
+    "statistical report",
+    "yearly report",
+    "documentation",
+    "document",
     "archive",
     "judicial data",
     "ngm",
-    "2078",
-    "2081",
-    "2082",
     "evidence document",
     "source document",
     "process",
     "verify",
     "verification",
     "methodology",
+    "faq",
+    "policy",
     "report",
+    "बार्षिक प्रतिवेदन",
+    "वार्षिक प्रतिवेदन",
+    "कागजात",
+    "दस्तावेज",
     "प्रतिवेदन",
     "प्रक्रिया",
     "प्रमाण",
 ]
+
+BS_YEAR_PATTERN = re.compile(r"\b(20[0-9]{2})(?:[/\-.।](?:[0-9]{2,4}))?\b")
 
 COUNT_KEYWORDS = [
     "how many",
@@ -82,13 +93,21 @@ def normalize_search(question: str) -> str:
     return " ".join(lowered.split()) or normalized
 
 
+def extract_bs_year(question: str) -> str | None:
+    match = BS_YEAR_PATTERN.search(question)
+    return match.group(1) if match else None
+
+
 def route_question(question: str) -> RouteDecision:
     lowered = question.lower()
+    year = extract_bs_year(question)
 
-    if any(keyword in lowered for keyword in DOCUMENT_RAG_KEYWORDS):
-        return RouteDecision(
-            "unsupported_document_rag", normalize_search(question), "document_rag"
-        )
+    if any(keyword in lowered for keyword in KNOWLEDGE_RAG_KEYWORDS) or (
+        year
+        and "registered" in lowered
+        and any(word in lowered for word in ["type", "kind"])
+    ):
+        return RouteDecision("knowledge_rag", normalize_search(question), "knowledge")
 
     if any(keyword in lowered for keyword in COUNT_KEYWORDS):
         return RouteDecision(
