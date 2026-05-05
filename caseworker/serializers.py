@@ -187,6 +187,9 @@ class PublicChatConfigSerializer(serializers.ModelSerializer):
             "max_mcp_results",
             "max_tool_calls",
             "max_evidence_chars",
+            "knowledge_rag_enabled",
+            "knowledge_collections",
+            "max_knowledge_results",
             "created_at",
             "updated_at",
         ]
