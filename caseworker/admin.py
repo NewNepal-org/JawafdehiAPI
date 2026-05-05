@@ -89,7 +89,10 @@ class PublicChatConfigAdmin(admin.ModelAdmin):
         "quota_scope",
         "quota_limit",
         "quota_window_seconds",
+        "knowledge_rag_enabled",
+        "max_knowledge_results",
     ]
-    list_filter = ["enabled", "is_active", "quota_scope"]
+    list_filter = ["enabled", "is_active", "quota_scope", "knowledge_rag_enabled"]
     search_fields = ["name", "prompt__name", "prompt__display_name"]
+    filter_horizontal = ["knowledge_collections"]
     readonly_fields = ["created_at", "updated_at"]
