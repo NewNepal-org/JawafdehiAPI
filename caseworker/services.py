@@ -1,6 +1,8 @@
 import logging
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
+
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
@@ -85,58 +87,149 @@ class MCPService:
 
 
 class LLMService:
-    """Service for LLM provider connections using the Anthropic SDK or LangChain."""
+    """Service for LLM provider connections using LangChain chat models."""
 
-    def get_llm(self, provider=None):
-        if provider is None:
-            from .models import LLMProvider
+    def resolve_default_provider(self):
+        from .models import LLMProvider
 
-            provider = LLMProvider.objects.filter(is_active=True).first()
-            if not provider:
-                raise ValueError("No active LLM provider configured")
+        provider = (
+            LLMProvider.objects.filter(is_active=True, is_default=True).first()
+            or LLMProvider.objects.filter(is_active=True).first()
+        )
+        if not provider:
+            raise ValueError("No active LLM provider configured")
+        return provider
 
-        if provider.provider_type == "anthropic":
-            return AnthropicWrapper(
-                api_key=provider.api_key,
-                model=provider.model,
-                max_tokens=provider.max_tokens,
-            )
+    def resolve_answer_provider(self, config):
+        return getattr(config, "llm_provider", None) or self.resolve_default_provider()
 
-        # Fall back to LangChain for other providers
+    def resolve_classifier_provider(self, config):
+        return (
+            getattr(config, "classifier_llm_provider", None)
+            or getattr(config, "llm_provider", None)
+            or self.resolve_default_provider()
+        )
+
+    def get_chat_model(self, provider=None):
+        provider = provider or self.resolve_default_provider()
+        provider_type = provider.provider_type
+        common_kwargs = self._common_chat_kwargs(provider)
+
         try:
-            if provider.provider_type == "openai":
-                from langchain_openai import OpenAI
+            if provider_type == "anthropic":
+                from langchain_anthropic import ChatAnthropic
 
-                return OpenAI(
+                return ChatAnthropic(**common_kwargs)
+            if provider_type == "openai":
+                from langchain_openai import ChatOpenAI
+
+                kwargs = {**common_kwargs}
+                if provider.base_url:
+                    kwargs["base_url"] = provider.base_url
+                return ChatOpenAI(**kwargs)
+            if provider_type == "google":
+                from langchain_google_genai import ChatGoogleGenerativeAI
+
+                kwargs = {
+                    "model": provider.model,
+                    "google_api_key": provider.api_key,
+                    "temperature": provider.temperature,
+                    "max_output_tokens": provider.max_tokens,
+                    **self._extra_config(provider),
+                }
+                return ChatGoogleGenerativeAI(**kwargs)
+            if provider_type == "azure":
+                from langchain_openai import AzureChatOpenAI
+
+                return AzureChatOpenAI(
                     api_key=provider.api_key,
+                    azure_endpoint=provider.base_url,
+                    azure_deployment=provider.deployment_name,
+                    api_version=provider.api_version,
                     model=provider.model,
                     temperature=provider.temperature,
                     max_tokens=provider.max_tokens,
+                    **self._extra_config(provider),
                 )
-            elif provider.provider_type == "google":
-                from langchain_google_genai import GoogleGenerativeAI
+            if provider_type == "ollama":
+                from langchain_ollama import ChatOllama
 
-                return GoogleGenerativeAI(
-                    google_api_key=provider.api_key,
-                    model=provider.model,
-                    temperature=provider.temperature,
-                    max_output_tokens=provider.max_tokens,
-                )
+                kwargs = {
+                    "model": provider.model,
+                    "temperature": provider.temperature,
+                    **self._extra_config(provider),
+                }
+                if provider.base_url:
+                    kwargs["base_url"] = provider.base_url
+                return ChatOllama(**kwargs)
+            if provider_type == "custom":
+                from langchain_openai import ChatOpenAI
+
+                kwargs = {
+                    "model": provider.model,
+                    "base_url": provider.base_url,
+                    "temperature": provider.temperature,
+                    "max_tokens": provider.max_tokens,
+                    **self._extra_config(provider),
+                }
+                if provider.api_key:
+                    kwargs["api_key"] = provider.api_key
+                return ChatOpenAI(**kwargs)
         except ImportError as e:
             raise ValueError(f"LangChain provider not installed: {e}")
 
-        raise ValueError(f"Unsupported provider type: {provider.provider_type}")
+        raise ValueError(f"Unsupported provider type: {provider_type}")
+
+    def invoke_text(
+        self,
+        provider,
+        messages: str | list[dict[str, str]] | list[tuple[str, str]],
+        *,
+        run_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        model = self.get_chat_model(provider)
+        response = model.invoke(
+            self._normalize_messages(messages),
+            config=self._run_config(run_name=run_name, metadata=metadata),
+        )
+        return self._coerce_text(response)
+
+    def invoke_structured(
+        self,
+        provider,
+        messages: str | list[dict[str, str]] | list[tuple[str, str]],
+        schema,
+        *,
+        run_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ):
+        model = self.get_chat_model(provider)
+        structured_model = model.with_structured_output(schema)
+        result = structured_model.invoke(
+            self._normalize_messages(messages),
+            config=self._run_config(run_name=run_name, metadata=metadata),
+        )
+        if hasattr(schema, "model_validate") and isinstance(result, dict):
+            return schema.model_validate(result)
+        return result
+
+    def get_llm(self, provider=None):
+        """Backward-compatible alias for existing callers."""
+        return self.get_chat_model(provider)
 
     def test_connection(self, provider):
+        return self.test_connection_details(provider)["connected"]
+
+    def test_connection_details(self, provider) -> dict[str, Any]:
         try:
-            llm = self.get_llm(provider)
-            response = self._call_llm(llm, "Hello")
-            return bool(response)
+            response = self.invoke_text(provider, "Hello", run_name="llm-test")
+            return {"connected": bool(response), "error": ""}
         except Exception as e:
             logger.error(
                 f"LLM provider {provider.provider_type} connection test failed: {e}"
             )
-            return False
+            return {"connected": False, "error": str(e)}
 
     def _call_llm(self, llm, prompt):
         """Call LLM with compatibility for both old (predict) and new (invoke) APIs."""
@@ -153,24 +246,62 @@ class LLMService:
         else:
             raise AttributeError("LLM object has neither 'invoke' nor 'predict' method")
 
+    def _common_chat_kwargs(self, provider) -> dict[str, Any]:
+        kwargs = {
+            "model": provider.model,
+            "temperature": provider.temperature,
+            "max_tokens": provider.max_tokens,
+            **self._extra_config(provider),
+        }
+        if provider.api_key:
+            kwargs["api_key"] = provider.api_key
+        return kwargs
 
-class AnthropicWrapper:
-    """Thin wrapper around the Anthropic SDK with a predict() interface."""
+    @staticmethod
+    def _extra_config(provider) -> dict[str, Any]:
+        extra_config = getattr(provider, "extra_config", None) or {}
+        return extra_config if isinstance(extra_config, dict) else {}
 
-    def __init__(self, api_key, model="claude-opus-4-6", max_tokens=2000):
-        import anthropic
+    @staticmethod
+    def _normalize_messages(
+        messages: str | list[dict[str, str]] | list[tuple[str, str]],
+    ) -> str | list[tuple[str, str]]:
+        if isinstance(messages, str):
+            return messages
 
-        self._client = anthropic.Anthropic(api_key=api_key)
-        self._model = model
-        self._max_tokens = max_tokens
+        normalized = []
+        for message in messages:
+            if isinstance(message, tuple):
+                role, content = message
+            else:
+                role = message.get("role", "user")
+                content = message.get("content", "")
+            normalized.append((role, content))
+        return normalized
 
-    def predict(self, prompt: str) -> str:
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text
+    @staticmethod
+    def _run_config(
+        *, run_name: str | None, metadata: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        config: dict[str, Any] = {}
+        if run_name:
+            config["run_name"] = run_name
+        if metadata:
+            config["metadata"] = metadata
+        return config or None
+
+    @staticmethod
+    def _coerce_text(response) -> str:
+        content = getattr(response, "content", response)
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    parts.append(str(item.get("text") or item.get("content") or ""))
+                else:
+                    parts.append(str(getattr(item, "text", item)))
+            return "".join(parts)
+        return str(content)
 
 
 class SummaryGenerationService:
@@ -188,9 +319,13 @@ class SummaryGenerationService:
     def _generate_with_retry(self, case_data, prompt, query, retry_count=0):
         try:
             llm_service = LLMService()
-            llm = llm_service.get_llm()
             rendered_prompt = self._render_prompt(prompt.prompt, case_data, query)
-            return llm_service._call_llm(llm, rendered_prompt)
+            return llm_service.invoke_text(
+                None,
+                rendered_prompt,
+                run_name="caseworker-summary",
+                metadata={"feature": "caseworker_summary"},
+            )
         except Exception:
             if retry_count < self.MAX_RETRIES:
                 return self._generate_with_retry(
