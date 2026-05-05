@@ -50,7 +50,12 @@ def build_public_chat_prompt(
 def generate_answer(config, prompt: str) -> str:
     try:
         llm_service = LLMService()
-        llm = llm_service.get_llm(config.llm_provider)
-        return llm_service._call_llm(llm, prompt).strip()
+        provider = llm_service.resolve_answer_provider(config)
+        return llm_service.invoke_text(
+            provider,
+            prompt,
+            run_name="public-chat-answer",
+            metadata={"feature": "public_chat", "provider_id": provider.id},
+        ).strip()
     except Exception as exc:
         raise PublicChatLLMError(str(exc)) from exc
