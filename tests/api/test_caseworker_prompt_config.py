@@ -81,6 +81,113 @@ def test_caseworker_admin_can_manage_prompts_skills_and_public_chat_config(
     assert config_response.status_code == 201
     assert config_response.data["prompt"] == prompt_response.data["id"]
     assert config_response.data["quota_limit"] == 10
+    assert config_response.data["classifier_llm_provider"] is None
+
+
+@pytest.mark.django_db
+def test_caseworker_admin_can_manage_multiple_llm_provider_profiles(staff_client):
+    first = staff_client.post(
+        "/api/caseworker/llm-providers/",
+        data={
+            "name": "openai-public-answer",
+            "display_name": "OpenAI Public Answer",
+            "provider_type": "openai",
+            "model": "gpt-4o-mini",
+            "api_key": "test-key-a",
+            "temperature": 0.2,
+            "max_tokens": 1000,
+            "is_active": True,
+            "is_default": True,
+            "structured_output_mode": "auto",
+        },
+        format="json",
+    )
+    second = staff_client.post(
+        "/api/caseworker/llm-providers/",
+        data={
+            "name": "openai-public-classifier",
+            "display_name": "OpenAI Public Classifier",
+            "provider_type": "openai",
+            "model": "gpt-4o-mini",
+            "api_key": "test-key-b",
+            "temperature": 0,
+            "max_tokens": 500,
+            "is_active": True,
+            "is_default": False,
+            "structured_output_mode": "provider_native",
+        },
+        format="json",
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.data["provider_type"] == second.data["provider_type"]
+    assert first.data["name"] == "openai-public-answer"
+    assert "api_key" not in first.data
+    assert "api_key" not in second.data
+
+    listed = staff_client.get("/api/caseworker/llm-providers/")
+    assert listed.status_code == 200
+    assert all("api_key" not in item for item in listed.data["results"])
+
+
+@pytest.mark.django_db
+def test_caseworker_llm_provider_validates_single_default_and_provider_fields(
+    staff_client,
+):
+    first = staff_client.post(
+        "/api/caseworker/llm-providers/",
+        data={
+            "name": "default-provider",
+            "provider_type": "openai",
+            "model": "gpt-4o-mini",
+            "api_key": "test-key-a",
+            "is_active": True,
+            "is_default": True,
+        },
+        format="json",
+    )
+    duplicate_default = staff_client.post(
+        "/api/caseworker/llm-providers/",
+        data={
+            "name": "another-default-provider",
+            "provider_type": "anthropic",
+            "model": "claude-3-5-sonnet-20241022",
+            "api_key": "test-key-b",
+            "is_active": True,
+            "is_default": True,
+        },
+        format="json",
+    )
+    invalid_azure = staff_client.post(
+        "/api/caseworker/llm-providers/",
+        data={
+            "name": "azure-missing-fields",
+            "provider_type": "azure",
+            "model": "gpt-4o",
+            "api_key": "test-key-c",
+            "is_active": True,
+        },
+        format="json",
+    )
+    invalid_custom = staff_client.post(
+        "/api/caseworker/llm-providers/",
+        data={
+            "name": "custom-missing-base-url",
+            "provider_type": "custom",
+            "model": "llama",
+            "is_active": True,
+        },
+        format="json",
+    )
+
+    assert first.status_code == 201
+    assert duplicate_default.status_code == 400
+    assert "is_default" in duplicate_default.data
+    assert invalid_azure.status_code == 400
+    assert {"base_url", "api_version", "deployment_name"} <= set(invalid_azure.data)
+    assert invalid_custom.status_code == 400
+    assert "base_url" in invalid_custom.data
 
 
 @pytest.mark.django_db
