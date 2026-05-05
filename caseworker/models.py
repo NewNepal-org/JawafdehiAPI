@@ -230,6 +230,14 @@ class PublicChatConfig(models.Model):
     max_mcp_results = models.PositiveIntegerField(default=5)
     max_tool_calls = models.PositiveIntegerField(default=3)
     max_evidence_chars = models.PositiveIntegerField(default=8000)
+    knowledge_rag_enabled = models.BooleanField(default=False)
+    knowledge_collections = models.ManyToManyField(
+        "knowledge.KnowledgeCollection",
+        blank=True,
+        related_name="public_chat_configs",
+        help_text="Public knowledge collections exposed to anonymous public chat.",
+    )
+    max_knowledge_results = models.PositiveIntegerField(default=5)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -247,6 +255,7 @@ class PublicChatConfig(models.Model):
             "max_mcp_results",
             "max_tool_calls",
             "max_evidence_chars",
+            "max_knowledge_results",
         ]:
             if getattr(self, field) < 1:
                 errors[field] = "Must be at least 1."
