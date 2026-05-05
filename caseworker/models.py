@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import User
 
 # Providers that require an API key for authentication
@@ -162,35 +163,88 @@ class LLMProvider(models.Model):
         ("azure", "Azure OpenAI"),
         ("custom", "Custom"),
     ]
+    STRUCTURED_OUTPUT_CHOICES = [
+        ("auto", "Auto"),
+        ("provider_native", "Provider native"),
+        ("tool_calling", "Tool calling"),
+    ]
 
+    name = models.SlugField(max_length=120, unique=True)
+    display_name = models.CharField(max_length=255, blank=True)
     provider_type = models.CharField(
-        max_length=50, choices=PROVIDER_CHOICES, unique=True
+        max_length=50,
+        choices=PROVIDER_CHOICES,
     )
-    model = models.CharField(max_length=100)
+    model = models.CharField(max_length=255)
     # TODO: Replace with encrypted field or secret reference (e.g., django-encrypted-model-fields)
     # Storing secrets as plain text is a security risk
     # Optional for local providers like ollama
     api_key = models.CharField(max_length=500, blank=True, null=True)
+    base_url = models.URLField(max_length=1000, blank=True)
+    api_version = models.CharField(max_length=100, blank=True)
+    deployment_name = models.CharField(max_length=255, blank=True)
+    extra_config = models.JSONField(default=dict, blank=True)
     temperature = models.FloatField(default=0.7)
     max_tokens = models.IntegerField(default=2000)
     is_active = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False, db_index=True)
+    structured_output_mode = models.CharField(
+        max_length=30,
+        choices=STRUCTURED_OUTPUT_CHOICES,
+        default="auto",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def clean(self):
         """Validate that api_key is provided for providers that require it."""
-        from django.core.exceptions import ValidationError
-
+        errors = {}
         if self.provider_type in PROVIDERS_REQUIRING_API_KEY and not self.api_key:
-            raise ValidationError(
+            errors["api_key"] = (
                 f"API key is required for {self.get_provider_type_display()}"
             )
+        if self.provider_type == "azure":
+            if not self.base_url:
+                errors["base_url"] = "Azure providers require an endpoint/base URL."
+            if not self.api_version:
+                errors["api_version"] = "Azure providers require an API version."
+            if not self.deployment_name:
+                errors["deployment_name"] = "Azure providers require a deployment name."
+        if self.provider_type == "custom" and not self.base_url:
+            errors["base_url"] = (
+                "Custom OpenAI-compatible providers require a base URL."
+            )
+        if self.is_default and not self.is_active:
+            errors["is_default"] = "Only an active provider can be the default."
+        if self.is_default and self.is_active:
+            queryset = LLMProvider.objects.filter(is_active=True, is_default=True)
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
+            if queryset.exists():
+                errors["is_default"] = "Only one active provider can be the default."
+        if self.extra_config is None:
+            self.extra_config = {}
+        if not isinstance(self.extra_config, dict):
+            errors["extra_config"] = "Extra config must be a JSON object."
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self):
-        return f"{self.provider_type} - {self.model}"
+        return self.display_name or f"{self.provider_type} - {self.model}"
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-is_default", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_default"],
+                condition=Q(is_default=True, is_active=True),
+                name="caseworker_unique_active_default_llm_provider",
+            )
+        ]
 
 
 class PublicChatConfig(models.Model):
@@ -215,7 +269,18 @@ class PublicChatConfig(models.Model):
         null=True,
         blank=True,
         related_name="public_chat_configs",
-        help_text="Optional provider override. Falls back to the active provider.",
+        help_text="Optional answer provider override. Falls back to the default active provider.",
+    )
+    classifier_llm_provider = models.ForeignKey(
+        LLMProvider,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="public_chat_classifier_configs",
+        help_text=(
+            "Optional classifier provider. Falls back to the answer provider, then "
+            "the default active provider."
+        ),
     )
     quota_scope = models.CharField(
         max_length=20,
