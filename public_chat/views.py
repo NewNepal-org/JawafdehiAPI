@@ -74,6 +74,13 @@ class PublicChatView(APIView):
         language = payload.get("language") or "auto"
         decision = understand_question(config, question)
 
+        if decision.route == "clarify":
+            response_data = refusal_response(
+                "I could not confidently choose the right public Jawafdehi source for that question. Please ask a more specific case, entity, or public document question.",
+                session_id,
+            )
+            return Response(response_data)
+
         if decision.route == "knowledge_rag" and not config.knowledge_rag_enabled:
             response_data = refusal_response(UNSUPPORTED_RAG_MESSAGE, session_id)
             return Response(response_data)
@@ -131,7 +138,11 @@ class PublicChatView(APIView):
 
     def _get_active_config(self):
         return (
-            PublicChatConfig.objects.select_related("prompt", "llm_provider")
+            PublicChatConfig.objects.select_related(
+                "prompt",
+                "llm_provider",
+                "classifier_llm_provider",
+            )
             .prefetch_related("prompt__skills", "knowledge_collections")
             .filter(is_active=True)
             .first()
@@ -158,6 +169,22 @@ class PublicChatView(APIView):
             raise PublicChatMCPError("Public chat MCP server is not configured.")
 
         client = PublicChatMCPClient(allowed_tools=PUBLIC_CHAT_MCP_TOOLS)
+        if decision.route == "case_get":
+            data = client.call_tool(
+                decision.tool_name,
+                {"case_id": decision.search, "fetch_sources": True},
+            )
+            cases = [data] if data.get("state") == "PUBLISHED" else []
+            sources = [build_case_source(case) for case in cases]
+            return {
+                "route": decision.route,
+                "search": decision.search,
+                "routing": self._routing_metadata(decision),
+                "cases": cases,
+                "entities": [],
+                "sources": sources,
+            }
+
         data = client.call_tool(
             decision.tool_name, {"search": decision.search, "page": 1}
         )
@@ -166,6 +193,7 @@ class PublicChatView(APIView):
             return {
                 "route": decision.route,
                 "search": decision.search,
+                "routing": self._routing_metadata(decision),
                 "entities": entities,
                 "cases": [],
                 "sources": [],
@@ -180,6 +208,7 @@ class PublicChatView(APIView):
             "route": decision.route,
             "search": decision.search,
             "count": data.get("count", len(cases)),
+            "routing": self._routing_metadata(decision),
             "cases": cases,
             "entities": [],
             "sources": sources,
@@ -203,8 +232,19 @@ class PublicChatView(APIView):
         return {
             "route": decision.route,
             "search": decision.search,
+            "routing": self._routing_metadata(decision),
             "knowledge_chunks": chunks,
             "cases": [],
             "entities": [],
             "sources": sources,
+        }
+
+    @staticmethod
+    def _routing_metadata(decision: RouteDecision) -> dict[str, Any]:
+        return {
+            "route": decision.route,
+            "reason": decision.reason,
+            "classifier_source": decision.classifier_source,
+            "confidence": decision.confidence,
+            "classifier_error": decision.classifier_error,
         }
