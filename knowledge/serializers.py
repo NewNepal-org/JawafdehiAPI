@@ -1,0 +1,127 @@
+from rest_framework import serializers
+
+from .models import (
+    AccessLevel,
+    KnowledgeChunk,
+    KnowledgeCollection,
+    KnowledgeEmbedding,
+    KnowledgeSource,
+)
+
+
+class KnowledgeCollectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KnowledgeCollection
+        fields = [
+            "id",
+            "name",
+            "display_name",
+            "description",
+            "access_level",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+
+class KnowledgeSourceSerializer(serializers.ModelSerializer):
+    collection_name = serializers.CharField(source="collection.name", read_only=True)
+
+    class Meta:
+        model = KnowledgeSource
+        fields = [
+            "id",
+            "collection",
+            "collection_name",
+            "title",
+            "source_type",
+            "source_url",
+            "storage_path",
+            "checksum",
+            "metadata",
+            "access_level",
+            "is_active",
+            "owner",
+            "allowed_users",
+            "allowed_groups",
+            "case",
+            "document_source",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "collection_name", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        access_level = attrs.get(
+            "access_level",
+            getattr(self.instance, "access_level", AccessLevel.PRIVATE),
+        )
+        source_url = attrs.get("source_url", getattr(self.instance, "source_url", ""))
+        storage_path = attrs.get(
+            "storage_path", getattr(self.instance, "storage_path", "")
+        )
+        document_source = attrs.get(
+            "document_source", getattr(self.instance, "document_source", None)
+        )
+        if access_level == AccessLevel.PUBLIC and not (
+            source_url or storage_path or document_source
+        ):
+            raise serializers.ValidationError(
+                {
+                    "source_url": (
+                        "Public knowledge sources need a URL, storage path, or "
+                        "linked document source for citations."
+                    )
+                }
+            )
+        return attrs
+
+
+class KnowledgeChunkSerializer(serializers.ModelSerializer):
+    source_title = serializers.CharField(source="source.title", read_only=True)
+    collection_name = serializers.CharField(
+        source="source.collection.name", read_only=True
+    )
+
+    class Meta:
+        model = KnowledgeChunk
+        fields = [
+            "id",
+            "source",
+            "source_title",
+            "collection_name",
+            "text",
+            "chunk_index",
+            "page_start",
+            "page_end",
+            "section_title",
+            "table_title",
+            "metadata",
+            "content_hash",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "source_title",
+            "collection_name",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class KnowledgeEmbeddingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KnowledgeEmbedding
+        fields = [
+            "id",
+            "chunk",
+            "embedding_model",
+            "dimensions",
+            "embedding",
+            "metadata",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
