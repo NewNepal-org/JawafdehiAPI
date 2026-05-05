@@ -65,14 +65,24 @@ class DraftVersionAdmin(admin.ModelAdmin):
 @admin.register(LLMProvider)
 class LLMProviderAdmin(admin.ModelAdmin):
     list_display = [
+        "name",
+        "display_name",
         "provider_type",
         "model",
         "temperature",
         "max_tokens",
         "is_active",
+        "is_default",
+        "structured_output_mode",
         "created_at",
     ]
-    list_filter = ["provider_type", "is_active"]
+    list_filter = [
+        "provider_type",
+        "is_active",
+        "is_default",
+        "structured_output_mode",
+    ]
+    search_fields = ["name", "display_name", "model", "base_url"]
     # Exclude api_key from admin forms to prevent displaying secrets
     exclude = ["api_key"]
     readonly_fields = ["created_at", "updated_at"]
@@ -86,6 +96,7 @@ class PublicChatConfigAdmin(admin.ModelAdmin):
         "is_active",
         "prompt",
         "llm_provider",
+        "classifier_llm_provider",
         "quota_scope",
         "quota_limit",
         "quota_window_seconds",
