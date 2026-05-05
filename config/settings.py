@@ -156,6 +156,7 @@ INSTALLED_APPS = [
     "ngm",
     "caseworker",
     "case_workflows",
+    "knowledge",
     "public_chat",
 ]
 
