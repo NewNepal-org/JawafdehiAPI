@@ -7,6 +7,12 @@ from rest_framework.test import APIClient
 
 from caseworker.models import Prompt, PublicChatConfig, Skill
 from config.mcp_servers import build_public_chat_mcp_servers
+from knowledge.models import (
+    AccessLevel,
+    KnowledgeChunk,
+    KnowledgeCollection,
+    KnowledgeSource,
+)
 from public_chat.mcp_client import PublicChatMCPClient, PublicChatMCPError
 from public_chat.quota import QUOTA_CACHE_NAME, check_and_increment_quota
 from public_chat.routing import PUBLIC_CHAT_MCP_TOOLS, route_question
@@ -116,7 +122,9 @@ def test_public_chat_routing_owns_public_mcp_tool_policy():
         route_question("Show person entities related to procurement").tool_name
         == "public_search_jawaf_entities"
     )
-    assert route_question("What is in the 2078 annual report?").tool_name is None
+    report_route = route_question("What is in the 2078 annual report?")
+    assert report_route.route == "knowledge_rag"
+    assert report_route.tool_name is None
 
 
 def test_mcp_client_parses_json_text_content():
@@ -159,6 +167,10 @@ def test_public_chat_uses_configured_prompt_and_active_skills(public_chat_config
 
     with (
         patch(
+            "public_chat.views.understand_question",
+            return_value=route_question("How many procurement cases are published?"),
+        ),
+        patch(
             "public_chat.views.PublicChatMCPClient.call_tool",
             return_value={"count": 1, "results": [published_case_payload()]},
         ) as mcp_call,
@@ -191,6 +203,10 @@ def test_quota_blocks_before_mcp_and_llm_even_after_session_reset(public_chat_co
 
     with (
         patch(
+            "public_chat.views.understand_question",
+            return_value=route_question("procurement cases"),
+        ),
+        patch(
             "public_chat.views.PublicChatMCPClient.call_tool",
             return_value={"count": 1, "results": [published_case_payload()]},
         ) as mcp_call,
@@ -219,8 +235,14 @@ def test_quota_blocks_before_mcp_and_llm_even_after_session_reset(public_chat_co
 
 
 @pytest.mark.django_db
-def test_unsupported_document_rag_refuses_before_mcp_or_llm(public_chat_config):
+def test_rag_disabled_refuses_before_mcp_or_answer_llm(public_chat_config):
     with (
+        patch(
+            "public_chat.views.understand_question",
+            return_value=route_question(
+                "In the 2078 annual report, how many cases were registered?"
+            ),
+        ),
         patch("public_chat.views.PublicChatMCPClient.call_tool") as mcp_call,
         patch("public_chat.views.generate_answer") as llm_call,
     ):
@@ -233,15 +255,115 @@ def test_unsupported_document_rag_refuses_before_mcp_or_llm(public_chat_config):
         )
 
     assert response.status_code == 200
-    assert "RAG index" in response.data["answer_text"]
+    assert "public knowledge index" in response.data["answer_text"]
     assert response.data["sources"] == []
     mcp_call.assert_not_called()
     llm_call.assert_not_called()
 
 
 @pytest.mark.django_db
+def test_rag_enabled_without_chunks_refuses_before_mcp_or_answer_llm(
+    public_chat_config,
+):
+    public_chat_config.knowledge_rag_enabled = True
+    public_chat_config.save()
+
+    with (
+        patch(
+            "public_chat.views.understand_question",
+            return_value=route_question(
+                "In the 2079 annual report, how many cases were registered?"
+            ),
+        ),
+        patch("public_chat.views.PublicChatMCPClient.call_tool") as mcp_call,
+        patch("public_chat.views.generate_answer") as llm_call,
+    ):
+        response = APIClient().post(
+            PUBLIC_CHAT_URL,
+            data={
+                "question": "In the 2079 annual report, how many cases were registered?"
+            },
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert (
+        "could not find configured public Jawafdehi records"
+        in response.data["answer_text"]
+    )
+    assert response.data["sources"] == []
+    mcp_call.assert_not_called()
+    llm_call.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_public_chat_knowledge_rag_uses_configured_public_chunks(public_chat_config):
+    collection = KnowledgeCollection.objects.create(
+        name="annual_reports",
+        display_name="Annual Reports",
+        access_level=AccessLevel.PUBLIC,
+    )
+    source = KnowledgeSource.objects.create(
+        collection=collection,
+        title="Annual Report 2079",
+        source_type="annual_report",
+        source_url="https://jawafdehi.org/reports/2079.pdf",
+        access_level=AccessLevel.PUBLIC,
+    )
+    KnowledgeChunk.objects.create(
+        source=source,
+        chunk_index=0,
+        text="In fiscal year 2079, the report says 120 cases were registered by type.",
+        page_start=21,
+        page_end=21,
+        section_title="Case registration by type",
+        content_hash="knowledge-public-chat-2079",
+    )
+    public_chat_config.knowledge_rag_enabled = True
+    public_chat_config.save()
+    public_chat_config.knowledge_collections.add(collection)
+    captured = {}
+
+    def fake_generate_answer(config, prompt):
+        captured["prompt"] = prompt
+        return "The 2079 report says 120 cases were registered by type."
+
+    with (
+        patch(
+            "public_chat.views.understand_question",
+            return_value=route_question(
+                "In the 2079 annual report, how many cases were registered by type?"
+            ),
+        ),
+        patch("public_chat.views.PublicChatMCPClient.call_tool") as mcp_call,
+        patch("public_chat.views.generate_answer", side_effect=fake_generate_answer),
+    ):
+        response = APIClient().post(
+            PUBLIC_CHAT_URL,
+            data={
+                "question": "In the 2079 annual report, how many cases were registered by type?",
+                "session_id": "session-rag",
+            },
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert "knowledge_chunks" in captured["prompt"]
+    assert (
+        response.data["sources"][0]["url"] == "https://jawafdehi.org/reports/2079.pdf"
+    )
+    assert response.data["sources"][0]["page_start"] == 21
+    assert response.data["related_cases"] == []
+    mcp_call.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_non_published_mcp_output_is_rejected_defensively(public_chat_config):
     with (
+        patch(
+            "public_chat.views.understand_question",
+            return_value=route_question("procurement cases"),
+        ),
         patch(
             "public_chat.views.PublicChatMCPClient.call_tool",
             return_value={
@@ -259,7 +381,7 @@ def test_non_published_mcp_output_is_rejected_defensively(public_chat_config):
 
     assert response.status_code == 200
     assert (
-        "could not find published public Jawafdehi records"
+        "could not find configured public Jawafdehi records"
         in response.data["answer_text"]
     )
     assert response.data["sources"] == []
@@ -270,6 +392,10 @@ def test_non_published_mcp_output_is_rejected_defensively(public_chat_config):
 @pytest.mark.django_db
 def test_mcp_failure_returns_clean_503(public_chat_config):
     with (
+        patch(
+            "public_chat.views.understand_question",
+            return_value=route_question("procurement cases"),
+        ),
         patch(
             "public_chat.views.PublicChatMCPClient.call_tool",
             side_effect=PublicChatMCPError("Error accessing public cases API: timeout"),
@@ -291,7 +417,13 @@ def test_mcp_failure_returns_clean_503(public_chat_config):
 @pytest.mark.django_db
 @override_settings(DEBUG=False, PUBLIC_CHAT_MCP_SERVERS={})
 def test_missing_production_mcp_config_returns_503_before_quota(public_chat_config):
-    with patch("public_chat.views.PublicChatMCPClient.call_tool") as mcp_call:
+    with (
+        patch(
+            "public_chat.views.understand_question",
+            return_value=route_question("procurement cases"),
+        ),
+        patch("public_chat.views.PublicChatMCPClient.call_tool") as mcp_call,
+    ):
         response = APIClient().post(
             PUBLIC_CHAT_URL,
             data={"question": "procurement cases", "session_id": "session-a"},
@@ -300,7 +432,7 @@ def test_missing_production_mcp_config_returns_503_before_quota(public_chat_conf
         )
 
     assert response.status_code == 503
-    assert response.data["detail"] == "Public chat MCP server is not configured."
+    assert "Public chat MCP server is not configured." in response.data["detail"]
     mcp_call.assert_not_called()
 
 
