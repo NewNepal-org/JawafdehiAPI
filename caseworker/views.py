@@ -213,13 +213,16 @@ class LLMProviderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def test_connection(self, request, pk=None):
         provider = self.get_object()
-        is_connected = LLMService().test_connection(provider)
-        return Response({"connected": is_connected})
+        return Response(LLMService().test_connection_details(provider))
 
 
 class PublicChatConfigViewSet(viewsets.ModelViewSet):
     queryset = (
-        PublicChatConfig.objects.select_related("prompt", "llm_provider")
+        PublicChatConfig.objects.select_related(
+            "prompt",
+            "llm_provider",
+            "classifier_llm_provider",
+        )
         .prefetch_related("knowledge_collections")
         .all()
     )
