@@ -10,18 +10,22 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from caseworker.models import PublicChatConfig
+from knowledge.models import AccessLevel
+from knowledge.retrieval import KnowledgeAccessContext, KnowledgeRetriever
 
 from .citation_validator import filter_public_sources
 from .llm import PublicChatLLMError, build_public_chat_prompt, generate_answer
 from .mcp_client import PublicChatMCPClient, PublicChatMCPError
+from .query_understanding import understand_question
 from .quota import check_and_increment_quota
 from .response_builder import (
     UNSUPPORTED_RAG_MESSAGE,
     build_case_source,
+    build_knowledge_source,
     build_related_case,
     refusal_response,
 )
-from .routing import PUBLIC_CHAT_MCP_TOOLS, RouteDecision, route_question
+from .routing import PUBLIC_CHAT_MCP_TOOLS, RouteDecision
 from .serializers import PublicChatRequestSerializer, PublicChatResponseSerializer
 
 
@@ -34,11 +38,6 @@ class PublicChatView(APIView):
         if config is None or not config.enabled:
             return Response(
                 {"detail": "Public chat is not available right now."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-        if not settings.DEBUG and not settings.PUBLIC_CHAT_MCP_SERVERS:
-            return Response(
-                {"detail": "Public chat MCP server is not configured."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -73,23 +72,32 @@ class PublicChatView(APIView):
 
         history = self._bound_history(payload.get("history", []), config)
         language = payload.get("language") or "auto"
-        decision = route_question(question)
+        decision = understand_question(config, question)
 
-        if decision.route == "unsupported_document_rag":
+        if decision.route == "knowledge_rag" and not config.knowledge_rag_enabled:
             response_data = refusal_response(UNSUPPORTED_RAG_MESSAGE, session_id)
             return Response(response_data)
 
         try:
-            evidence = self._retrieve_evidence(decision, config)
+            if decision.route == "knowledge_rag":
+                evidence = self._retrieve_knowledge_evidence(
+                    decision, config, question=question
+                )
+            else:
+                evidence = self._retrieve_mcp_evidence(decision, config)
         except PublicChatMCPError as exc:
             return Response(
                 {"detail": f"Public chat retrieval failed: {exc}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-        if not evidence.get("cases") and not evidence.get("entities"):
+        if (
+            not evidence.get("cases")
+            and not evidence.get("entities")
+            and not evidence.get("knowledge_chunks")
+        ):
             response_data = refusal_response(
-                "I could not find published public Jawafdehi records that support an answer to that question.",
+                "I could not find configured public Jawafdehi records or knowledge sources that support an answer to that question.",
                 session_id,
             )
             return Response(response_data)
@@ -124,7 +132,7 @@ class PublicChatView(APIView):
     def _get_active_config(self):
         return (
             PublicChatConfig.objects.select_related("prompt", "llm_provider")
-            .prefetch_related("prompt__skills")
+            .prefetch_related("prompt__skills", "knowledge_collections")
             .filter(is_active=True)
             .first()
         )
@@ -143,9 +151,11 @@ class PublicChatView(APIView):
             result.append(item)
         return list(reversed(result))
 
-    def _retrieve_evidence(self, decision: RouteDecision, config) -> dict[str, Any]:
+    def _retrieve_mcp_evidence(self, decision: RouteDecision, config) -> dict[str, Any]:
         if not decision.tool_name:
             raise PublicChatMCPError("No MCP tool is configured for this route")
+        if not settings.DEBUG and not settings.PUBLIC_CHAT_MCP_SERVERS:
+            raise PublicChatMCPError("Public chat MCP server is not configured.")
 
         client = PublicChatMCPClient(allowed_tools=PUBLIC_CHAT_MCP_TOOLS)
         data = client.call_tool(
@@ -171,6 +181,30 @@ class PublicChatView(APIView):
             "search": decision.search,
             "count": data.get("count", len(cases)),
             "cases": cases,
+            "entities": [],
+            "sources": sources,
+        }
+
+    def _retrieve_knowledge_evidence(
+        self, decision: RouteDecision, config, *, question: str
+    ) -> dict[str, Any]:
+        collections = config.knowledge_collections.filter(
+            is_active=True,
+            access_level=AccessLevel.PUBLIC,
+        )
+        retrieved = KnowledgeRetriever().retrieve(
+            query=question,
+            access_context=KnowledgeAccessContext.public_context(),
+            collections=collections,
+            max_results=config.max_knowledge_results,
+        )
+        chunks = [item.as_evidence() for item in retrieved]
+        sources = [build_knowledge_source(chunk) for chunk in chunks]
+        return {
+            "route": decision.route,
+            "search": decision.search,
+            "knowledge_chunks": chunks,
+            "cases": [],
             "entities": [],
             "sources": sources,
         }
