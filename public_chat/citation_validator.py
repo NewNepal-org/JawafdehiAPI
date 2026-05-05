@@ -13,6 +13,10 @@ def filter_public_sources(sources: list[dict[str, Any]]) -> list[dict[str, Any]]
             source.get("url"),
             source.get("title"),
             source.get("source_id"),
+            source.get("document_id"),
+            source.get("chunk_id"),
+            source.get("page_start"),
+            source.get("page_end"),
         )
         if key in seen:
             continue
