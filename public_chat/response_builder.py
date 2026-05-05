@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 UNSUPPORTED_RAG_MESSAGE = (
-    "I cannot verify that from the public document index yet. Public report, "
-    "archive, evidence-document, and process-document questions need the targeted "
-    "RAG index before I can answer them with citations."
+    "I cannot verify that from the public knowledge index yet. Public document "
+    "questions need an enabled, admin-configured knowledge collection before I can "
+    "answer them with citations."
 )
 
 
@@ -68,4 +68,26 @@ def build_case_source(case: dict[str, Any]) -> dict[str, Any]:
         "page_start": None,
         "page_end": None,
         "score": None,
+    }
+
+
+def build_knowledge_source(chunk: dict[str, Any]) -> dict[str, Any]:
+    title = (
+        chunk.get("source_title") or chunk.get("section_title") or "Knowledge source"
+    )
+    section = chunk.get("section_title") or chunk.get("table_title") or ""
+    snippet = chunk.get("text") or ""
+    if section:
+        snippet = f"{section}\n{snippet}".strip()
+    return {
+        "title": title,
+        "url": chunk.get("source_url") or chunk.get("storage_path") or "",
+        "type": chunk.get("source_type") or "knowledge",
+        "snippet": snippet,
+        "source_id": str(chunk.get("source_id") or ""),
+        "document_id": str(chunk.get("document_id") or ""),
+        "chunk_id": str(chunk.get("chunk_id") or ""),
+        "page_start": chunk.get("page_start"),
+        "page_end": chunk.get("page_end"),
+        "score": chunk.get("score"),
     }
