@@ -122,6 +122,9 @@ def test_public_chat_routing_owns_public_mcp_tool_policy():
         route_question("Show person entities related to procurement").tool_name
         == "public_search_jawaf_entities"
     )
+    assert route_question("Show case case-42 details").tool_name == (
+        "public_get_published_case"
+    )
     report_route = route_question("What is in the 2078 annual report?")
     assert report_route.route == "knowledge_rag"
     assert report_route.tool_name is None
@@ -192,8 +195,42 @@ def test_public_chat_uses_configured_prompt_and_active_skills(public_chat_config
     assert "Cite the retrieved public source" in captured["prompt"]
     assert "This must not be loaded" not in captured["prompt"]
     assert response.data["sources"][0]["type"] == "case"
+    assert response.data["sources"][0]["url"] == "/case/42"
     assert response.data["related_cases"][0]["case_id"] == "case-42"
+    assert response.data["related_cases"][0]["url"] == "/case/42"
     mcp_call.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_public_chat_can_get_specific_published_case(public_chat_config):
+    with (
+        patch(
+            "public_chat.views.understand_question",
+            return_value=route_question("Show case case-42 details"),
+        ),
+        patch(
+            "public_chat.views.PublicChatMCPClient.call_tool",
+            return_value=published_case_payload(),
+        ) as mcp_call,
+        patch(
+            "public_chat.views.generate_answer",
+            return_value="Here are the supported public details for case 42.",
+        ) as llm_call,
+    ):
+        response = APIClient().post(
+            PUBLIC_CHAT_URL,
+            data={"question": "Show case case-42 details", "session_id": "session-a"},
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert response.data["related_cases"][0]["case_id"] == "case-42"
+    assert response.data["related_cases"][0]["url"] == "/case/42"
+    mcp_call.assert_called_once_with(
+        "public_get_published_case",
+        {"case_id": "case-42", "fetch_sources": True},
+    )
+    llm_call.assert_called_once()
 
 
 @pytest.mark.django_db
@@ -355,6 +392,31 @@ def test_public_chat_knowledge_rag_uses_configured_public_chunks(public_chat_con
     assert response.data["sources"][0]["page_start"] == 21
     assert response.data["related_cases"] == []
     mcp_call.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_public_chat_uncertain_route_refuses_before_retrieval(public_chat_config):
+    with (
+        patch(
+            "public_chat.views.understand_question",
+            return_value=route_question(
+                "Tell me about that issue", default_to_case_search=False
+            ),
+        ),
+        patch("public_chat.views.PublicChatMCPClient.call_tool") as mcp_call,
+        patch("public_chat.views.generate_answer") as llm_call,
+    ):
+        response = APIClient().post(
+            PUBLIC_CHAT_URL,
+            data={"question": "Tell me about that issue", "session_id": "session-a"},
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert "could not confidently choose" in response.data["answer_text"]
+    assert response.data["sources"] == []
+    mcp_call.assert_not_called()
+    llm_call.assert_not_called()
 
 
 @pytest.mark.django_db
