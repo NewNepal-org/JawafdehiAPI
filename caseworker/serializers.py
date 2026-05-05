@@ -141,12 +141,20 @@ class LLMProviderSerializer(serializers.ModelSerializer):
         model = LLMProvider
         fields = [
             "id",
+            "name",
+            "display_name",
             "provider_type",
             "model",
             "api_key",
+            "base_url",
+            "api_version",
+            "deployment_name",
+            "extra_config",
             "temperature",
             "max_tokens",
             "is_active",
+            "is_default",
+            "structured_output_mode",
             "created_at",
             "updated_at",
         ]
@@ -154,15 +162,55 @@ class LLMProviderSerializer(serializers.ModelSerializer):
         extra_kwargs = {"api_key": {"write_only": True}}
 
     def validate(self, data):
-        """Validate that api_key is provided for providers that require it."""
+        """Validate provider-specific admin configuration."""
         provider_type = data.get(
             "provider_type", getattr(self.instance, "provider_type", None)
         )
         api_key = data.get("api_key", getattr(self.instance, "api_key", None))
+        base_url = data.get("base_url", getattr(self.instance, "base_url", ""))
+        api_version = data.get("api_version", getattr(self.instance, "api_version", ""))
+        deployment_name = data.get(
+            "deployment_name", getattr(self.instance, "deployment_name", "")
+        )
+        is_active = data.get("is_active", getattr(self.instance, "is_active", True))
+        is_default = data.get("is_default", getattr(self.instance, "is_default", False))
+        extra_config = data.get(
+            "extra_config", getattr(self.instance, "extra_config", {})
+        )
 
         if provider_type in PROVIDERS_REQUIRING_API_KEY and not api_key:
             raise serializers.ValidationError(
                 {"api_key": f"API key is required for {provider_type}"}
+            )
+        if provider_type == "azure":
+            errors = {}
+            if not base_url:
+                errors["base_url"] = "Azure providers require an endpoint/base URL."
+            if not api_version:
+                errors["api_version"] = "Azure providers require an API version."
+            if not deployment_name:
+                errors["deployment_name"] = "Azure providers require a deployment name."
+            if errors:
+                raise serializers.ValidationError(errors)
+        if provider_type == "custom" and not base_url:
+            raise serializers.ValidationError(
+                {"base_url": ("Custom OpenAI-compatible providers require a base URL.")}
+            )
+        if is_default and not is_active:
+            raise serializers.ValidationError(
+                {"is_default": "Only an active provider can be the default."}
+            )
+        if is_default and is_active:
+            queryset = LLMProvider.objects.filter(is_active=True, is_default=True)
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+            if queryset.exists():
+                raise serializers.ValidationError(
+                    {"is_default": "Only one active provider can be the default."}
+                )
+        if extra_config is not None and not isinstance(extra_config, dict):
+            raise serializers.ValidationError(
+                {"extra_config": "Extra config must be a JSON object."}
             )
 
         return data
@@ -178,6 +226,7 @@ class PublicChatConfigSerializer(serializers.ModelSerializer):
             "enabled",
             "prompt",
             "llm_provider",
+            "classifier_llm_provider",
             "quota_scope",
             "quota_limit",
             "quota_window_seconds",
