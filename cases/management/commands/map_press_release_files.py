@@ -13,10 +13,13 @@ Usage:
 """
 
 import logging
-import requests
+import urllib.parse
 from typing import Optional
+
+import requests
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import connection, transaction
+from nepali.datetime import nepalidate
 
 from cases.models import Case, DocumentSource, SourceType
 
@@ -76,13 +79,14 @@ class Command(BaseCommand):
             )
             return
 
-        # Find cases with press release evidence
-        cases = self.find_cases_with_press_release_evidence(case_id, limit)
-        self.stdout.write(f"Found {len(cases)} case(s) to process")
-
-        # Bulk fetch all DocumentSources for these cases to avoid N+1 queries
+        # Bulk fetch all DocumentSources to avoid N+1 queries
+        # First pass: collect all source_ids from all cases
         all_source_ids = set()
-        for case in cases:
+        queryset = Case.objects.all()
+        if case_id:
+            queryset = queryset.filter(case_id=case_id)
+
+        for case in queryset:
             if case.evidence:
                 for evidence_entry in case.evidence:
                     source_id = evidence_entry.get("source_id")
@@ -95,6 +99,12 @@ class Command(BaseCommand):
                 source_id__in=all_source_ids, is_deleted=False
             )
         }
+
+        # Find cases with press release evidence
+        cases = self.find_cases_with_press_release_evidence(
+            case_id, limit, source_lookup
+        )
+        self.stdout.write(f"Found {len(cases)} case(s) to process")
 
         # Process each case
         for case in cases:
@@ -181,7 +191,7 @@ class Command(BaseCommand):
             return False
 
     def find_cases_with_press_release_evidence(
-        self, case_id: Optional[str], limit: Optional[int]
+        self, case_id: Optional[str], limit: Optional[int], source_lookup: dict
     ) -> list:
         """Find cases with evidence pointing to CIAA press release URLs."""
         queryset = Case.objects.all()
@@ -189,24 +199,8 @@ class Command(BaseCommand):
         if case_id:
             queryset = queryset.filter(case_id=case_id)
 
-        # Collect all source_ids from all cases to bulk fetch DocumentSources
-        all_source_ids = set()
-        for case in queryset:
-            if case.evidence:
-                for evidence_entry in case.evidence:
-                    source_id = evidence_entry.get("source_id")
-                    if source_id:
-                        all_source_ids.add(source_id)
-
-        # Bulk fetch all DocumentSources
-        source_lookup = {
-            source.source_id: source
-            for source in DocumentSource.objects.filter(
-                source_id__in=all_source_ids, is_deleted=False
-            )
-        }
-
         # Filter cases with evidence containing ciaa.gov.np/pressrelease URLs
+        # Uses source_lookup passed from handle() to avoid duplicate DB queries
         cases_with_pr_evidence = []
         for case in queryset:
             if not case.evidence:
@@ -316,6 +310,13 @@ class Command(BaseCommand):
                 f"  → Found {len(pr_data['files'])} file(s) for press release {press_id}"
             )
 
+            # Intentionally replace the original web URL source with file-backed sources
+            # The original evidence_entry (web URL) is NOT appended to updated_evidence
+            # This is by design: we want file URLs, not web page URLs, in the final evidence
+            self.stdout.write(
+                f"  → Replacing source {source_id} (web URL) with {len(pr_data['files'])} file-backed source(s)"
+            )
+
             # Create DocumentSource for each file and add to evidence
             files_processed = 0
             for file_data in pr_data["files"]:
@@ -407,8 +408,6 @@ class Command(BaseCommand):
             tuple: (DocumentSource, created) where created is True if a new source was created
         """
         # Check if source already exists by URL (database-agnostic)
-        from django.db import connection
-
         if connection.vendor == "postgresql":
             existing = DocumentSource.objects.filter(
                 url__contains=[file_url], is_deleted=False
@@ -435,8 +434,6 @@ class Command(BaseCommand):
         pub_date = None
         if publication_date:
             try:
-                from nepali.datetime import nepalidate
-
                 parts = publication_date.split("-")
                 if len(parts) == 3:
                     year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
@@ -447,8 +444,6 @@ class Command(BaseCommand):
                 )
 
         # Build URL list: file URL + press release web page URL
-        import urllib.parse
-
         url_list = []
         if file_url and str(file_url).strip():
             # Properly URL-encode the file URL
