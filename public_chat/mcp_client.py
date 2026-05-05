@@ -44,7 +44,11 @@ class PublicChatMCPClient:
         }
         tool = tool_map.get(name)
         if tool is None:
-            raise PublicChatMCPError(f"MCP tool {name} was not found")
+            available_tools = ", ".join(sorted(tool_map)) or "none"
+            raise PublicChatMCPError(
+                f"MCP tool {name} was not found. "
+                f"Available public MCP tools: {available_tools}"
+            )
 
         raw_result = await tool.ainvoke(arguments)
         return self._parse_tool_result(raw_result)
