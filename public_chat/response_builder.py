@@ -20,10 +20,13 @@ def refusal_response(message: str, session_id: str = "") -> dict[str, Any]:
 
 
 def case_url(case: dict[str, Any]) -> str:
+    case_id = case.get("id")
+    if case_id is not None:
+        return f"/case/{case_id}"
     slug = case.get("slug")
     if slug:
         return f"/case/{slug}"
-    return f"/case/{case.get('id')}"
+    return "/cases"
 
 
 def build_related_case(case: dict[str, Any]) -> dict[str, Any]:
