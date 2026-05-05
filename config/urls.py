@@ -37,6 +37,7 @@ urlpatterns = [
     path("api/", include("cases.urls")),
     path("api/", include("nesq.urls")),
     path("api/", include("ngm.urls")),
+    path("api/knowledge/", include("knowledge.urls")),
     path("api/chat/", include("public_chat.urls")),
     # Case Workflows routes
     path("api/case-workflows/", include("case_workflows.urls")),
