@@ -15,7 +15,7 @@ Field mapping:
 * ``body``           ← ``description`` + ``key_allegations`` (joined),
 * ``keywords``       ← ``tags`` (+ ``case_type``),
 * ``identifiers``    ← the IRI, the slug, and the ``court_cases`` references,
-* ``date``           ← ``case_start_date`` (else created date),
+* ``date``           ← ``trial_start_date`` (else created date),
 * ``case_status``    ← coarse ongoing/closed/others (mirrors the SPA rule); a
   dedicated keyword (NOT the generic ``status``, which NGM uses for its scraper
   enrichment flag) so the unified search can facet/filter cases without collision,
@@ -84,15 +84,21 @@ def _iso(value: Any) -> str | None:
 def _derive_status(case: Any) -> str:
     """Coarse case lifecycle for the ``case_status`` facet, mirroring the SPA rule.
 
-    ``ongoing`` = a start date but no end date; ``closed`` = both dates present;
-    ``others`` = neither (or only an end date). Kept in lockstep with the frontend
-    ``getCaseStatus`` so the server facet and the client badge agree."""
-    has_start = getattr(case, "case_start_date", None) is not None
-    has_end = getattr(case, "case_end_date", None) is not None
-    if has_start and not has_end:
-        return "ongoing"
-    if has_start and has_end:
+    ``ongoing`` = a trial start with no trial end, OR a pending appeal (filed but
+    undecided — the case is not over); ``closed`` = both trial dates and no open
+    appeal; ``others`` = neither trial date (or only an end date). Kept in lockstep
+    with the frontend ``deriveCaseStatus`` so the server facet and the client badge
+    agree."""
+    has_start = getattr(case, "trial_start_date", None) is not None
+    has_end = getattr(case, "trial_end_date", None) is not None
+    appeal_pending = (
+        getattr(case, "appeal_start_date", None) is not None
+        and getattr(case, "appeal_end_date", None) is None
+    )
+    if has_start and has_end and not appeal_pending:
         return "closed"
+    if has_start:
+        return "ongoing"
     return "others"
 
 
@@ -216,10 +222,10 @@ def _build_identifiers(case: Any, iri: str | None, slug: str | None) -> list[str
 def _apply_dates(doc: dict[str, Any], case: Any) -> None:
     """Set ``date``/``created_at``/``updated_at``, each only when available.
 
-    ``date`` prefers the case start date and falls back to the creation date, so
+    ``date`` prefers the trial start date and falls back to the creation date, so
     a case with no explicit start is still sortable.
     """
-    start = getattr(case, "case_start_date", None)
+    start = getattr(case, "trial_start_date", None)
     created = getattr(case, "created_at", None)
     if start is not None:
         doc["date"] = _iso(start)
@@ -291,8 +297,13 @@ def _build_card(
         "tags": tags,
         "case_type": case_type,
         "status": case_status,
-        "case_start_date": _iso(getattr(case, "case_start_date", None)),
-        "case_end_date": _iso(getattr(case, "case_end_date", None)),
+        "trial_start_date": _iso(getattr(case, "trial_start_date", None)),
+        "trial_end_date": _iso(getattr(case, "trial_end_date", None)),
+        "appeal_start_date": _iso(getattr(case, "appeal_start_date", None)),
+        "appeal_end_date": _iso(getattr(case, "appeal_end_date", None)),
+        # DEPRECATED aliases, drop with the API aliases.
+        "case_start_date": _iso(getattr(case, "trial_start_date", None)),
+        "case_end_date": _iso(getattr(case, "trial_end_date", None)),
         "bigo": getattr(case, "bigo", None),
         # The responsive card image. Denormalized like everything else here: a
         # search hit renders straight off the doc, so without this the results

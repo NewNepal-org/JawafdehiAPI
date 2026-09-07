@@ -282,7 +282,10 @@ def _published_case():
         tags=["corruption", "budget"],
         case_type="CORRUPTION",
         court_cases=["https://jawafdehi.org/courtcase/supreme/081-cr-0081"],
-        case_start_date=None,
+        trial_start_date=None,
+        trial_end_date=None,
+        appeal_start_date=None,
+        appeal_end_date=None,
         created_at=None,
         updated_at=None,
     )
@@ -352,8 +355,10 @@ def _card_case(**overrides):
         tags=["land", "corruption"],
         case_type="CORRUPTION",
         court_cases=[],
-        case_start_date=date(2024, 1, 1),
-        case_end_date=None,
+        trial_start_date=date(2024, 1, 1),
+        trial_end_date=None,
+        appeal_start_date=None,
+        appeal_end_date=None,
         thumbnail_url="https://cdn/thumb.png",
         banner_url="https://cdn/banner.png",
         bigo=12345678,
@@ -372,10 +377,38 @@ def test_case_build_doc_status_ongoing_closed_others():
     # generic ``status``, which NGM courtcases use for their enrichment flag).
     assert case_index.build_doc(_card_case())["case_status"] == "ongoing"
     assert "status" not in case_index.build_doc(_card_case())
-    closed = case_index.build_doc(_card_case(case_end_date=date(2024, 6, 1)))
+    closed = case_index.build_doc(_card_case(trial_end_date=date(2024, 6, 1)))
     assert closed["case_status"] == "closed"
-    others = case_index.build_doc(_card_case(case_start_date=None))
+    others = case_index.build_doc(_card_case(trial_start_date=None))
     assert others["case_status"] == "others"
+
+
+def test_case_build_doc_status_pending_appeal_is_ongoing():
+    """A concluded trial under appeal is still ongoing, not closed."""
+    from datetime import date
+
+    doc = case_index.build_doc(
+        _card_case(
+            trial_end_date=date(2024, 6, 1),
+            appeal_start_date=date(2024, 7, 1),
+            appeal_end_date=None,
+        )
+    )
+    assert doc["case_status"] == "ongoing"
+
+
+def test_case_build_doc_status_decided_appeal_is_closed():
+    """Trial end plus a decided appeal closes the case."""
+    from datetime import date
+
+    doc = case_index.build_doc(
+        _card_case(
+            trial_end_date=date(2024, 6, 1),
+            appeal_start_date=date(2024, 7, 1),
+            appeal_end_date=date(2025, 1, 1),
+        )
+    )
+    assert doc["case_status"] == "closed"
 
 
 def test_case_build_doc_mirrors_case_status_into_raw():
@@ -426,8 +459,10 @@ def test_case_build_doc_card_payload():
     assert card["tags"] == ["land", "corruption"]
     assert card["case_type"] == "CORRUPTION"
     assert card["status"] == "ongoing"
-    assert card["case_start_date"] == "2024-01-01"
-    assert card["case_end_date"] is None
+    assert card["trial_start_date"] == "2024-01-01"
+    assert card["trial_end_date"] is None
+    assert card["appeal_start_date"] is None
+    assert card["appeal_end_date"] is None
     assert card["bigo"] == 12345678
     assert card["thumbnail_url"] == "https://cdn/thumb.png"
     assert card["banner_url"] == "https://cdn/banner.png"
@@ -435,6 +470,59 @@ def test_case_build_doc_card_payload():
     assert card["timeline"] == [{"date": "2024-01-01", "title": "Filed"}]
     # resolved entity binds (with per-entity outcome) ride along.
     assert card["entities"] == entities
+
+
+def test_case_build_doc_card_carries_trial_and_appeal_dates():
+    """All four date keys ride on the card, each ISO-formatted or ``None``."""
+    from datetime import date
+
+    card = case_index.build_doc(
+        _card_case(
+            trial_start_date=date(2024, 1, 1),
+            trial_end_date=date(2024, 6, 1),
+            appeal_start_date=date(2024, 7, 1),
+            appeal_end_date=date(2025, 1, 1),
+        )
+    )["raw"]["card"]
+    assert card["trial_start_date"] == "2024-01-01"
+    assert card["trial_end_date"] == "2024-06-01"
+    assert card["appeal_start_date"] == "2024-07-01"
+    assert card["appeal_end_date"] == "2025-01-01"
+
+
+def test_case_build_doc_card_deprecated_aliases_mirror_trial_dates():
+    """The deprecated card aliases duplicate the trial pair, not the appeal one."""
+    from datetime import date
+
+    card = case_index.build_doc(
+        _card_case(
+            trial_start_date=date(2024, 1, 1),
+            trial_end_date=date(2024, 6, 1),
+            appeal_start_date=date(2024, 7, 1),
+            appeal_end_date=date(2025, 1, 1),
+        )
+    )["raw"]["card"]
+    assert card["case_start_date"] == card["trial_start_date"] == "2024-01-01"
+    assert card["case_end_date"] == card["trial_end_date"] == "2024-06-01"
+    # An unset trial pair aliases to ``None``, never to the appeal dates.
+    empty = case_index.build_doc(
+        _card_case(
+            trial_start_date=None,
+            trial_end_date=None,
+            appeal_start_date=date(2024, 7, 1),
+            appeal_end_date=date(2025, 1, 1),
+        )
+    )["raw"]["card"]
+    assert empty["case_start_date"] is None
+    assert empty["case_end_date"] is None
+
+
+def test_case_build_doc_date_reads_trial_start_date():
+    """The sortable top-level ``date`` comes from the trial start date."""
+    from datetime import date
+
+    doc = case_index.build_doc(_card_case(trial_start_date=date(2024, 3, 4)))
+    assert doc["date"] == "2024-03-04"
 
 
 def test_case_build_doc_card_entities_default_empty():

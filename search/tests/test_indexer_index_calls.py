@@ -64,7 +64,10 @@ def _case(state):
         tags=[],
         case_type="CORRUPTION",
         court_cases=[],
-        case_start_date=None,
+        trial_start_date=None,
+        trial_end_date=None,
+        appeal_start_date=None,
+        appeal_end_date=None,
         created_at=None,
         updated_at=None,
     )
