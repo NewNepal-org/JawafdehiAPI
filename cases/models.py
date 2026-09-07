@@ -1136,6 +1136,31 @@ class Case(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        # The database half of the ``cases.chronology`` rule (migration 0065).
+        # Nullable-aware: a case that knows only some of its dates is valid.
+        # Pairwise only — the transitive comparison against "the verdict, else
+        # the registration" has no clean NULL-safe spelling here, so it stays a
+        # validation-layer rule.
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(trial_start_date__isnull=True)
+                | models.Q(trial_end_date__isnull=True)
+                | models.Q(trial_end_date__gte=models.F("trial_start_date")),
+                name="case_trial_end_not_before_start",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(appeal_start_date__isnull=True)
+                | models.Q(appeal_end_date__isnull=True)
+                | models.Q(appeal_end_date__gte=models.F("appeal_start_date")),
+                name="case_appeal_end_not_before_start",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(trial_end_date__isnull=True)
+                | models.Q(appeal_start_date__isnull=True)
+                | models.Q(appeal_start_date__gte=models.F("trial_end_date")),
+                name="case_appeal_start_not_before_trial_end",
+            ),
+        ]
 
     # Pending (assigned but not yet saved) court-case reference list. Class
     # default None = "not assigned"; the ``court_cases`` setter replaces it on

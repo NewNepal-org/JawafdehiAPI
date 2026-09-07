@@ -723,12 +723,15 @@ def test_validate_rejects_backwards_dates_on_an_in_review_case():
         description="A complete description",
         key_allegations=["An allegation"],
         trial_start_date=date(2024, 2, 25),
-        trial_end_date=date(2024, 2, 1),
+        trial_end_date=date(2024, 6, 4),
         alleged_entities=["https://jawafdehi.org/entity/person/in-review-accused"],
     )
     credit_author(case)
     case.refresh_from_db()
     case.state = CaseState.IN_REVIEW
+    # Backwards in memory only: migration 0065's check constraint means the
+    # stored row can no longer hold the pair this test is about.
+    case.trial_end_date = date(2024, 2, 1)
 
     with pytest.raises(ValidationError) as exc_info:
         case.validate()
