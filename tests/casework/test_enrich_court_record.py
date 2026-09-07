@@ -876,6 +876,41 @@ def test_a_populated_date_is_never_overwritten():
     assert plan.fields == []
 
 
+def test_a_derived_end_date_before_the_stored_trial_start_is_skipped():
+    """The PATCH would 422 on the chronology rule -- after the binds exist.
+
+    `plan_case` creates NES entities inside `_accused_binds` and then sends ONE
+    PATCH. A derived end date earlier than the stored registration date is
+    rejected by the write serializer, so the whole PATCH fails while the newly
+    created entities stay behind, bound to nothing. The date is dropped before
+    any of that, and the plan says so.
+    """
+    api = _PlanApi(
+        detail={"registration_date_ad": "2023-06-22"},
+        hearings=[DECIDED],  # decides 2024-06-04, before the stored start
+        parties=[{"side": "defendant", "name": "कृष्ण प्रसाद यादव", "nes_id": YADAV}],
+    )
+    case = _case(trial_start_date="2025-01-01",
+                 entities=[{"nes_id": YADAV, "type": "accused"}])
+
+    plan = _plan(api, case, dry_run=False)
+
+    assert "trial_end_date" not in dict(plan.fields)
+    assert any("trial_end_date skipped" in skip and "2024-06-04" in skip
+               and "2025-01-01" in skip for skip in plan.skips), plan.skips
+    # Nothing left to write -- and no entity created on the way to finding out.
+    assert plan.status == "nothing-to-do"
+    assert api.posted == []
+
+
+def test_a_derived_end_date_after_the_stored_trial_start_is_written():
+    """The guard is the backwards cell only."""
+    api = _PlanApi(detail={"registration_date_ad": "2023-06-22"}, hearings=[DECIDED])
+    plan = _plan(api, _case(trial_start_date="2023-06-22"))
+    assert dict(plan.fields) == {"trial_end_date": "2024-06-04"}
+    assert not any("skipped" in skip for skip in plan.skips), plan.skips
+
+
 def test_a_case_with_nothing_to_change_is_a_skip():
     api = _PlanApi(detail={}, parties=[])
     plan = _plan(api, _case())

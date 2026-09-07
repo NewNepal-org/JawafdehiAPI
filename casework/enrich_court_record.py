@@ -754,12 +754,22 @@ def plan_case(api, case, etag, *, live_prefixes, run_entities, dry_run, held,
         return CasePlan(slug, "no-court-reference", skips=skips)
 
     fields = []
-    if not case.get("trial_start_date"):
+    stored_start = case.get("trial_start_date") or ""
+    if not stored_start:
         if start := start_date(records):
             fields.append(("trial_start_date", start))
     if not case.get("trial_end_date"):
         end, why = end_date(records)
-        if end:
+        if end and stored_start and end < stored_start:
+            # The API rejects an end date before the start date, and this plan
+            # is ONE PATCH carrying the dates and the binds together -- so the
+            # 422 would land after `_accused_binds` had already created NES
+            # entities, which nothing rolls back. Decided here, BEFORE that
+            # call: the case keeps its stored start and a human reads the skip.
+            # (Both are ISO `YYYY-MM-DD` strings, so `<` is chronological.)
+            skips.append(f"trial_end_date skipped: {end} is before the stored "
+                         f"trial start {stored_start}")
+        elif end:
             fields.append(("trial_end_date", end))
         elif why:
             skips.append(f"trial_end_date left empty: {why}")
