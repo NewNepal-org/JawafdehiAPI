@@ -351,7 +351,7 @@ class CaseEntityValidationMixin:
 
 
 class CaseWriteFieldsSerializer(serializers.Serializer):
-    """The 17 field declarations and 2 normalizers common to create and PATCH.
+    """The field declarations and normalizers common to create and PATCH.
 
     Must subclass `serializers.Serializer`: DRF collects declared fields in
     `SerializerMetaclass`, reading `_declared_fields` off each base, so fields
@@ -392,8 +392,14 @@ class CaseWriteFieldsSerializer(serializers.Serializer):
         required=False, allow_blank=True, max_length=500
     )
     banner_url = serializers.URLField(required=False, allow_blank=True, max_length=500)
-    case_start_date = serializers.DateField(required=False, allow_null=True)
-    case_end_date = serializers.DateField(required=False, allow_null=True)
+    # The first-instance court's registration and verdict dates, and the Supreme
+    # Court appeal's. ``allow_null`` because the columns are nullable — a case
+    # that never went to appeal legitimately has no appeal dates. Chronology is
+    # checked in ``validate()`` below.
+    trial_start_date = serializers.DateField(required=False, allow_null=True)
+    trial_end_date = serializers.DateField(required=False, allow_null=True)
+    appeal_start_date = serializers.DateField(required=False, allow_null=True)
+    appeal_end_date = serializers.DateField(required=False, allow_null=True)
     tags = serializers.ListField(child=serializers.CharField(), required=False)
     key_allegations = serializers.ListField(
         child=serializers.CharField(), required=False
@@ -459,6 +465,39 @@ class CaseWriteFieldsSerializer(serializers.Serializer):
         min_value=-2147483648,
         max_value=2147483647,
     )
+
+    def validate(self, attrs):
+        """Reject a backwards trial, a backwards appeal, or a premature appeal.
+
+        Duplicates ``Case.validate()`` (same keys, same messages) because the
+        PATCH path writes these columns with a bulk ``UPDATE`` that never runs
+        the model's validation.
+        """
+        attrs = super().validate(attrs)
+
+        def _before(earlier, later):
+            """True when both dates are known and ``earlier`` precedes ``later``."""
+            return earlier is not None and later is not None and earlier < later
+
+        trial_start = attrs.get("trial_start_date")
+        trial_end = attrs.get("trial_end_date")
+        appeal_start = attrs.get("appeal_start_date")
+        appeal_end = attrs.get("appeal_end_date")
+
+        errors = {}
+        if _before(trial_end, trial_start):
+            errors["trial_end_date"] = "Trial end date is before the trial start date"
+        if _before(appeal_end, appeal_start):
+            errors["appeal_end_date"] = (
+                "Appeal end date is before the appeal start date"
+            )
+        if _before(appeal_start, trial_end):
+            errors["appeal_start_date"] = (
+                "Appeal start date is before the trial end date"
+            )
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
     def validate_missing_details(self, value):
         """Normalize empty/whitespace missing_details to None."""

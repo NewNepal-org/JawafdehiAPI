@@ -119,8 +119,10 @@ _PATCH_SCALAR_FIELDS = frozenset(
         "banner_image_id",
         "thumbnail_url",
         "banner_url",
-        "case_start_date",
-        "case_end_date",
+        "trial_start_date",
+        "trial_end_date",
+        "appeal_start_date",
+        "appeal_end_date",
         "tags",
         "key_allegations",
         "timeline",
@@ -668,8 +670,10 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
             "banner_image_id",
             "thumbnail_url",
             "banner_url",
-            "case_start_date",
-            "case_end_date",
+            "trial_start_date",
+            "trial_end_date",
+            "appeal_start_date",
+            "appeal_end_date",
             "tags",
             "key_allegations",
             "timeline",
@@ -1551,10 +1555,18 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
             "banner_image_id": case.banner_image_id,
             "thumbnail_url": case.thumbnail_url,
             "banner_url": case.banner_url,
-            "case_start_date": (
-                str(case.case_start_date) if case.case_start_date else None
+            "trial_start_date": (
+                str(case.trial_start_date) if case.trial_start_date else None
             ),
-            "case_end_date": str(case.case_end_date) if case.case_end_date else None,
+            "trial_end_date": (
+                str(case.trial_end_date) if case.trial_end_date else None
+            ),
+            "appeal_start_date": (
+                str(case.appeal_start_date) if case.appeal_start_date else None
+            ),
+            "appeal_end_date": (
+                str(case.appeal_end_date) if case.appeal_end_date else None
+            ),
             "case_type": case.case_type,
             "tags": list(case.tags) if case.tags else [],
             "key_allegations": (

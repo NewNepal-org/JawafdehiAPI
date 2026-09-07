@@ -2,6 +2,7 @@
 Tests for PATCH /api/cases/{id}/ (RFC 6902 JSON Patch endpoint).
 """
 
+from datetime import date
 from typing import TYPE_CHECKING
 from unittest import mock
 
@@ -1157,3 +1158,92 @@ def test_entities_can_be_reordered_by_moving_a_list_item():
     assert response.status_code == 200, response.data
     after = [e["nes_id"] for e in client.get(URL.format(case.slug)).data["entities"]]
     assert after == reversed_ids
+
+
+# ---------------------------------------------------------------------------
+# Court dates: the trial pair and the appeal pair
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_patch_trial_and_appeal_dates():
+    """All four court dates are writable in a single PATCH."""
+    user = _contributor("dates")
+    case = _make_case()
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.slug),
+        data=[
+            {"op": "replace", "path": "/trial_start_date", "value": "2023-06-22"},
+            {"op": "replace", "path": "/trial_end_date", "value": "2024-06-04"},
+            {"op": "replace", "path": "/appeal_start_date", "value": "2024-07-09"},
+            {"op": "replace", "path": "/appeal_end_date", "value": "2025-02-18"},
+        ],
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    case.refresh_from_db()
+    assert case.trial_start_date == date(2023, 6, 22)
+    assert case.trial_end_date == date(2024, 6, 4)
+    assert case.appeal_start_date == date(2024, 7, 9)
+    assert case.appeal_end_date == date(2025, 2, 18)
+
+
+@pytest.mark.django_db
+def test_patch_old_date_path_is_rejected():
+    """The retired ``case_start_date`` is no longer a write path.
+
+    ``case_start_date`` survives on the READ serializer as a deprecated alias of
+    ``trial_start_date``, but it is not in the patch snapshot, so a ``replace``
+    against it conflicts before anything is written — the same 400 any
+    non-existent pointer gets (see
+    ``test_patch_replace_notes_persists_on_case_without_notes`` for the
+    complementary case).
+    """
+    user = _contributor("old-path")
+    case = _make_case()
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.slug),
+        data=[{"op": "replace", "path": "/case_start_date", "value": "2023-06-22"}],
+        format="json",
+    )
+    assert response.status_code == 400, response.data
+    case.refresh_from_db()
+    assert case.trial_start_date is None
+
+    # An ``add`` op does create the key in the patched document, but the write
+    # serializer has no such field and the scalar whitelist no such entry, so it
+    # still reaches no column.
+    response = client.patch(
+        URL.format(case.slug),
+        data=[{"op": "add", "path": "/case_start_date", "value": "2023-06-22"}],
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    case.refresh_from_db()
+    assert case.trial_start_date is None
+
+
+@pytest.mark.django_db
+def test_patch_rejects_appeal_before_trial_end():
+    """An appeal registered before the first-instance verdict is rejected.
+
+    The scalar write is a bulk ``UPDATE`` that bypasses ``Case.validate()``, so
+    the ordering rule has to hold in the write serializer too.
+    """
+    user = _contributor("backwards-appeal")
+    case = _make_case(trial_end_date=date(2025, 8, 13))
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.slug),
+        data=[{"op": "replace", "path": "/appeal_start_date", "value": "2025-08-01"}],
+        format="json",
+    )
+    assert response.status_code == 422, response.data
+    assert "appeal_start_date" in response.data
+    case.refresh_from_db()
+    assert case.appeal_start_date is None

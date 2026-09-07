@@ -269,6 +269,20 @@ class CaseSerializer(serializers.ModelSerializer):
     # CasePatchSerializer.
     thumbnail_image_id = serializers.IntegerField(read_only=True, allow_null=True)
     banner_image_id = serializers.IntegerField(read_only=True, allow_null=True)
+    # DEPRECATED read-only aliases of the trial pair, kept for one release so the
+    # deployed frontend keeps rendering dates until it switches to trial_*.
+    # Declared explicitly because there is no model field of either name for
+    # ModelSerializer to resolve.
+    case_start_date = serializers.DateField(
+        source="trial_start_date",
+        read_only=True,
+        help_text="DEPRECATED (renamed to trial_start_date): read-only alias.",
+    )
+    case_end_date = serializers.DateField(
+        source="trial_end_date",
+        read_only=True,
+        help_text="DEPRECATED (renamed to trial_end_date): read-only alias.",
+    )
 
     @extend_schema_field(serializers.CharField(allow_blank=True))
     def get_notes(self, obj):
@@ -493,6 +507,13 @@ class CaseSerializer(serializers.ModelSerializer):
             # that predate the upload flow.
             "thumbnail_url",
             "banner_url",
+            # The first-instance court's registration and verdict dates, and the
+            # Supreme Court appeal's.
+            "trial_start_date",
+            "trial_end_date",
+            "appeal_start_date",
+            "appeal_end_date",
+            # DEPRECATED aliases of the trial pair, declared above.
             "case_start_date",
             "case_end_date",
             "entities",

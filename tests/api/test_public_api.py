@@ -6,6 +6,8 @@ Tests Properties 8, 10, 15, 16
 Validates: Requirements 4.1, 6.1, 6.2, 6.3, 8.1, 8.3
 """
 
+from datetime import date
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -619,3 +621,41 @@ def test_public_api_unlists_in_review_but_serves_by_slug(case_data):
     ), "IN_REVIEW case should NOT appear in list endpoint"
 
 
+
+
+# ============================================================================
+# Court dates: the trial pair, the appeal pair, and the deprecated aliases
+# ============================================================================
+
+
+@pytest.mark.django_db
+def test_case_detail_carries_date_aliases():
+    """The retired names are still read back, mirroring the trial pair.
+
+    ``case_start_date`` / ``case_end_date`` are deprecated read-only aliases,
+    kept for one release so the deployed frontend keeps rendering dates until it
+    switches to ``trial_*``.
+    """
+    case = create_case_with_entities(
+        title="Dated case",
+        slug="dated-case",
+        case_type=CaseType.CORRUPTION,
+        description="A case with court dates",
+        short_description="Dated",
+        trial_start_date=date(2023, 6, 22),
+        trial_end_date=date(2024, 6, 4),
+        alleged_entities=["https://jawafdehi.org/entity/person/dated-accused"],
+    )
+    case.state = CaseState.PUBLISHED
+    case.save()
+
+    response = APIClient().get(f"/api/cases/{case.slug}/")
+    assert response.status_code == 200
+
+    body = response.data
+    assert body["trial_start_date"] == "2023-06-22"
+    assert body["trial_end_date"] == "2024-06-04"
+    assert body["case_start_date"] == body["trial_start_date"]
+    assert body["case_end_date"] == body["trial_end_date"]
+    assert "appeal_start_date" in body
+    assert "appeal_end_date" in body
