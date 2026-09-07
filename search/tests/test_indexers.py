@@ -397,6 +397,49 @@ def test_case_build_doc_status_pending_appeal_is_ongoing():
     assert doc["case_status"] == "ongoing"
 
 
+def test_case_build_doc_status_only_a_trial_end_is_others():
+    """An end date with no registration date is not a lifecycle we can read."""
+    from datetime import date
+
+    doc = case_index.build_doc(
+        _card_case(trial_start_date=None, trial_end_date=date(2024, 6, 1))
+    )
+    assert doc["case_status"] == "others"
+
+
+def test_case_build_doc_status_appeal_only_pending_is_ongoing():
+    """A pending appeal is ongoing even with no trial dates at all.
+
+    The SPA's ``deriveCaseStatus`` reports ``under_appeal`` (an ongoing state)
+    here, and the facet has to agree with the chip.
+    """
+    from datetime import date
+
+    doc = case_index.build_doc(
+        _card_case(
+            trial_start_date=None,
+            trial_end_date=None,
+            appeal_start_date=date(2024, 7, 1),
+            appeal_end_date=None,
+        )
+    )
+    assert doc["case_status"] == "ongoing"
+
+
+def test_case_build_doc_status_pending_appeal_without_a_trial_end_is_ongoing():
+    """A trial still open AND an appeal pending is one thing: ongoing."""
+    from datetime import date
+
+    doc = case_index.build_doc(
+        _card_case(
+            trial_end_date=None,
+            appeal_start_date=date(2024, 7, 1),
+            appeal_end_date=None,
+        )
+    )
+    assert doc["case_status"] == "ongoing"
+
+
 def test_case_build_doc_status_decided_appeal_is_closed():
     """Trial end plus a decided appeal closes the case."""
     from datetime import date
