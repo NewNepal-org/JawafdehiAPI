@@ -1300,3 +1300,47 @@ def test_patch_rejects_an_appeal_before_the_trial_start_with_no_verdict():
     ]
     case.refresh_from_db()
     assert case.appeal_start_date is None
+
+
+@pytest.mark.django_db
+def test_a_422_on_an_aliased_path_carries_the_old_error_key_too():
+    """The deployed admin form attaches errors by field name, not by path.
+
+    Rewriting ``/case_end_date`` to ``/trial_end_date`` moves the 422 under a
+    key that form has never heard of, so the message would render nowhere. The
+    old key is duplicated for as long as the write alias lives.
+    """
+    user = _contributor("aliased-422")
+    case = _make_case(trial_start_date=date(2024, 2, 25))
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.slug),
+        data=[{"op": "replace", "path": "/case_end_date", "value": "2024-02-01"}],
+        format="json",
+    )
+    assert response.status_code == 422, response.data
+    assert response.data["trial_end_date"] == [
+        "Trial end date is before the trial start date"
+    ]
+    assert response.data["case_end_date"] == response.data["trial_end_date"]
+    case.refresh_from_db()
+    assert case.trial_end_date is None
+
+
+@pytest.mark.django_db
+def test_a_422_on_the_new_paths_carries_only_the_new_keys():
+    """A caller already on the new names must not be handed the retired ones."""
+    user = _contributor("new-path-422")
+    case = _make_case(trial_start_date=date(2024, 2, 25))
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.slug),
+        data=[{"op": "replace", "path": "/trial_end_date", "value": "2024-02-01"}],
+        format="json",
+    )
+    assert response.status_code == 422, response.data
+    assert "trial_end_date" in response.data
+    assert "case_end_date" not in response.data
+    assert "case_start_date" not in response.data

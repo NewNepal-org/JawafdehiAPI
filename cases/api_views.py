@@ -151,6 +151,13 @@ _PATCH_PATH_ALIASES = {
     "/case_end_date": "/trial_end_date",
 }
 
+# The same aliases as field keys, for copying a 422's ``trial_*`` errors back
+# under the names the deployed admin form knows. DEPRECATED with the write
+# aliases above; the two are dropped together.
+_PATCH_FIELD_ALIASES = {
+    old.lstrip("/"): new.lstrip("/") for old, new in _PATCH_PATH_ALIASES.items()
+}
+
 
 def _recompute_material_visibility(material_iris) -> None:
     """Schedule a visibility recompute for the given material IRIs (on commit).
@@ -1057,14 +1064,16 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
 
         Those pointers are not in the snapshot any more, so without this every
         date edit from the deployed frontend 400s. Returns a new list — the ops
-        are the caller's request body.
+        are the caller's request body — and whether anything was rewritten,
+        which is what gates the matching error-key alias on a 422.
         """
-        return [
+        rewritten = [
             {**op, "path": _PATCH_PATH_ALIASES[op["path"]]}
             if isinstance(op, dict) and op.get("path") in _PATCH_PATH_ALIASES
             else op
             for op in patch_ops
         ]
+        return rewritten, rewritten != list(patch_ops)
 
     @staticmethod
     def _touches(patch_ops, path):
@@ -1360,7 +1369,7 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
         if rejection is not None:
             return rejection
 
-        patch_ops = self._rewrite_aliased_paths(patch_ops)
+        patch_ops, used_path_aliases = self._rewrite_aliased_paths(patch_ops)
 
         snapshot = self._build_snapshot(case)
         try:
@@ -1370,9 +1379,13 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
 
         serializer = CasePatchSerializer(data=patched)
         if not serializer.is_valid():
-            return Response(
-                serializer.errors, status=status.HTTP_422_UNPROCESSABLE_ENTITY
-            )
+            errors = dict(serializer.errors)
+            if used_path_aliases:
+                # DEPRECATED with the write aliases.
+                for retired, current in _PATCH_FIELD_ALIASES.items():
+                    if current in errors:
+                        errors[retired] = errors[current]
+            return Response(errors, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
         validated = serializer.validated_data
 
