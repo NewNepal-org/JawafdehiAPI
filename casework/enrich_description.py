@@ -238,7 +238,7 @@ REVIEW RULES — each of these is a defect found in published descriptions on
 
 VERDICT METADATA. Open section ग with the order's own header fields: इजलास नं.,
 फैसला मिति, नि.नं./निर्णय नं., and every न्यायाधीश by name. They are in the ORDER
-HEADER block below, which is the order's own opening and closing pages verbatim.
+HEADER block below, which is the order's own opening and closing text verbatim.
 NEVER write "स्रोत कागजातमा खुल्न आएको छैन" about a field that is sitting in that
 block — that claim has been published about orders that name all four on page one.
 
@@ -262,7 +262,9 @@ NAMED NON-DEFENDANTS. A named natural person who is not an accused entity gets
 "(निज यस मुद्दाका/की प्रतिवादी होइनन्)" at first mention, or the role the order gives
 them. Check the प्रतिवादी list in the ORDER HEADER block first: spouses and children
 are frequently co-defendants for जफत प्रयोजन only, and marking such a person a
-non-defendant is simply wrong. Do not invent a legal basis for their appearance. Never
+non-defendant is simply wrong. That block is a slice of the order's text and not
+the whole order, so a name it does not show is UNKNOWN, not absent from the list
+— give such a person no marking at all rather than calling them a non-defendant. Do not invent a legal basis for their appearance. Never
 drop the amounts to protect a name — the figures are load-bearing in the आय–व्यय
 reconciliation, so mark the person instead.
 
@@ -374,7 +376,7 @@ sources reference that is NOT here is what `missing_documents` must report; neve
 list one of these):
 {held_documents}
 
-ORDER HEADER (the court order's own opening and closing pages, VERBATIM: the
+ORDER HEADER (the court order's own opening and closing text, VERBATIM: the
 caption with the bench, इजलास नं., फैसला मिति, नि.नं. and the प्रतिवादी list, and the
 closing block with the इति सम्वत् date and any appeal म्याद). The SOURCE DOCUMENTS below
 may carry a SUMMARY of this order rather than its text; where the two disagree about a
@@ -579,6 +581,18 @@ def _mask_identifiers(text):
 # letter between two number groups, which is what a plate has and a case
 # citation does not.
 _PLATE = re.compile(
+    # LEFT BOUNDARY. The zone alternation is bare consonants, so without it the
+    # pattern fires mid-word wherever one lands before a digit group: `अङ्क १ ख
+    # ५०००` and `प्रमाण क १ ख २३४५` both scored a plate. A false positive costs a
+    # spurious review note rather than data -- this reports and never edits --
+    # but the zero-false-positive claim over 213 descriptions is easier to keep
+    # true with the guard in place. Standalone zone codes (`क`, `को`) still
+    # match, which is inherent: those are real zone codes.
+    #
+    # Two gaps reported rather than fixed: a 5-digit serial is refused by the
+    # trailing lookahead, and the newer `प्रदेश N ०१-००१ च १२३४` plate format does
+    # not match at all.
+    r"(?<![ऀ-ॿ])"
     r"(?:बा|ना|लु|ग|को|भे|म|से|प्र|सु|मे|क)"
     r"[\s.]*[०-९0-9]{1,2}[\s.]*"
     r"(?:प|च|ख|ज|झ|य|ग|घ|ङ|ट|ठ|ड|ढ|ण|त|थ|द|ध|न|ब|भ|म|ह|ल|व|स)"

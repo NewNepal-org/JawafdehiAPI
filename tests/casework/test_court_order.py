@@ -306,6 +306,13 @@ class TestCourtOrderBookends:
         assert co.court_order_bookends("") == ""
         assert co.court_order_bookends(None) == ""
 
+    def test_a_whitespace_only_order_is_empty_not_ten_thousand_blanks(self):
+        # A bad `.doc` conversion produces one, and the caller's prompt calls
+        # this block "the record" -- so blanks under two fragment labels is the
+        # model being told the caption says nothing.
+        assert co.court_order_bookends(" " * 20_000) == ""
+        assert co.court_order_bookends("\n\t  \n") == ""
+
     def test_a_short_order_is_returned_once_not_twice(self):
         # Head and tail would otherwise overlap and the model would read the
         # same order twice, paying for it twice.

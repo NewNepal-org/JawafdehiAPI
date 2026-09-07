@@ -62,8 +62,12 @@ def court_order_bookends(text: str, head: int = HEAD_CHARS,
     the caption (bench, इजलास नं., फैसला मिति, नि.नं., the प्रतिवादी list) and the
     closing block (the इति सम्वत् date, the appeal म्याद, any दफा ६(४) referral).
     An order short enough to fit in both windows is returned once, unlabelled.
+
+    A whitespace-only order is "" and not 10,076 blanks under two fragment
+    labels: a bad `.doc` conversion produces one, and the caller's prompt calls
+    this block "the record".
     """
-    if not text:
+    if not text or not text.strip():
         return ""
     if len(text) <= head + tail:
         return text

@@ -1013,6 +1013,15 @@ class TestReviewRulePromptCoverage:
         assert "प्रतिवादी होइनन्" in p
         assert "जफत" in p, "spouses are often co-defendants for जफत only (079-CR-0143)"
 
+    def test_the_header_blocks_silence_does_not_decide_a_non_defendant(self):
+        # The block is a 6,000/4,000-CHAR slice, so on an order with a long
+        # caption the प्रतिवादी list can be cut off -- and this rule sends the
+        # model to that list first. Both markers are new with this change:
+        # neither is in the prompt at `origin/main`.
+        p = ed.EXTRACTION_SYSTEM_PROMPT
+        assert "UNKNOWN, not absent from the list" in p
+        assert "pages" not in p, "the slice is characters, not pages"
+
     def test_an_untested_third_party_allegation_must_be_marked_not_deleted(self):
         # `बयान` and `परीक्षण` were BOTH in the pre-rule prompt already -- the
         # first from the section-ख heading, the second inside `लेखापरीक्षण` in the
@@ -1985,6 +1994,15 @@ def patched_fetch_short_order(monkeypatch):
 
 
 @pytest.fixture
+def patched_fetch_blank_order(monkeypatch):
+    # What a failed `.doc` conversion leaves: an order that is bound, fetches,
+    # and carries nothing but whitespace.
+    _fetch_fixture(monkeypatch, {
+        _PRESS_MD: "अख्तियारले ठेक्कामा भ्रष्टाचार भएको जनाएको।",
+        _COURT_MD: "   \n\t  \n" * 200})
+
+
+@pytest.fixture
 def patched_fetch_two_orders(monkeypatch):
     _fetch_fixture(monkeypatch, {
         _PRESS_MD: "अख्तियारले ठेक्कामा भ्रष्टाचार भएको जनाएको।",
@@ -2069,6 +2087,25 @@ def test_an_order_below_the_trigger_is_not_reported_as_absent(
     header = _order_header_block(seen["content"])
     assert "(कुनै अदालती आदेश छैन)" not in header
     assert ed.ORDER_IN_SOURCES_NOTE in header
+
+
+def test_a_whitespace_only_order_never_reaches_the_header_block(
+    monkeypatch, patched_fetch_blank_order
+):
+    """A blank order is not an order, and `source_chunks` is what says so --
+    `if text.strip()` there refuses the material as "MARKDOWN empty", so it never
+    becomes a chunk and `main`'s own `and text` guard never sees one.
+
+    PASSES AGAINST THE PRE-FIX CODE, deliberately: it pins the upstream strip
+    this path actually relies on, not the `court_order_bookends` guard (which
+    has its own unit test). Without it, nothing states that a bad `.doc`
+    conversion is handled two layers up rather than here."""
+    stub, seen = _capture_prompt(json.dumps({"description": "क" * 900}))
+    _run_main(monkeypatch, _StubApi([CASE_READY]), invoke_text_stub=stub,
+              argv=["--apply"])
+    header = _order_header_block(seen["content"])
+    assert ed.ORDER_IN_SOURCES_NOTE not in header
+    assert header.strip() == ed.NO_ORDER_NOTE
 
 
 def test_the_order_header_comes_from_the_judgment_not_the_first_bound_order(
@@ -2197,6 +2234,23 @@ class TestResidualIdentifiers:
     ])
     def test_a_plate_is_reported(self, text):
         assert ed.residual_identifiers(text)
+
+    @pytest.mark.parametrize("text", [
+        # The zone alternation is bare consonants, so without a left boundary it
+        # fired mid-word wherever one landed before a digit group: `अङ्क` ends in
+        # क, `हरफ` in फ.
+        "अङ्क १ ख ५००० को हिसाब",
+        "दस्तुर अङ्क २ ख ७७७७ रुपैयाँ",
+    ])
+    def test_a_zone_code_inside_a_word_is_not_a_plate(self, text):
+        assert ed.residual_identifiers(text) == []
+
+    def test_a_standalone_zone_letter_still_matches_and_that_is_inherent(self):
+        # `क` and `को` ARE real zone codes, so a bare one before a plate-shaped
+        # group cannot be told from a plate by pattern alone. Left as a known
+        # false positive: this detector reports and never edits, so the cost is
+        # one spurious review note.
+        assert ed.residual_identifiers("प्रमाण क १ ख २३४५") == ["क १ ख २३४५"]
 
     @pytest.mark.parametrize("text", [
         "नि.नं. १२७ मिति २०८१।०१।२०",
