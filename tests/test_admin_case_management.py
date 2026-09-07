@@ -347,7 +347,11 @@ def test_admin_can_publish_case():
 
 def test_case_admin_form_has_trial_and_appeal_date_fields():
     """CaseAdminForm exposes the renamed trial dates and the new appeal dates,
-    each with a matching BS form field, and no longer carries the old names."""
+    and no longer carries the old names or the BS helper inputs.
+
+    The Case admin is view-only (``has_change_permission`` is False), so the
+    four ``*_bs`` CharFields rendered the string ``None`` on every case page and
+    the converter JS never found an input to attach to."""
     form = CaseAdminForm()
 
     assert set(form.fields) >= {
@@ -355,12 +359,22 @@ def test_case_admin_form_has_trial_and_appeal_date_fields():
         "trial_end_date",
         "appeal_start_date",
         "appeal_end_date",
-        "trial_start_date_bs",
-        "trial_end_date_bs",
-        "appeal_start_date_bs",
-        "appeal_end_date_bs",
     }
+    assert not [name for name in form.fields if name.endswith("_bs")]
     assert "case_start_date" not in form.fields
+
+
+def test_the_dates_fieldset_lists_exactly_the_four_columns():
+    """The removed BS fields must come off the fieldset too, or the admin 500s."""
+    from cases.admin import CaseAdmin
+
+    dates = next(opts["fields"] for name, opts in CaseAdmin.fieldsets if name == "Dates")
+    assert tuple(dates) == (
+        "trial_start_date",
+        "trial_end_date",
+        "appeal_start_date",
+        "appeal_end_date",
+    )
 
 
 @pytest.mark.django_db
