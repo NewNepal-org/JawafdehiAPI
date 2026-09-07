@@ -944,14 +944,25 @@ class Case(models.Model):
         help_text="DEPRECATED. External URL for the hero image; use banner_image",
     )
     # Date fields
-    case_start_date = models.DateField(
-        null=True, blank=True, help_text="When the alleged incident began"
+    trial_start_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Registration date at the first-instance court (Special Court for "
+            "CIAA cases)"
+        ),
     )
-    case_end_date = models.DateField(
-        null=True, blank=True, help_text="When the alleged incident ended"
+    trial_end_date = models.DateField(
+        null=True, blank=True, help_text="Verdict date at the first-instance court"
+    )
+    appeal_start_date = models.DateField(
+        null=True, blank=True, help_text="Registration date of the Supreme Court appeal"
+    )
+    appeal_end_date = models.DateField(
+        null=True, blank=True, help_text="Verdict date of the Supreme Court appeal"
     )
     # The date the case was FIRST published on jawafdehi.org — about our
-    # publication, not about the alleged incident (case_start_date/case_end_date
+    # publication, not about the court proceedings (the trial_* / appeal_* dates
     # above). Nullable at the column so DRAFTs can exist without one; required
     # before a case may leave DRAFT (see validate()). Deliberately NOT derived
     # from created_at or from the first PUBLISHED CaseStateChange: cases are
@@ -1449,6 +1460,25 @@ class Case(models.Model):
         # Always require title
         if not self.title or not self.title.strip():
             errors["title"] = "Title is required"
+
+        # Chronology of the court proceedings. Checked in every state — a
+        # backwards date is wrong data, not an unfinished draft — and every
+        # comparison is skipped when either side is missing, so a case that
+        # knows only some of its dates is still valid.
+        def _before(earlier, later):
+            """True when both dates are known and ``earlier`` precedes ``later``."""
+            return earlier is not None and later is not None and earlier < later
+
+        if _before(self.trial_end_date, self.trial_start_date):
+            errors["trial_end_date"] = "Trial end date is before the trial start date"
+        if _before(self.appeal_end_date, self.appeal_start_date):
+            errors["appeal_end_date"] = (
+                "Appeal end date is before the appeal start date"
+            )
+        if _before(self.appeal_start_date, self.trial_end_date):
+            errors["appeal_start_date"] = (
+                "Appeal start date is before the trial end date"
+            )
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:
