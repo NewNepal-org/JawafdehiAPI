@@ -19,6 +19,7 @@ from jawafdehi_shared.entities.ids import (
     is_valid_material_iri,
 )
 
+from .chronology import date_chronology_errors
 from .fields import (
     AuthorLinkListField,
     EditHistoryListField,
@@ -1449,35 +1450,20 @@ class Case(models.Model):
             self._sync_author_credits()
 
     def _date_chronology_errors(self):
-        """Field-keyed errors for the court-date order (empty when the dates are fine).
-
-        The one source for the rule, shared by ``clean()`` and ``validate()``.
-        Every comparison is skipped when either side is missing, so a case that
-        knows only some of its dates is still valid.
-        """
-
-        def _before(first, second):
-            """True when both dates are known and ``first`` precedes ``second``."""
-            return first is not None and second is not None and first < second
-
-        errors = {}
-        if _before(self.trial_end_date, self.trial_start_date):
-            errors["trial_end_date"] = "Trial end date is before the trial start date"
-        if _before(self.appeal_end_date, self.appeal_start_date):
-            errors["appeal_end_date"] = (
-                "Appeal end date is before the appeal start date"
-            )
-        if _before(self.appeal_start_date, self.trial_end_date):
-            errors["appeal_start_date"] = (
-                "Appeal start date is before the trial end date"
-            )
-        return errors
+        """This case's trial/appeal date errors, from the one rule in ``cases.chronology``."""
+        return date_chronology_errors(
+            self.trial_start_date,
+            self.trial_end_date,
+            self.appeal_start_date,
+            self.appeal_end_date,
+        )
 
     def clean(self):
-        """Enforce the date chronology on every ``full_clean()`` path.
+        """Defensive hook: enforce the date chronology for any ``full_clean()`` caller.
 
-        The Django admin never calls ``validate()`` — ``ModelForm._post_clean``
-        reaches ``Model.clean()`` — so the rule has to live here too.
+        The Case admin is view-only (``has_change_permission`` is False), so no
+        production form reaches this — the live writers are ``validate()`` and
+        the write serializer, with migration 0065's constraints underneath.
         """
         errors = self._date_chronology_errors()
         if errors:

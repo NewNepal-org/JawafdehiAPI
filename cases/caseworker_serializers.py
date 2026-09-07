@@ -17,6 +17,7 @@ from jawafdehi_shared.entities.ids import (
     is_valid_material_iri,
 )
 
+from .chronology import date_chronology_errors
 from .fields import edit_history_date_error, parse_edit_history_date
 from .image_serializers import ImageIdField
 from .models import (
@@ -469,27 +470,12 @@ class CaseWriteFieldsSerializer(serializers.Serializer):
     def validate(self, attrs):
         """Reject a backwards trial, a backwards appeal, or a premature appeal."""
         attrs = super().validate(attrs)
-
-        def _before(first, second):
-            """True when both dates are known and ``first`` precedes ``second``."""
-            return first is not None and second is not None and first < second
-
-        trial_start = attrs.get("trial_start_date")
-        trial_end = attrs.get("trial_end_date")
-        appeal_start = attrs.get("appeal_start_date")
-        appeal_end = attrs.get("appeal_end_date")
-
-        errors = {}
-        if _before(trial_end, trial_start):
-            errors["trial_end_date"] = "Trial end date is before the trial start date"
-        if _before(appeal_end, appeal_start):
-            errors["appeal_end_date"] = (
-                "Appeal end date is before the appeal start date"
-            )
-        if _before(appeal_start, trial_end):
-            errors["appeal_start_date"] = (
-                "Appeal start date is before the trial end date"
-            )
+        errors = date_chronology_errors(
+            attrs.get("trial_start_date"),
+            attrs.get("trial_end_date"),
+            attrs.get("appeal_start_date"),
+            attrs.get("appeal_end_date"),
+        )
         if errors:
             raise serializers.ValidationError(errors)
         return attrs

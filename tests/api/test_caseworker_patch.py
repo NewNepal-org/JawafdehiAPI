@@ -1276,3 +1276,27 @@ def test_patch_rejects_appeal_before_trial_end():
     assert "appeal_start_date" in response.data
     case.refresh_from_db()
     assert case.appeal_start_date is None
+
+
+@pytest.mark.django_db
+def test_patch_rejects_an_appeal_before_the_trial_start_with_no_verdict():
+    """The transitive rule holds through the write serializer, not just the model.
+
+    The case has a registration date and no verdict, so the appeal start is
+    compared against the registration — the cell the pairwise rule let through.
+    """
+    user = _contributor("premature-appeal")
+    case = _make_case(trial_start_date=date(2024, 2, 25))
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.slug),
+        data=[{"op": "replace", "path": "/appeal_start_date", "value": "2023-01-01"}],
+        format="json",
+    )
+    assert response.status_code == 422, response.data
+    assert response.data["appeal_start_date"] == [
+        "Appeal start date is before the trial start date"
+    ]
+    case.refresh_from_db()
+    assert case.appeal_start_date is None
