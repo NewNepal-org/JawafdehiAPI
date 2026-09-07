@@ -144,6 +144,13 @@ _PATCH_SCALAR_FIELDS = frozenset(
     ]
 )
 
+# DEPRECATED write aliases for the deployed SPA admin; drop together with the
+# read aliases in CaseSerializer.
+_PATCH_PATH_ALIASES = {
+    "/case_start_date": "/trial_start_date",
+    "/case_end_date": "/trial_end_date",
+}
+
 
 def _recompute_material_visibility(material_iris) -> None:
     """Schedule a visibility recompute for the given material IRIs (on commit).
@@ -1045,6 +1052,21 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
         return None
 
     @staticmethod
+    def _rewrite_aliased_paths(patch_ops):
+        """Point the SPA admin's retired date paths at the trial columns.
+
+        Those pointers are not in the snapshot any more, so without this every
+        date edit from the deployed frontend 400s. Returns a new list — the ops
+        are the caller's request body.
+        """
+        return [
+            {**op, "path": _PATCH_PATH_ALIASES[op["path"]]}
+            if isinstance(op, dict) and op.get("path") in _PATCH_PATH_ALIASES
+            else op
+            for op in patch_ops
+        ]
+
+    @staticmethod
     def _touches(patch_ops, path):
         """True when any op targets ``path`` or a child of it.
 
@@ -1337,6 +1359,8 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
         rejection, patch_ops = self._reject_before_patch(request, case)
         if rejection is not None:
             return rejection
+
+        patch_ops = self._rewrite_aliased_paths(patch_ops)
 
         snapshot = self._build_snapshot(case)
         try:

@@ -1191,15 +1191,12 @@ def test_patch_trial_and_appeal_dates():
 
 
 @pytest.mark.django_db
-def test_patch_old_date_path_is_rejected():
-    """The retired ``case_start_date`` is no longer a write path.
+def test_patch_old_case_start_date_path_writes_the_trial_date():
+    """The deployed SPA admin still PATCHes ``/case_start_date``.
 
-    ``case_start_date`` survives on the READ serializer as a deprecated alias of
-    ``trial_start_date``, but it is not in the patch snapshot, so a ``replace``
-    against it conflicts before anything is written — the same 400 any
-    non-existent pointer gets (see
-    ``test_patch_replace_notes_persists_on_case_without_notes`` for the
-    complementary case).
+    The path is rewritten to ``/trial_start_date`` before the ops are applied,
+    so a caseworker editing a date between deploys gets a 200 instead of a
+    jsonpatch conflict. Deprecated: it goes when the read aliases go.
     """
     user = _contributor("old-path")
     case = _make_case()
@@ -1210,21 +1207,53 @@ def test_patch_old_date_path_is_rejected():
         data=[{"op": "replace", "path": "/case_start_date", "value": "2023-06-22"}],
         format="json",
     )
-    assert response.status_code == 400, response.data
+    assert response.status_code == 200, response.data
     case.refresh_from_db()
-    assert case.trial_start_date is None
+    assert case.trial_start_date == date(2023, 6, 22)
+    assert response.data["trial_start_date"] == "2023-06-22"
+    assert response.data["case_start_date"] == "2023-06-22"
 
-    # An ``add`` op does create the key in the patched document, but the write
-    # serializer has no such field and the scalar whitelist no such entry, so it
-    # still reaches no column.
+
+@pytest.mark.django_db
+def test_patch_old_case_end_date_path_writes_the_trial_date():
+    """Same rewrite for the end of the pair."""
+    user = _contributor("old-end-path")
+    case = _make_case(trial_start_date=date(2023, 6, 22))
+
+    client = _authed_client(user)
     response = client.patch(
         URL.format(case.slug),
-        data=[{"op": "add", "path": "/case_start_date", "value": "2023-06-22"}],
+        data=[{"op": "replace", "path": "/case_end_date", "value": "2024-06-04"}],
+        format="json",
+    )
+    assert response.status_code == 200, response.data
+    case.refresh_from_db()
+    assert case.trial_end_date == date(2024, 6, 4)
+    assert response.data["trial_end_date"] == "2024-06-04"
+    assert response.data["case_end_date"] == "2024-06-04"
+
+
+@pytest.mark.django_db
+def test_patch_add_on_unknown_path_writes_nothing():
+    """Pre-existing behaviour: an ``add`` on an unknown path is a no-op 200.
+
+    ``add`` creates the key in the patched document, but the write serializer
+    has no such field and the scalar whitelist no such entry, so it reaches no
+    column. (``replace`` on the same path 400s — the pointer does not exist.)
+    """
+    user = _contributor("unknown-path")
+    case = _make_case()
+
+    client = _authed_client(user)
+    response = client.patch(
+        URL.format(case.slug),
+        data=[{"op": "add", "path": "/hearing_date", "value": "2023-06-22"}],
         format="json",
     )
     assert response.status_code == 200, response.data
     case.refresh_from_db()
     assert case.trial_start_date is None
+    assert case.trial_end_date is None
 
 
 @pytest.mark.django_db
