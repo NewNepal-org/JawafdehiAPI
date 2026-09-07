@@ -105,6 +105,18 @@ class TestCreateJawafdehiCaseTool:
             CaseState.DRAFT
         ]
 
+    def test_schema_has_trial_and_appeal_date_keys_not_the_old_case_dates(self):
+        properties = self.tool.input_schema["properties"]
+
+        assert {
+            "trial_start_date",
+            "trial_end_date",
+            "appeal_start_date",
+            "appeal_end_date",
+        } <= set(properties)
+        assert "case_start_date" not in properties
+        assert "case_end_date" not in properties
+
     @pytest.mark.asyncio
     async def test_requires_token(self, monkeypatch):
         monkeypatch.delenv("JAWAFDEHI_API_TOKEN", raising=False)
