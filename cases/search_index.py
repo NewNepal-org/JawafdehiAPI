@@ -82,23 +82,19 @@ def _iso(value: Any) -> str | None:
 
 
 def _derive_status(case: Any) -> str:
-    """Coarse case lifecycle for the ``case_status`` facet, agreeing with the SPA
-    ``deriveCaseStatus`` on the appeal cells (not on trial-end-only, which reads
-    ``others`` here and Concluded there).
+    """Coarse case lifecycle for the ``case_status`` facet.
 
     ``ongoing`` = a pending appeal (filed but undecided — the case is not over,
-    whatever the trial dates say); ``closed`` = a decided appeal (whatever the
-    trial dates hold), or both trial dates with no appeal filed; ``others`` =
-    a trial start with no trial end and no appeal, or neither trial date."""
+    whatever the trial dates say), or a trial start with no trial end;
+    ``closed`` = a decided appeal (whatever the trial dates hold), or both trial
+    dates; ``others`` = anything else, i.e. a case with no trial start."""
     has_start = getattr(case, "trial_start_date", None) is not None
     has_end = getattr(case, "trial_end_date", None) is not None
     appeal_end = getattr(case, "appeal_end_date", None) is not None
     appeal_pending = getattr(case, "appeal_start_date", None) is not None and not appeal_end
     if appeal_pending:
         return "ongoing"
-    if appeal_end:
-        return "closed"
-    if has_start and has_end:
+    if appeal_end or (has_start and has_end):
         return "closed"
     if has_start:
         return "ongoing"
