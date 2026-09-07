@@ -224,6 +224,24 @@ class CIAADraftCaseService:
                 court_case.get("faisala_date_bs")
             )
 
+        # ``import_case`` writes through ``Case.objects.create()``, which runs no
+        # validation, so a scraped verdict date that precedes the registration
+        # date lands in the database backwards (one of the two such rows in
+        # production came from here). The verdict date is the unusable half —
+        # drop it and keep the case; the registration date and everything else
+        # about the import is still good.
+        start = case_data["trial_start_date"]
+        end = case_data["trial_end_date"]
+        if start and end and end < start:
+            logger.warning(
+                "Dropping backwards trial_end_date for case %s: verdict %s "
+                "precedes registration %s",
+                case_no or "Unknown",
+                end,
+                start,
+            )
+            case_data["trial_end_date"] = None
+
         # Build court_cases list — canonical @id IRIs (the only stored form),
         # from the CIAA JSON's (court, case_no) pairs. A malformed PRIMARY ref
         # raises ValidationError -> the importer records the case as failed
