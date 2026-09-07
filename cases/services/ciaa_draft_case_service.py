@@ -13,6 +13,7 @@ from django.db import transaction
 from jawafdehi_shared.dates import bs_to_ad
 from jawafdehi_shared.entities.ids import is_valid_entity_iri
 
+from cases.chronology import date_chronology_errors
 from cases.models import (
     Case,
     CaseEntityRelationship,
@@ -225,14 +226,37 @@ class CIAADraftCaseService:
             )
 
         # ``import_case`` writes through ``Case.objects.create()``, which runs no
-        # validation, so a scraped verdict date that precedes the registration
-        # date lands in the database backwards (one of the two such rows in
-        # production came from here). The verdict date is the unusable half —
-        # drop it and keep the case; the registration date and everything else
-        # about the import is still good.
+        # validation, so a bad scraped date lands in the database as-is (one of
+        # the two backwards rows in production came from here). Two guards, in
+        # this order, because the second one cannot tell which half is wrong.
+        #
+        # First: a year outside living court history is a Bikram Sambat date
+        # that leaked into an ``*_ad`` field (``2080-11-13``). That date belongs
+        # to no case, whichever end of the pair it is on, so drop it before the
+        # pair is compared — comparing first would blame the good verdict date.
+        this_year = date.today().year
+        for field, label in (
+            ("trial_start_date", "registration"),
+            ("trial_end_date", "verdict"),
+        ):
+            value = case_data[field]
+            if value and not (1990 <= value.year <= this_year):
+                logger.warning(
+                    "Dropping implausible %s date for case %s: %s is outside "
+                    "1990–%s (a BS year in an AD field?)",
+                    label,
+                    case_no or "Unknown",
+                    value,
+                    this_year,
+                )
+                case_data[field] = None
+
+        # Then: a plausible pair that is still backwards. The verdict date is
+        # the unusable half — drop it and keep the case; the registration date
+        # and everything else about the import is still good.
         start = case_data["trial_start_date"]
         end = case_data["trial_end_date"]
-        if start and end and end < start:
+        if date_chronology_errors(start, end, None, None).get("trial_end_date"):
             logger.warning(
                 "Dropping backwards trial_end_date for case %s: verdict %s "
                 "precedes registration %s",

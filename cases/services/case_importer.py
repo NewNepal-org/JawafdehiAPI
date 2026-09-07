@@ -7,6 +7,7 @@ as evidence (CaseMaterialReference — ADR: cases own no documents).
 """
 
 import json
+import logging
 from datetime import datetime
 
 from django.db import transaction
@@ -20,6 +21,9 @@ from cases.models import (
     CaseType,
     RelationshipType,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class CaseImporter:
@@ -123,6 +127,31 @@ class CaseImporter:
         except (ValueError, TypeError):
             return None
 
+    # DEPRECATED, dropped with the serializer's read aliases: the pre-0064 name
+    # of each trial column. Every case-result.json written before the rename
+    # carries these, and reading only the new names dropped their dates without
+    # a word.
+    _RETIRED_DATE_KEYS = {
+        "trial_start_date": "case_start_date",
+        "trial_end_date": "case_end_date",
+    }
+
+    def trial_date(self, data, key, json_file):
+        """The trial date under ``key``, falling back to its pre-0064 name with a warning."""
+        if data.get(key) is not None:
+            return self.parse_date(data.get(key))
+        retired = self._RETIRED_DATE_KEYS[key]
+        if data.get(retired) is not None:
+            logger.warning(
+                "%s: '%s' is deprecated (renamed to '%s' in migration 0064); "
+                "reading it anyway",
+                json_file,
+                retired,
+                key,
+            )
+            return self.parse_date(data.get(retired))
+        return None
+
     def import_from_json(self, json_file, case_type="CORRUPTION", case_state="DRAFT"):
         """
         Import a case from JSON file.
@@ -164,8 +193,10 @@ class CaseImporter:
                 state=getattr(CaseState, case_state),
                 title=title,
                 description=data.get("description", ""),
-                trial_start_date=self.parse_date(data.get("trial_start_date")),
-                trial_end_date=self.parse_date(data.get("trial_end_date")),
+                trial_start_date=self.trial_date(
+                    data, "trial_start_date", json_file
+                ),
+                trial_end_date=self.trial_date(data, "trial_end_date", json_file),
                 tags=data.get("tags", []),
                 key_allegations=data.get("key_allegations", []),
                 timeline=data.get("timeline", []),

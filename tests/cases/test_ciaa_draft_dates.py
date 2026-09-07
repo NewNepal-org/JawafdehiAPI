@@ -71,3 +71,37 @@ def test_ordered_faisala_date_is_kept(monkeypatch):
     case = Case.objects.get(slug=result.case_id)
     assert case.trial_start_date == date(2024, 2, 25)
     assert case.trial_end_date == date(2024, 6, 4)
+
+
+@pytest.mark.django_db
+def test_a_bs_year_in_the_ad_registration_field_is_dropped_not_the_verdict(
+    monkeypatch, caplog
+):
+    """``2080-11-13`` is a Bikram Sambat date in an AD field, so it is the bad half.
+
+    The old guard only compared the pair and always blamed the verdict, so this
+    import kept a registration date half a century in the future and threw away
+    a real 2024 verdict date.
+    """
+    monkeypatch.setattr(
+        NGM_DETAILS, lambda court, case_no: {"case": {"defendant": "एक प्रतिवादी"}}
+    )
+
+    with caplog.at_level(
+        logging.WARNING, logger="cases.services.ciaa_draft_case_service"
+    ):
+        result = CIAADraftCaseService().import_case(
+            _ciaa_json(
+                registration_date_ad="2080-11-13", faisala_date_ad="2024-06-04"
+            )
+        )
+
+    assert result.status == "created", result.errors
+    case = Case.objects.get(slug=result.case_id)
+    assert case.trial_start_date is None
+    assert case.trial_end_date == date(2024, 6, 4)
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any(
+        "081-CR-0009" in m and "2080-11-13" in m for m in warnings
+    ), warnings
