@@ -454,6 +454,37 @@ def test_case_build_doc_status_decided_appeal_is_closed():
     assert doc["case_status"] == "closed"
 
 
+def test_case_build_doc_status_decided_appeal_is_closed_without_any_trial_dates():
+    """A decided appeal closes the case even with no trial dates at all."""
+    from datetime import date
+
+    doc = case_index.build_doc(
+        _card_case(
+            trial_start_date=None,
+            trial_end_date=None,
+            appeal_start_date=date(2024, 7, 1),
+            appeal_end_date=date(2025, 1, 1),
+        )
+    )
+    assert doc["case_status"] == "closed"
+
+
+def test_case_build_doc_status_decided_appeal_is_closed_without_a_trial_end():
+    """A decided appeal closes the case even when the trial verdict date was
+    never captured (common on imported cases) — the finding this fix addresses."""
+    from datetime import date
+
+    doc = case_index.build_doc(
+        _card_case(
+            trial_start_date=date(2024, 1, 1),
+            trial_end_date=None,
+            appeal_start_date=date(2024, 7, 1),
+            appeal_end_date=date(2025, 1, 1),
+        )
+    )
+    assert doc["case_status"] == "closed"
+
+
 def test_case_build_doc_mirrors_case_status_into_raw():
     """``raw.case_status`` must be set so ``_serialize_hit`` can surface it as
     ``extra.case_status`` (the SPA's non-card lifecycle fallback)."""
