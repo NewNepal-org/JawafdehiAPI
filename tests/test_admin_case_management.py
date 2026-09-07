@@ -361,3 +361,46 @@ def test_case_admin_form_has_trial_and_appeal_date_fields():
         "appeal_end_date_bs",
     }
     assert "case_start_date" not in form.fields
+
+
+@pytest.mark.django_db
+def test_case_admin_form_rejects_a_backwards_trial():
+    """The admin reaches the chronology rule through ``Case.clean()``.
+
+    ``CaseAdminForm.clean()`` never calls ``Case.validate()``, so until the rule
+    also lived on the model the admin saved backwards dates silently.
+    """
+    form = CaseAdminForm(
+        data={
+            "title": "Backwards trial",
+            "case_type": CaseType.CORRUPTION,
+            "state": CaseState.DRAFT,
+            "trial_start_date": "2024-02-25",
+            "trial_end_date": "2024-02-01",
+        }
+    )
+
+    assert not form.is_valid()
+    assert form.errors["trial_end_date"] == [
+        "Trial end date is before the trial start date"
+    ]
+
+
+@pytest.mark.django_db
+def test_case_admin_form_rejects_an_appeal_before_the_trial_verdict():
+    """Same admin path, for the appeal-after-verdict rule."""
+    form = CaseAdminForm(
+        data={
+            "title": "Premature appeal",
+            "case_type": CaseType.CORRUPTION,
+            "state": CaseState.DRAFT,
+            "trial_start_date": "2024-02-01",
+            "trial_end_date": "2024-02-25",
+            "appeal_start_date": "2024-02-10",
+        }
+    )
+
+    assert not form.is_valid()
+    assert form.errors["appeal_start_date"] == [
+        "Appeal start date is before the trial end date"
+    ]

@@ -1448,27 +1448,19 @@ class Case(models.Model):
         if self._pending_authors is not None:
             self._sync_author_credits()
 
-    def validate(self):
-        """
-        Validate case data based on current state.
+    def _date_chronology_errors(self):
+        """Field-keyed errors for the court-date order (empty when the dates are fine).
 
-        - DRAFT: Lenient validation (only title required)
-        - IN_REVIEW/PUBLISHED: Strict validation (all required fields must be complete)
+        The one source for the rule, shared by ``clean()`` and ``validate()``.
+        Every comparison is skipped when either side is missing, so a case that
+        knows only some of its dates is still valid.
         """
+
+        def _before(first, second):
+            """True when both dates are known and ``first`` precedes ``second``."""
+            return first is not None and second is not None and first < second
+
         errors = {}
-
-        # Always require title
-        if not self.title or not self.title.strip():
-            errors["title"] = "Title is required"
-
-        # Chronology of the court proceedings. Checked in every state — a
-        # backwards date is wrong data, not an unfinished draft — and every
-        # comparison is skipped when either side is missing, so a case that
-        # knows only some of its dates is still valid.
-        def _before(earlier, later):
-            """True when both dates are known and ``earlier`` precedes ``later``."""
-            return earlier is not None and later is not None and earlier < later
-
         if _before(self.trial_end_date, self.trial_start_date):
             errors["trial_end_date"] = "Trial end date is before the trial start date"
         if _before(self.appeal_end_date, self.appeal_start_date):
@@ -1479,6 +1471,32 @@ class Case(models.Model):
             errors["appeal_start_date"] = (
                 "Appeal start date is before the trial end date"
             )
+        return errors
+
+    def clean(self):
+        """Enforce the date chronology on every ``full_clean()`` path.
+
+        The Django admin never calls ``validate()`` — ``ModelForm._post_clean``
+        reaches ``Model.clean()`` — so the rule has to live here too.
+        """
+        errors = self._date_chronology_errors()
+        if errors:
+            raise ValidationError(errors)
+
+    def validate(self):
+        """
+        Validate case data based on current state.
+
+        - Every state: title required, court dates in order
+        - IN_REVIEW/PUBLISHED: Strict validation (all required fields must be complete)
+        """
+        errors = {}
+
+        # Always require title
+        if not self.title or not self.title.strip():
+            errors["title"] = "Title is required"
+
+        errors.update(self._date_chronology_errors())
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:

@@ -689,3 +689,50 @@ def test_trial_and_appeal_dates_round_trip():
     assert reloaded.trial_end_date == date(2024, 2, 25)
     assert reloaded.appeal_start_date == date(2025, 8, 1)
     assert reloaded.appeal_end_date == date(2025, 8, 13)
+
+
+@pytest.mark.django_db
+def test_full_clean_rejects_the_same_backwards_dates():
+    """``Case.clean()`` carries the rule, so ``full_clean()`` enforces it.
+
+    This is the path the Django admin takes (``ModelForm._post_clean``), which
+    never reaches ``validate()``.
+    """
+    case = Case(
+        title="t",
+        state=CaseState.DRAFT,
+        trial_start_date=date(2024, 2, 25),
+        trial_end_date=date(2024, 2, 1),
+        appeal_start_date=date(2024, 1, 1),
+        appeal_end_date=date(2023, 12, 1),
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        case.full_clean()
+    errors = exc_info.value.message_dict
+    assert {"trial_end_date", "appeal_end_date", "appeal_start_date"} <= set(errors)
+    assert errors["trial_end_date"] == ["Trial end date is before the trial start date"]
+
+
+@pytest.mark.django_db
+def test_validate_rejects_backwards_dates_on_an_in_review_case():
+    """The chronology rule is state-independent: it fires on IN_REVIEW too."""
+    case = create_case_with_entities(
+        title="Backwards in review",
+        case_type=CaseType.CORRUPTION,
+        description="A complete description",
+        key_allegations=["An allegation"],
+        trial_start_date=date(2024, 2, 25),
+        trial_end_date=date(2024, 2, 1),
+        alleged_entities=["https://jawafdehi.org/entity/person/in-review-accused"],
+    )
+    credit_author(case)
+    case.refresh_from_db()
+    case.state = CaseState.IN_REVIEW
+
+    with pytest.raises(ValidationError) as exc_info:
+        case.validate()
+    # Nothing else is wrong with this case, so the date rule is the only error.
+    assert exc_info.value.message_dict == {
+        "trial_end_date": ["Trial end date is before the trial start date"]
+    }
