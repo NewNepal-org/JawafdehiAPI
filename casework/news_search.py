@@ -19,7 +19,7 @@ Deliberate deviations from the donor live in the enricher's module docstring,
 except the two that are wholly inside this module:
 
 DEVIATION A -- AN ARTICLE WITH NO PUBLICATION DATE IS DROPPED, AND REPORTED.
-The donor bound it and defaulted the date to `case_start_date` or *today*
+The donor bound it and defaulted the date to `trial_start_date` or *today*
 (`_publication_date`, donor:1680). The permalinks donor refused the same rows
 outright ("NEWS sources with no publication_date are skipped and reported, not
 modified"), and this port follows the stricter one. Two reasons beyond

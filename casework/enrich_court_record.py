@@ -18,13 +18,13 @@ turns it off, restoring a run that spends no tokens at all.
 
 WHAT IT WRITES, in one conditional PATCH per case (`CaseworkApi.patch_case`):
 
-  case_start_date  the earliest registration date across the case's court
-                   references, and only when the field is currently empty.
-  case_end_date    the latest deciding-hearing date, and only when the field is
-                   empty AND every court reference on the case has decided.
-  entities         the existing bind list with new `accused` binds appended --
-                   a whole-list replace of a list merged in application code,
-                   never a delta (`merge_entity_binds`).
+  trial_start_date  the earliest registration date across the case's court
+                    references, and only when the field is currently empty.
+  trial_end_date    the latest deciding-hearing date, and only when the field
+                    is empty AND every court reference on the case has decided.
+  entities          the existing bind list with new `accused` binds appended --
+                    a whole-list replace of a list merged in application code,
+                    never a delta (`merge_entity_binds`).
 
 MEASURED COVERAGE (2026-08-07, anonymous GET, all 307 cases of the FY078/079
 census): 307/307 carry a registration date, 306/307 carry an end date, and
@@ -200,7 +200,7 @@ def end_date(records):
 
     A case ends when EVERY court reference on it has been decided. One
     undecided reference means the case is still being heard, and
-    `case_end_date` is load-bearing on the public site: the frontend's
+    `trial_end_date` is load-bearing on the public site: the frontend's
     `deriveCaseStatus` reads any non-empty value as "concluded" and changes the
     status chip. Half-decided is not decided.
     """
@@ -754,15 +754,15 @@ def plan_case(api, case, etag, *, live_prefixes, run_entities, dry_run, held,
         return CasePlan(slug, "no-court-reference", skips=skips)
 
     fields = []
-    if not case.get("case_start_date"):
+    if not case.get("trial_start_date"):
         if start := start_date(records):
-            fields.append(("case_start_date", start))
-    if not case.get("case_end_date"):
+            fields.append(("trial_start_date", start))
+    if not case.get("trial_end_date"):
         end, why = end_date(records)
         if end:
-            fields.append(("case_end_date", end))
+            fields.append(("trial_end_date", end))
         elif why:
-            skips.append(f"case_end_date left empty: {why}")
+            skips.append(f"trial_end_date left empty: {why}")
 
     items, rows, accused_skips = _accused_binds(
         api, case, records, live_prefixes=live_prefixes,
@@ -854,9 +854,9 @@ _SKIP_SELECT_STATUS = {
 #: `_log_plan` matches on this exact prefix to route those skips to
 #: `court_read`/`unreadable` rather than `dates` -- a reference that 404s cost
 #: this case its defendants and/or its dates from THAT reference, and it is
-#: not a fact about date-derivation the way "case_end_date left empty: ..."
+#: not a fact about date-derivation the way "trial_end_date left empty: ..."
 #: is. Checked as a prefix, not a substring: the OTHER skip this function
-#: sees, "case_end_date left empty: not every court reference has decided
+#: sees, "trial_end_date left empty: not every court reference has decided
 #: ...", contains the words "court reference" too, just never at position 0.
 _COURT_READ_FAILURE_PREFIX = "court reference "
 
@@ -1384,8 +1384,8 @@ def main(argv=None):
         detail = ("Court-record defendants", accused_table(plan.rows))
         if not detail[1]:
             detail = ()
-        before = (f"case_start_date={case_detail.get('case_start_date')}, "
-                 f"case_end_date={case_detail.get('case_end_date')}, "
+        before = (f"trial_start_date={case_detail.get('trial_start_date')}, "
+                 f"trial_end_date={case_detail.get('trial_end_date')}, "
                  f"{len(case_detail.get('entities') or [])} bind(s)")
         note = "; ".join(plan.skips)
 

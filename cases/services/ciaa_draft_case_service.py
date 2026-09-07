@@ -93,8 +93,8 @@ class CIAADraftCaseService:
                     case_type=case_data["case_type"],
                     state=case_data["state"],
                     title=case_data["title"][:200],
-                    case_start_date=case_data.get("case_start_date"),
-                    case_end_date=case_data.get("case_end_date"),
+                    trial_start_date=case_data.get("trial_start_date"),
+                    trial_end_date=case_data.get("trial_end_date"),
                     court_cases=case_data.get("court_cases"),
                     notes=case_data.get("notes", ""),
                     missing_details=case_data.get("missing_details"),
@@ -202,25 +202,25 @@ class CIAADraftCaseService:
         # Parse dates
         if reg_date := court_case.get("registration_date_ad"):
             try:
-                case_data["case_start_date"] = datetime.strptime(
+                case_data["trial_start_date"] = datetime.strptime(
                     reg_date, "%Y-%m-%d"
                 ).date()
             except (ValueError, TypeError):
-                case_data["case_start_date"] = None
+                case_data["trial_start_date"] = None
         else:
-            case_data["case_start_date"] = None
+            case_data["trial_start_date"] = None
 
         if faisala_date := court_case.get("faisala_date_ad"):
             try:
-                case_data["case_end_date"] = datetime.strptime(
+                case_data["trial_end_date"] = datetime.strptime(
                     faisala_date, "%Y-%m-%d"
                 ).date()
             except (ValueError, TypeError):
-                case_data["case_end_date"] = self.convert_bs_to_ad(
+                case_data["trial_end_date"] = self.convert_bs_to_ad(
                     court_case.get("faisala_date_bs")
                 )
         else:
-            case_data["case_end_date"] = self.convert_bs_to_ad(
+            case_data["trial_end_date"] = self.convert_bs_to_ad(
                 court_case.get("faisala_date_bs")
             )
 

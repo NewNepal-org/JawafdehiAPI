@@ -436,7 +436,7 @@ class CaseworkApi:
 
         WHY THIS EXISTS. `patch_fields` refuses whole-list paths and
         `replace_list` takes one path at a time, so a caller writing
-        `case_start_date` and `entities` had to send two requests -- and the
+        `trial_start_date` and `entities` had to send two requests -- and the
         first changes the ETag, so the second 412s under the ETag read at the
         top. `build_replace_ops` records the same failure from `enrich_card`.
 
