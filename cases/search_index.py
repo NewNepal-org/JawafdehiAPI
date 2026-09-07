@@ -87,7 +87,7 @@ def _derive_status(case: Any) -> str:
     ``ongoing`` = a pending appeal (filed but undecided — the case is not over,
     whatever the trial dates say), or a trial start with no trial end;
     ``closed`` = a decided appeal (whatever the trial dates hold), or both trial
-    dates; ``others`` = anything else, i.e. a case with no trial start."""
+    dates; ``others`` = otherwise."""
     has_start = getattr(case, "trial_start_date", None) is not None
     has_end = getattr(case, "trial_end_date", None) is not None
     appeal_end = getattr(case, "appeal_end_date", None) is not None

@@ -903,6 +903,28 @@ def test_a_derived_end_date_before_the_stored_trial_start_is_skipped():
     assert api.posted == []
 
 
+def test_a_derived_end_date_before_the_derived_start_is_skipped_too():
+    """The reference is the start the PATCH will hold, stored or about to be written.
+
+    With no stored start, both dates come off the record in the same plan -- so
+    comparing only against the stored value let a backwards pair through, and
+    the 422 landed after `_accused_binds` had created its entities.
+    """
+    api = _PlanApi(
+        detail={"registration_date_ad": "2025-01-01"},
+        hearings=[DECIDED],  # decides 2024-06-04, before the derived start
+        parties=[{"side": "defendant", "name": "कृष्ण प्रसाद यादव", "nes_id": YADAV}],
+    )
+    case = _case(entities=[{"nes_id": YADAV, "type": "accused"}])
+
+    plan = _plan(api, case, dry_run=False)
+
+    assert plan.fields == [("trial_start_date", "2025-01-01")]
+    assert any("trial_end_date skipped" in skip and "2024-06-04" in skip
+               and "2025-01-01" in skip for skip in plan.skips), plan.skips
+    assert api.posted == []
+
+
 def test_a_derived_end_date_after_the_stored_trial_start_is_written():
     """The guard is the backwards cell only."""
     api = _PlanApi(detail={"registration_date_ad": "2023-06-22"}, hearings=[DECIDED])
