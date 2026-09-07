@@ -26,6 +26,7 @@ the `tier`/`max_tokens` LLM-call arguments directly from the donor at commit
 transcription).
 """
 import ast
+import inspect
 import json
 import logging
 import subprocess
@@ -5010,6 +5011,27 @@ class TestAccusedNoteUpdates:
         case = _accused_case()
         assert ere.accused_note_updates(case, ["nope", None, {}]) == {}
 
+    def test_a_long_role_note_is_capped_like_the_verdict_path(self):
+        # `CaseEntityRelationship.notes` is an uncapped TextField and the
+        # serializer publishes it beside the name ("``notes`` is PUBLIC -- the
+        # party's role line"), so the prompt's "under 80 chars" is a request.
+        # The two writers must not cap the same column differently.
+        long_role = "क" * 500
+        case = _accused_case()
+        written = ere.accused_note_updates(
+            case, [{"name": "राम बहादुर", "notes": long_role}])[ACCUSED_IRI]
+        assert len(written["notes"]) == ere.ROLE_NOTE_MAX_CHARS
+        verdict = ere.parse_verdict_response(json.dumps(
+            {"defendants": [{"name": "राम बहादुर", "outcome": "convicted",
+                             "role": long_role}]}, ensure_ascii=False))
+        assert len(verdict[0]["role"]) == len(written["notes"])
+
+    def test_a_note_inside_the_cap_is_untouched(self):
+        case = _accused_case()
+        assert ere.accused_note_updates(
+            case, [{"name": "राम बहादुर", "notes": ROLE_NOTE}]
+        )[ACCUSED_IRI] == {"notes": ROLE_NOTE}
+
 
 class TestAccusedVerdictTargetsAfterTheSplit:
     """The settled filter must stay on the VERDICT path, not the shared one."""
@@ -5199,6 +5221,14 @@ class TestAnAccusedIsNotReboundUnderAnotherSection:
         assert plan.already_accused == []
         assert [d.nes_id for _n, d, _no, _s in plan.bound] == [other]
 
+    def test_the_guard_cannot_be_silently_disabled(self):
+        # `accused_ids` carries no default: a second caller that forgot it would
+        # re-bind defendants under a lesser role with no error anywhere. Asserted
+        # on the signature rather than by calling short -- `ty` rejects that call
+        # at check time, which is the contract working.
+        param = inspect.signature(ere._bind_one).parameters["accused_ids"]
+        assert param.default is inspect.Parameter.empty
+
 
 class TestNoteNameFolding:
     """The court and the model join compound given names; NES spaces them."""
@@ -5386,12 +5416,17 @@ class TestNoteVariantFolding:
                                     ere.note_match_key("बोहोरा"))
 
 
-def test_the_variant_fold_collides_no_two_accused_on_any_production_case():
-    """The measurement the fold's safety rests on, pinned as a test.
+def test_the_variant_fold_keeps_these_known_pairs_apart():
+    """A regression table of pairs `NOTE_VARIANTS` must never merge.
 
-    `NOTE_VARIANTS` was chosen because it merges spelling variants and no two
-    real accused. A future entry that breaks that must fail here rather than in
-    production.
+    NOT the measurement itself. `NOTE_VARIANTS` was chosen by running the fold
+    over all 2,860 accused binds in FY076-079 and rejecting any candidate that
+    collapsed two different accused; the six pairs below are the ones that
+    rejected the aggressive fold, kept here so a future entry that re-merges
+    them fails in CI. To re-run the corpus measurement, use
+    `work/2026-09-01-fy078-079-enrichment-status/fold_probe.py` (read-only) in
+    the jawafdehi-meta checkout -- a new `NOTE_VARIANTS` entry needs that, not
+    this test.
     """
     different_people = [
         ("सरोज", "सुरज"), ("मिना", "मुना"), ("हरि", "हिरा"),

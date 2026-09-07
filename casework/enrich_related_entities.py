@@ -531,6 +531,13 @@ MACHINE_NOTE_PREFIX = "प्रतिवादी — विशेष अदा
 ALIAS_MARKER = "; अदालतको अभिलेखमा: "
 TERMINAL_OUTCOMES = frozenset({"convicted", "acquitted", "abated"})
 
+#: The cap BOTH role-note writers apply. `CaseEntityRelationship.notes` is an
+#: uncapped `TextField` and the serializer publishes it beside the party's name
+#: on the case page, so the prompts' "under 80/90 characters" is a request and
+#: not a bound. The verdict path has capped at 90 since #474; the extraction
+#: path writes the same column and shares the number rather than restating it.
+ROLE_NOTE_MAX_CHARS = 90
+
 
 def is_settled(bind):
     """Whether a bind already carries a terminal outcome this stage may not re-decide."""
@@ -630,7 +637,7 @@ def parse_verdict_response(text: str) -> list:
 
     Drops a row with no `name` or whose `outcome` is not in `VERDICT_OUTCOMES`,
     never coercing one: a model answering `दोषी` has not answered the question
-    asked. Truncates `role` to 90 chars.
+    asked. Truncates `role` to `ROLE_NOTE_MAX_CHARS`.
     """
     rows = parse_extraction_response(text, ("defendants",)) or []
     out = []
@@ -644,7 +651,7 @@ def parse_verdict_response(text: str) -> list:
         out.append({
             "name": name,
             "outcome": outcome,
-            "role": (row.get("role") or "")[:90],
+            "role": (row.get("role") or "")[:ROLE_NOTE_MAX_CHARS],
             "evidence": row.get("evidence") or "",
         })
     return out
@@ -903,6 +910,9 @@ def accused_note_updates(case, accused_notes):
     Matched on `note_match_key`, never on a similarity score: a near match
     staples one defendant's job title onto another, and the accused binds are
     the rows this module is least entitled to get wrong.
+
+    Capped at `ROLE_NOTE_MAX_CHARS`, the cap `parse_verdict_response` already
+    applies: both writers land in one published column.
     """
     grouped, _skipped = accused_binds_by_name(case)
     by_key: dict = {}
@@ -927,7 +937,7 @@ def accused_note_updates(case, accused_notes):
         if not isinstance(note, dict):
             continue
         name = (note.get("name") or "").strip()
-        role = (note.get("notes") or "").strip()
+        role = (note.get("notes") or "").strip()[:ROLE_NOTE_MAX_CHARS]
         if not name or not role:
             continue
         key = note_match_key(name)
@@ -1793,14 +1803,16 @@ def plan_case_entities(api, case, etag, extracted_items, strict=False):
 
 
 def _bind_one(plan, name, decision, rel_type, notes, have, additions,
-              accused_ids=frozenset()):
+              accused_ids):
     """Add ONE (entity, section) bind to `plan`, or record why it was not added.
 
     Split out of `plan_case_entities` when one extracted name became able to
     produce several binds -- the body was a `continue`-driven block inside that
     loop, and `continue` cannot mean "next candidate" and "next name" at once.
     Mutates `plan`, `have` and `additions`: the caller's loop owns them, and this
-    is the only writer of a bind row.
+    is the only writer of a bind row. `accused_ids` is required for the same
+    reason: an empty default would turn the guard below OFF for a second caller
+    that forgot it, with no error and no failing test.
     """
     # AN ACCUSED IS NOT RE-BOUND UNDER A LESSER SECTION. Checked before the
     # `have` test so a defendant a previous run already mis-bound as `related`
