@@ -621,8 +621,6 @@ def test_public_api_unlists_in_review_but_serves_by_slug(case_data):
     ), "IN_REVIEW case should NOT appear in list endpoint"
 
 
-
-
 # ============================================================================
 # Court dates: the trial pair, the appeal pair, and the deprecated aliases
 # ============================================================================

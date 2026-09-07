@@ -359,8 +359,8 @@ class CaseWriteFieldsSerializer(serializers.Serializer):
     silently disappear from the subclasses.
 
     Field ORDER does change as a result. `_get_declared_fields` returns
-    ``dict(base_fields + fields)``, so these 17 now come first and each
-    subclass's own declarations follow:
+    ``dict(base_fields + fields)``, so these come first and each subclass's own
+    declarations follow:
 
         create: title…bigo, case_type, state, alleged_entities, related_entities
         PATCH : title…bigo, state, case_type, entities
@@ -467,17 +467,12 @@ class CaseWriteFieldsSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
-        """Reject a backwards trial, a backwards appeal, or a premature appeal.
-
-        Duplicates ``Case.validate()`` (same keys, same messages) because the
-        PATCH path writes these columns with a bulk ``UPDATE`` that never runs
-        the model's validation.
-        """
+        """Reject a backwards trial, a backwards appeal, or a premature appeal."""
         attrs = super().validate(attrs)
 
-        def _before(earlier, later):
-            """True when both dates are known and ``earlier`` precedes ``later``."""
-            return earlier is not None and later is not None and earlier < later
+        def _before(first, second):
+            """True when both dates are known and ``first`` precedes ``second``."""
+            return first is not None and second is not None and first < second
 
         trial_start = attrs.get("trial_start_date")
         trial_end = attrs.get("trial_end_date")
