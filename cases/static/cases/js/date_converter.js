@@ -103,16 +103,29 @@
                 return;
             }
 
-            // Case start/end dates (with calendar)
+            // Trial start/end dates (with calendar)
             this.setupDatePair(
-                document.getElementById('id_case_start_date'),
-                document.getElementById('id_start_date_bs'),
+                document.getElementById('id_trial_start_date'),
+                document.getElementById('id_trial_start_date_bs'),
                 true
             );
 
             this.setupDatePair(
-                document.getElementById('id_case_end_date'),
-                document.getElementById('id_end_date_bs'),
+                document.getElementById('id_trial_end_date'),
+                document.getElementById('id_trial_end_date_bs'),
+                true
+            );
+
+            // Appeal start/end dates (with calendar)
+            this.setupDatePair(
+                document.getElementById('id_appeal_start_date'),
+                document.getElementById('id_appeal_start_date_bs'),
+                true
+            );
+
+            this.setupDatePair(
+                document.getElementById('id_appeal_end_date'),
+                document.getElementById('id_appeal_end_date_bs'),
                 true
             );
 

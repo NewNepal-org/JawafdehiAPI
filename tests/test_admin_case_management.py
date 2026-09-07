@@ -13,6 +13,7 @@ from django.utils import timezone
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from cases.admin import CaseAdminForm
 from cases.models import CaseState, CaseType
 from cases.rules.predicates import can_transition_case_state
 from tests.byline import credit_author
@@ -337,3 +338,26 @@ def test_admin_can_publish_case():
     can_publish = can_transition_case_state(admin, case, CaseState.PUBLISHED)
 
     assert can_publish, "Admin should be able to transition case to PUBLISHED state"
+
+
+# ============================================================================
+# CaseAdminForm: trial/appeal date fields
+# ============================================================================
+
+
+def test_case_admin_form_has_trial_and_appeal_date_fields():
+    """CaseAdminForm exposes the renamed trial dates and the new appeal dates,
+    each with a matching BS form field, and no longer carries the old names."""
+    form = CaseAdminForm()
+
+    assert set(form.fields) >= {
+        "trial_start_date",
+        "trial_end_date",
+        "appeal_start_date",
+        "appeal_end_date",
+        "trial_start_date_bs",
+        "trial_end_date_bs",
+        "appeal_start_date_bs",
+        "appeal_end_date_bs",
+    }
+    assert "case_start_date" not in form.fields

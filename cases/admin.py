@@ -106,8 +106,8 @@ class CaseAdminForm(forms.ModelForm):
 
     # evidence is now the CaseMaterialReference join; edit via API/inline in a follow-up
 
-    start_date_bs = forms.CharField(
-        label="Case start date (BS)",
+    trial_start_date_bs = forms.CharField(
+        label="Trial start date (BS)",
         required=False,
         widget=forms.TextInput(
             attrs={
@@ -119,8 +119,34 @@ class CaseAdminForm(forms.ModelForm):
             }
         ),
     )
-    end_date_bs = forms.CharField(
-        label="Case end date (BS)",
+    trial_end_date_bs = forms.CharField(
+        label="Trial end date (BS)",
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "YYYY-MM-DD",
+                "class": "vTextField nepali-date-picker",
+                "autocomplete": "off",
+                "readonly": "readonly",
+                "style": "cursor: pointer;",
+            }
+        ),
+    )
+    appeal_start_date_bs = forms.CharField(
+        label="Appeal start date (BS)",
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "YYYY-MM-DD",
+                "class": "vTextField nepali-date-picker",
+                "autocomplete": "off",
+                "readonly": "readonly",
+                "style": "cursor: pointer;",
+            }
+        ),
+    )
+    appeal_end_date_bs = forms.CharField(
+        label="Appeal end date (BS)",
         required=False,
         widget=forms.TextInput(
             attrs={
@@ -153,8 +179,10 @@ class CaseAdminForm(forms.ModelForm):
             "description": ToastUIEditorWidget(),
             "notes": ToastUIEditorWidget(),
             "state": forms.RadioSelect(),
-            "case_start_date": forms.DateInput(attrs={"type": "date"}),
-            "case_end_date": forms.DateInput(attrs={"type": "date"}),
+            "trial_start_date": forms.DateInput(attrs={"type": "date"}),
+            "trial_end_date": forms.DateInput(attrs={"type": "date"}),
+            "appeal_start_date": forms.DateInput(attrs={"type": "date"}),
+            "appeal_end_date": forms.DateInput(attrs={"type": "date"}),
         }
         help_texts = {
             "state": "Current workflow state: DRAFT (editable), IN_REVIEW (pending approval), PUBLISHED (public), CLOSED (archived)",
@@ -579,10 +607,14 @@ class CaseAdmin(UserFullNameAdminMixin, admin.ModelAdmin):
             "Dates",
             {
                 "fields": (
-                    "case_start_date",
-                    "start_date_bs",
-                    "case_end_date",
-                    "end_date_bs",
+                    "trial_start_date",
+                    "trial_end_date",
+                    "trial_start_date_bs",
+                    "trial_end_date_bs",
+                    "appeal_start_date",
+                    "appeal_end_date",
+                    "appeal_start_date_bs",
+                    "appeal_end_date_bs",
                 )
             },
         ),
