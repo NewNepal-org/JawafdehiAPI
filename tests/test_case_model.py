@@ -6,6 +6,8 @@ Tests Properties 1, 2, 3, 18
 Validates: Requirements 1.1, 1.2, 1.3, 7.3
 """
 
+from datetime import date
+
 import pytest
 from django.core.exceptions import ValidationError
 from hypothesis import given, settings
@@ -536,3 +538,204 @@ def test_tax_evasion_location_only_entity_is_insufficient():
     with pytest.raises(ValidationError) as exc_info:
         case.validate()
     assert "entity" in str(exc_info.value).lower()
+
+
+# ============================================================================
+# Trial and appeal date ordering
+# ============================================================================
+
+
+@pytest.mark.django_db
+def test_validate_rejects_trial_end_before_start():
+    """A trial that ends before it was registered is rejected."""
+    case = Case(
+        title="t",
+        state=CaseState.DRAFT,
+        trial_start_date=date(2024, 2, 25),
+        trial_end_date=date(2024, 2, 1),
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        case.validate()
+    assert "trial_end_date" in exc_info.value.message_dict
+    assert exc_info.value.message_dict["trial_end_date"] == [
+        "Trial end date is before the trial start date"
+    ]
+
+
+@pytest.mark.django_db
+def test_validate_rejects_appeal_start_before_trial_end():
+    """An appeal cannot be registered before the first-instance verdict."""
+    case = Case(
+        title="t",
+        state=CaseState.DRAFT,
+        trial_end_date=date(2025, 8, 13),
+        appeal_start_date=date(2025, 8, 1),
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        case.validate()
+    assert "appeal_start_date" in exc_info.value.message_dict
+    assert exc_info.value.message_dict["appeal_start_date"] == [
+        "Appeal start date is before the trial end date"
+    ]
+
+
+@pytest.mark.django_db
+def test_validate_rejects_appeal_end_before_start():
+    """An appeal that ends before it was registered is rejected."""
+    case = Case(
+        title="t",
+        state=CaseState.DRAFT,
+        appeal_start_date=date(2025, 8, 13),
+        appeal_end_date=date(2025, 8, 1),
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        case.validate()
+    assert "appeal_end_date" in exc_info.value.message_dict
+    assert exc_info.value.message_dict["appeal_end_date"] == [
+        "Appeal end date is before the appeal start date"
+    ]
+
+
+@pytest.mark.django_db
+def test_validate_reports_every_ordering_violation_at_once():
+    """All three ordering rules are reported together, not one at a time."""
+    case = Case(
+        title="t",
+        state=CaseState.DRAFT,
+        trial_start_date=date(2024, 2, 25),
+        trial_end_date=date(2024, 2, 1),
+        appeal_start_date=date(2024, 1, 1),
+        appeal_end_date=date(2023, 12, 1),
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        case.validate()
+    assert set(exc_info.value.message_dict) == {
+        "trial_end_date",
+        "appeal_end_date",
+        "appeal_start_date",
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "dates",
+    [
+        pytest.param({}, id="all-none"),
+        pytest.param(
+            {"trial_start_date": date(2024, 2, 1), "trial_end_date": date(2024, 2, 25)},
+            id="trial-only",
+        ),
+        pytest.param(
+            {
+                "appeal_start_date": date(2025, 8, 1),
+                "appeal_end_date": date(2025, 8, 13),
+            },
+            id="appeal-only",
+        ),
+        pytest.param(
+            {"trial_end_date": date(2024, 2, 25), "appeal_start_date": date(2025, 8, 1)},
+            id="gap-between-trial-end-and-appeal-start",
+        ),
+        pytest.param(
+            {
+                "trial_start_date": date(2024, 2, 1),
+                "trial_end_date": date(2024, 2, 25),
+                "appeal_start_date": date(2025, 8, 1),
+                "appeal_end_date": date(2025, 8, 13),
+            },
+            id="all-four-in-order",
+        ),
+        pytest.param(
+            {
+                "trial_start_date": date(2024, 2, 1),
+                "appeal_end_date": date(2025, 8, 13),
+            },
+            id="only-the-outer-pair-set",
+        ),
+        pytest.param(
+            {"trial_start_date": date(2024, 2, 1), "trial_end_date": date(2024, 2, 1)},
+            id="same-day-trial",
+        ),
+    ],
+)
+def test_validate_accepts_ordered_dates_and_gaps(dates):
+    """Ordered dates, same-day dates and any missing date all pass."""
+    case = Case(title="t", state=CaseState.DRAFT, **dates)
+
+    try:
+        case.validate()
+    except ValidationError as exc:
+        pytest.fail(f"Ordered dates should validate, but raised: {exc}")
+
+
+@pytest.mark.django_db
+def test_trial_and_appeal_dates_round_trip():
+    """All four dates persist and read back unchanged."""
+    case = Case.objects.create(
+        title="Trial and appeal dates",
+        state=CaseState.DRAFT,
+        trial_start_date=date(2024, 2, 1),
+        trial_end_date=date(2024, 2, 25),
+        appeal_start_date=date(2025, 8, 1),
+        appeal_end_date=date(2025, 8, 13),
+    )
+
+    reloaded = Case.objects.get(pk=case.pk)
+    assert reloaded.trial_start_date == date(2024, 2, 1)
+    assert reloaded.trial_end_date == date(2024, 2, 25)
+    assert reloaded.appeal_start_date == date(2025, 8, 1)
+    assert reloaded.appeal_end_date == date(2025, 8, 13)
+
+
+@pytest.mark.django_db
+def test_full_clean_rejects_the_same_backwards_dates():
+    """``Case.clean()`` carries the rule, so ``full_clean()`` enforces it.
+
+    This is the path the Django admin takes (``ModelForm._post_clean``), which
+    never reaches ``validate()``.
+    """
+    case = Case(
+        title="t",
+        state=CaseState.DRAFT,
+        trial_start_date=date(2024, 2, 25),
+        trial_end_date=date(2024, 2, 1),
+        appeal_start_date=date(2024, 1, 1),
+        appeal_end_date=date(2023, 12, 1),
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        case.full_clean()
+    errors = exc_info.value.message_dict
+    assert {"trial_end_date", "appeal_end_date", "appeal_start_date"} <= set(errors)
+    assert errors["trial_end_date"] == ["Trial end date is before the trial start date"]
+
+
+@pytest.mark.django_db
+def test_validate_rejects_backwards_dates_on_an_in_review_case():
+    """The chronology rule is state-independent: it fires on IN_REVIEW too."""
+    case = create_case_with_entities(
+        title="Backwards in review",
+        case_type=CaseType.CORRUPTION,
+        description="A complete description",
+        key_allegations=["An allegation"],
+        trial_start_date=date(2024, 2, 25),
+        trial_end_date=date(2024, 6, 4),
+        alleged_entities=["https://jawafdehi.org/entity/person/in-review-accused"],
+    )
+    credit_author(case)
+    case.refresh_from_db()
+    case.state = CaseState.IN_REVIEW
+    # Backwards in memory only: migration 0065's check constraint means the
+    # stored row can no longer hold the pair this test is about.
+    case.trial_end_date = date(2024, 2, 1)
+
+    with pytest.raises(ValidationError) as exc_info:
+        case.validate()
+    # Nothing else is wrong with this case, so the date rule is the only error.
+    assert exc_info.value.message_dict == {
+        "trial_end_date": ["Trial end date is before the trial start date"]
+    }

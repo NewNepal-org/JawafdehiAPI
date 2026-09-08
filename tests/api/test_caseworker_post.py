@@ -316,3 +316,74 @@ def test_post_rejects_array_payload():
     assert "detail" in response.data
     assert response.data["detail"] == "Request body must be a JSON object."
     assert Case.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_post_accepts_trial_and_appeal_dates():
+    """All four court dates are settable at creation time."""
+    user = create_user_with_role("ashok-dates", "ashok-dates@example.com", "Caseworker")
+
+    response = _authed_client(user).post(
+        URL,
+        data={
+            "title": "Dated draft",
+            "case_type": CaseType.CORRUPTION,
+            "trial_start_date": "2023-06-22",
+            "trial_end_date": "2024-06-04",
+            "appeal_start_date": "2024-07-09",
+            "appeal_end_date": "2025-02-18",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    case = Case.objects.get(pk=response.data["id"])
+    assert str(case.trial_start_date) == "2023-06-22"
+    assert str(case.trial_end_date) == "2024-06-04"
+    assert str(case.appeal_start_date) == "2024-07-09"
+    assert str(case.appeal_end_date) == "2025-02-18"
+
+
+@pytest.mark.django_db
+def test_post_rejects_retired_date_field():
+    """``case_start_date`` is read-only now, so a create carrying it is refused.
+
+    Not silently dropped: the unexpected-field gate names it, so a stale client
+    learns the field is gone instead of saving a draft with no trial date.
+    """
+    user = create_user_with_role("ashok-old", "ashok-old@example.com", "Caseworker")
+
+    response = _authed_client(user).post(
+        URL,
+        data={
+            "title": "Stale client draft",
+            "case_type": CaseType.CORRUPTION,
+            "case_start_date": "2023-06-22",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 422, response.data
+    assert "case_start_date" in response.data
+    assert not Case.objects.filter(title="Stale client draft").exists()
+
+
+@pytest.mark.django_db
+def test_post_rejects_appeal_before_trial_end():
+    """The chronology rule holds on create as well as on PATCH."""
+    user = create_user_with_role("ashok-back", "ashok-back@example.com", "Caseworker")
+
+    response = _authed_client(user).post(
+        URL,
+        data={
+            "title": "Backwards appeal",
+            "case_type": CaseType.CORRUPTION,
+            "trial_end_date": "2025-08-13",
+            "appeal_start_date": "2025-08-01",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 422, response.data
+    assert "appeal_start_date" in response.data
+    assert not Case.objects.filter(title="Backwards appeal").exists()

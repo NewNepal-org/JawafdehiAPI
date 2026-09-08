@@ -131,11 +131,11 @@ class TestBuildLedger:
             _ev("2026-08-07T10:00:02Z", "court_record", "case-10",
                 "defendant_resolve", "ok", "created: कृष्ण प्रसाद यादव -> person/..."),
             _ev("2026-08-07T10:00:03Z", "court_record", "case-10", "dates", "ok",
-                "proposed case_start_date=2023-06-22"),
+                "proposed trial_start_date=2023-06-22"),
             _ev("2026-08-07T10:00:04Z", "court_record", "case-10", "bind_plan", "ok",
                 "merged: 1 defendant(s) on the court record"),
             _ev("2026-08-07T10:00:05Z", "court_record", "case-10", "patch", "dry_run",
-                "case_start_date=2023-06-22"),
+                "trial_start_date=2023-06-22"),
         ])
         assert ("case-10", "court_record") not in build_ledger(tmp_path)
 
@@ -150,7 +150,7 @@ class TestBuildLedger:
             _ev("2026-08-07T11:00:03Z", "court_record", "case-11", "bind_plan", "ok",
                 "merged: 1 defendant(s) on the court record"),
             _ev("2026-08-07T11:00:04Z", "court_record", "case-11", "patch", "applied",
-                "case_start_date=2023-06-22; accused+1"),
+                "trial_start_date=2023-06-22; accused+1"),
         ])
         assert build_ledger(tmp_path)[("case-11", "court_record")]["status"] == "applied"
 

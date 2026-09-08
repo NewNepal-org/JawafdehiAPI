@@ -228,7 +228,7 @@ STAGES = {
     # whenever its press release lacked a MARKDOWN role.
     "court_record": Stage(
         "court_record",
-        provides=("case_start_date", "case_end_date", "entities"),
+        provides=("trial_start_date", "trial_end_date", "entities"),
     ),
 }
 

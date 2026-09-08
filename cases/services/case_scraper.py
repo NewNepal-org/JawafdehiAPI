@@ -60,11 +60,13 @@ class Case(BaseModel):
         default_factory=list, description="Locations related to the case"
     )
     tags: list[str] = Field(default_factory=list, description="Tags for categorization")
-    case_start_date: date_type | None = Field(
-        default=None, description="When the incident began"
+    trial_start_date: date_type | None = Field(
+        default=None,
+        description="Registration date at the first-instance court",
     )
-    case_end_date: date_type | None = Field(
-        default=None, description="When the incident ended"
+    trial_end_date: date_type | None = Field(
+        default=None,
+        description="Verdict date at the first-instance court",
     )
     timeline: list[TimelineEntry] = Field(
         default_factory=list, description="Timeline of events"

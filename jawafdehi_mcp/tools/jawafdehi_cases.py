@@ -136,8 +136,34 @@ CASE_CREATE_PROPERTIES: dict[str, Any] = {
     # gets no renditions, so every surface loads it at full size.
     "thumbnail_url": {"type": "string", "maxLength": 500},
     "banner_url": {"type": "string", "maxLength": 500},
-    "case_start_date": _nullable_schema({"type": "string", "format": "date"}),
-    "case_end_date": _nullable_schema({"type": "string", "format": "date"}),
+    "trial_start_date": _nullable_schema(
+        {
+            "type": "string",
+            "format": "date",
+            "description": "Registration date at the first-instance court.",
+        }
+    ),
+    "trial_end_date": _nullable_schema(
+        {
+            "type": "string",
+            "format": "date",
+            "description": "Verdict date at the first-instance court.",
+        }
+    ),
+    "appeal_start_date": _nullable_schema(
+        {
+            "type": "string",
+            "format": "date",
+            "description": "Registration date of the Supreme Court appeal.",
+        }
+    ),
+    "appeal_end_date": _nullable_schema(
+        {
+            "type": "string",
+            "format": "date",
+            "description": "Verdict date of the Supreme Court appeal.",
+        }
+    ),
     "tags": {"type": "array", "items": {"type": "string"}},
     "key_allegations": {"type": "array", "items": {"type": "string"}},
     "timeline": {"type": "array", "items": TIMELINE_ITEM_INPUT_SCHEMA},

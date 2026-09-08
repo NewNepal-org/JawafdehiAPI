@@ -463,7 +463,7 @@ class _PlanApi(_SearchApi):
 
 def _case(**over):
     base = {"slug": "case-079-cr-0151", "state": "DRAFT", "court_cases": [CASE_IRI],
-            "case_start_date": None, "case_end_date": None, "entities": []}
+            "trial_start_date": None, "trial_end_date": None, "entities": []}
     base.update(over)
     return base
 
@@ -564,8 +564,8 @@ def test_the_plan_carries_both_dates_and_the_accused_binds():
                  {"side": "plaintiff", "name": "नेपाल सरकार"}],
     )
     plan = _plan(api, _case())
-    assert dict(plan.fields) == {"case_start_date": "2023-06-22",
-                                 "case_end_date": "2024-06-04"}
+    assert dict(plan.fields) == {"trial_start_date": "2023-06-22",
+                                 "trial_end_date": "2024-06-04"}
     assert plan.entities == [{"nes_id": YADAV, "relationship_type": "accused",
                               "outcome": ACQUITTED,
                               "notes": "प्रतिवादी — विशेष अदालत मुद्दा 079-cr-0151"}]
@@ -807,8 +807,8 @@ def test_a_case_with_only_a_non_prosecution_reference_still_gets_both_dates():
                    parties=[{"side": "defendant", "name": "कुनै व्यक्ति"}])
     case = _case(court_cases=["https://jawafdehi.org/courtcase/special/079-oa-0014"])
     plan = _plan(api, case)
-    assert dict(plan.fields) == {"case_start_date": "2023-06-22",
-                                 "case_end_date": "2024-06-04"}
+    assert dict(plan.fields) == {"trial_start_date": "2023-06-22",
+                                 "trial_end_date": "2024-06-04"}
     assert plan.entities is None
     assert any("079-oa-0014" in s and "OA" in s for s in plan.skips)
 
@@ -844,8 +844,8 @@ def test_a_held_defendant_does_not_block_the_case_s_other_defendants_or_dates():
                  {"side": "defendant", "name": "सिताराम यादव", "nes_id": YADAV}],
     )
     plan = _plan(api, _case(slug="case-a"), held=held)
-    assert dict(plan.fields) == {"case_start_date": "2023-06-22",
-                                 "case_end_date": "2024-06-04"}
+    assert dict(plan.fields) == {"trial_start_date": "2023-06-22",
+                                 "trial_end_date": "2024-06-04"}
     assert plan.entities == [{"nes_id": YADAV, "relationship_type": "accused",
                               "outcome": ACQUITTED,
                               "notes": "प्रतिवादी — विशेष अदालत मुद्दा 079-cr-0151"}]
@@ -872,8 +872,65 @@ def test_the_party_row_address_reaches_the_run_entity_key():
 
 def test_a_populated_date_is_never_overwritten():
     api = _PlanApi(detail={"registration_date_ad": "2023-06-22"}, hearings=[DECIDED])
-    plan = _plan(api, _case(case_start_date="2020-01-01", case_end_date="2021-01-01"))
+    plan = _plan(api, _case(trial_start_date="2020-01-01", trial_end_date="2021-01-01"))
     assert plan.fields == []
+
+
+def test_a_derived_end_date_before_the_stored_trial_start_is_skipped():
+    """The PATCH would 422 on the chronology rule -- after the binds exist.
+
+    `plan_case` creates NES entities inside `_accused_binds` and then sends ONE
+    PATCH. A derived end date earlier than the stored registration date is
+    rejected by the write serializer, so the whole PATCH fails while the newly
+    created entities stay behind, bound to nothing. The date is dropped before
+    any of that, and the plan says so.
+    """
+    api = _PlanApi(
+        detail={"registration_date_ad": "2023-06-22"},
+        hearings=[DECIDED],  # decides 2024-06-04, before the stored start
+        parties=[{"side": "defendant", "name": "कृष्ण प्रसाद यादव", "nes_id": YADAV}],
+    )
+    case = _case(trial_start_date="2025-01-01",
+                 entities=[{"nes_id": YADAV, "type": "accused"}])
+
+    plan = _plan(api, case, dry_run=False)
+
+    assert "trial_end_date" not in dict(plan.fields)
+    assert any("trial_end_date skipped" in skip and "2024-06-04" in skip
+               and "2025-01-01" in skip for skip in plan.skips), plan.skips
+    # Nothing left to write -- and no entity created on the way to finding out.
+    assert plan.status == "nothing-to-do"
+    assert api.posted == []
+
+
+def test_a_derived_end_date_before_the_derived_start_is_skipped_too():
+    """The reference is the start the PATCH will hold, stored or about to be written.
+
+    With no stored start, both dates come off the record in the same plan -- so
+    comparing only against the stored value let a backwards pair through, and
+    the 422 landed after `_accused_binds` had created its entities.
+    """
+    api = _PlanApi(
+        detail={"registration_date_ad": "2025-01-01"},
+        hearings=[DECIDED],  # decides 2024-06-04, before the derived start
+        parties=[{"side": "defendant", "name": "कृष्ण प्रसाद यादव", "nes_id": YADAV}],
+    )
+    case = _case(entities=[{"nes_id": YADAV, "type": "accused"}])
+
+    plan = _plan(api, case, dry_run=False)
+
+    assert plan.fields == [("trial_start_date", "2025-01-01")]
+    assert any("trial_end_date skipped" in skip and "2024-06-04" in skip
+               and "2025-01-01" in skip for skip in plan.skips), plan.skips
+    assert api.posted == []
+
+
+def test_a_derived_end_date_after_the_stored_trial_start_is_written():
+    """The guard is the backwards cell only."""
+    api = _PlanApi(detail={"registration_date_ad": "2023-06-22"}, hearings=[DECIDED])
+    plan = _plan(api, _case(trial_start_date="2023-06-22"))
+    assert dict(plan.fields) == {"trial_end_date": "2024-06-04"}
+    assert not any("skipped" in skip for skip in plan.skips), plan.skips
 
 
 def test_a_case_with_nothing_to_change_is_a_skip():
@@ -936,7 +993,7 @@ from casework.enrich_court_record import apply_plan, main  # noqa: E402
 
 def test_apply_plan_refuses_to_write_without_an_etag():
     plan = CasePlan("case-079-cr-0151", "would-patch",
-                    fields=[("case_start_date", "2023-06-22")], if_match="")
+                    fields=[("trial_start_date", "2023-06-22")], if_match="")
     with pytest.raises(ValueError, match="ETag"):
         apply_plan(_PlanApi(), plan)
 
@@ -970,12 +1027,12 @@ def test_apply_plan_sends_one_conditional_request():
             return {}
 
     plan = CasePlan("case-079-cr-0151", "would-patch",
-                    fields=[("case_start_date", "2023-06-22")],
+                    fields=[("trial_start_date", "2023-06-22")],
                     entities=[{"nes_id": YADAV, "relationship_type": "accused"}],
                     if_match='W/"7"')
     apply_plan(_Api(), plan)
     assert seen["if_match"] == 'W/"7"'
-    assert seen["fields"] == [("case_start_date", "2023-06-22")]
+    assert seen["fields"] == [("trial_start_date", "2023-06-22")]
     assert seen["lists"][0][0] == "entities"
 
 
@@ -1286,8 +1343,8 @@ def test_a_held_defendant_is_excluded_from_resolved_and_accused_counts(tmp_path,
     # `case-b` supplies the real second occurrence of the held name.
     monkeypatch.setenv("CASEWORK_RUN_LOG_DIR", str(tmp_path))
     shared = "कृष्ण प्रसाद यादव"
-    case_a = _case(case_start_date="2020-01-01", case_end_date="2021-01-01")
-    case_b = _case(slug="case-b", case_start_date="2020-01-01", case_end_date="2021-01-01",
+    case_a = _case(trial_start_date="2020-01-01", trial_end_date="2021-01-01")
+    case_b = _case(slug="case-b", trial_start_date="2020-01-01", trial_end_date="2021-01-01",
                    court_cases=["https://jawafdehi.org/courtcase/special/080-cr-0002"])
     api = _MultiCaseApi(
         [case_a, case_b],
@@ -1389,8 +1446,8 @@ def test_a_held_only_nothing_to_do_case_is_not_recorded_as_already(tmp_path, mon
     # isn't. `case-b` supplies the real second occurrence of the held name.
     monkeypatch.setenv("CASEWORK_RUN_LOG_DIR", str(tmp_path))
     shared = "कृष्ण प्रसाद यादव"
-    case_a = _case(case_start_date="2020-01-01", case_end_date="2021-01-01")
-    case_b = _case(slug="case-b", case_start_date="2020-01-01", case_end_date="2021-01-01",
+    case_a = _case(trial_start_date="2020-01-01", trial_end_date="2021-01-01")
+    case_b = _case(slug="case-b", trial_start_date="2020-01-01", trial_end_date="2021-01-01",
                    court_cases=["https://jawafdehi.org/courtcase/special/080-cr-0002"])
     api = _MultiCaseApi(
         [case_a, case_b],
@@ -1480,7 +1537,7 @@ def test_a_case_with_nothing_to_change_records_already_not_nothing(tmp_path, mon
     # stated value is telling "we enriched it" from "it was already populated",
     # so this path emits the sibling vocabulary for the latter.
     monkeypatch.setenv("CASEWORK_RUN_LOG_DIR", str(tmp_path))
-    api = _CliApi(_case(case_start_date="2020-01-01", case_end_date="2021-01-01"),
+    api = _CliApi(_case(trial_start_date="2020-01-01", trial_end_date="2021-01-01"),
                   detail={"registration_date_ad": "2023-06-22"}, hearings=[DECIDED],
                   parties=[])
     import casework.enrich_court_record as ecr

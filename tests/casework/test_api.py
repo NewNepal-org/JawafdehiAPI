@@ -1146,12 +1146,12 @@ def test_patch_case_sends_scalars_and_a_whole_list_in_one_request(monkeypatch):
     monkeypatch.setattr(api, "_patch", fake_patch)
     api.patch_case(
         "case-079-cr-0151",
-        fields=[("case_start_date", "2023-06-22")],
+        fields=[("trial_start_date", "2023-06-22")],
         lists=[("entities", [{"nes_id": "x", "relationship_type": "accused"}])],
         if_match='W/"7"',
     )
     assert seen["if_match"] == 'W/"7"'
-    assert [op["path"] for op in seen["ops"]] == ["/case_start_date", "/entities"]
+    assert [op["path"] for op in seen["ops"]] == ["/trial_start_date", "/entities"]
 
 
 def test_patch_case_refuses_a_whole_list_path_passed_as_a_scalar():

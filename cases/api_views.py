@@ -119,8 +119,10 @@ _PATCH_SCALAR_FIELDS = frozenset(
         "banner_image_id",
         "thumbnail_url",
         "banner_url",
-        "case_start_date",
-        "case_end_date",
+        "trial_start_date",
+        "trial_end_date",
+        "appeal_start_date",
+        "appeal_end_date",
         "tags",
         "key_allegations",
         "timeline",
@@ -141,6 +143,20 @@ _PATCH_SCALAR_FIELDS = frozenset(
         "public_edit_history",
     ]
 )
+
+# DEPRECATED write aliases for the deployed SPA admin; drop together with the
+# read aliases in CaseSerializer.
+_PATCH_PATH_ALIASES = {
+    "/case_start_date": "/trial_start_date",
+    "/case_end_date": "/trial_end_date",
+}
+
+# The same aliases as field keys, for copying a 422's ``trial_*`` errors back
+# under the names the deployed admin form knows. DEPRECATED with the write
+# aliases above; the two are dropped together.
+_PATCH_FIELD_ALIASES = {
+    old.lstrip("/"): new.lstrip("/") for old, new in _PATCH_PATH_ALIASES.items()
+}
 
 
 def _recompute_material_visibility(material_iris) -> None:
@@ -668,8 +684,10 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
             "banner_image_id",
             "thumbnail_url",
             "banner_url",
-            "case_start_date",
-            "case_end_date",
+            "trial_start_date",
+            "trial_end_date",
+            "appeal_start_date",
+            "appeal_end_date",
             "tags",
             "key_allegations",
             "timeline",
@@ -1041,6 +1059,23 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
         return None
 
     @staticmethod
+    def _rewrite_aliased_paths(patch_ops):
+        """Point the SPA admin's retired date paths at the trial columns.
+
+        Those pointers are not in the snapshot any more, so without this every
+        date edit from the deployed frontend 400s. Returns a new list — the ops
+        are the caller's request body — and whether anything was rewritten,
+        which is what gates the matching error-key alias on a 422.
+        """
+        rewritten = [
+            {**op, "path": _PATCH_PATH_ALIASES[op["path"]]}
+            if isinstance(op, dict) and op.get("path") in _PATCH_PATH_ALIASES
+            else op
+            for op in patch_ops
+        ]
+        return rewritten, rewritten != list(patch_ops)
+
+    @staticmethod
     def _touches(patch_ops, path):
         """True when any op targets ``path`` or a child of it.
 
@@ -1334,6 +1369,8 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
         if rejection is not None:
             return rejection
 
+        patch_ops, used_path_aliases = self._rewrite_aliased_paths(patch_ops)
+
         snapshot = self._build_snapshot(case)
         try:
             patched = jsonpatch.apply_patch(snapshot, patch_ops)
@@ -1342,9 +1379,13 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
 
         serializer = CasePatchSerializer(data=patched)
         if not serializer.is_valid():
-            return Response(
-                serializer.errors, status=status.HTTP_422_UNPROCESSABLE_ENTITY
-            )
+            errors = dict(serializer.errors)
+            if used_path_aliases:
+                # DEPRECATED with the write aliases.
+                for retired, current in _PATCH_FIELD_ALIASES.items():
+                    if current in errors:
+                        errors[retired] = errors[current]
+            return Response(errors, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
         validated = serializer.validated_data
 
@@ -1551,10 +1592,18 @@ class CaseViewSet(AuditlogActorMixin, viewsets.ReadOnlyModelViewSet):
             "banner_image_id": case.banner_image_id,
             "thumbnail_url": case.thumbnail_url,
             "banner_url": case.banner_url,
-            "case_start_date": (
-                str(case.case_start_date) if case.case_start_date else None
+            "trial_start_date": (
+                str(case.trial_start_date) if case.trial_start_date else None
             ),
-            "case_end_date": str(case.case_end_date) if case.case_end_date else None,
+            "trial_end_date": (
+                str(case.trial_end_date) if case.trial_end_date else None
+            ),
+            "appeal_start_date": (
+                str(case.appeal_start_date) if case.appeal_start_date else None
+            ),
+            "appeal_end_date": (
+                str(case.appeal_end_date) if case.appeal_end_date else None
+            ),
             "case_type": case.case_type,
             "tags": list(case.tags) if case.tags else [],
             "key_allegations": (

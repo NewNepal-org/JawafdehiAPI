@@ -106,33 +106,6 @@ class CaseAdminForm(forms.ModelForm):
 
     # evidence is now the CaseMaterialReference join; edit via API/inline in a follow-up
 
-    start_date_bs = forms.CharField(
-        label="Case start date (BS)",
-        required=False,
-        widget=forms.TextInput(
-            attrs={
-                "placeholder": "YYYY-MM-DD",
-                "class": "vTextField nepali-date-picker",
-                "autocomplete": "off",
-                "readonly": "readonly",
-                "style": "cursor: pointer;",
-            }
-        ),
-    )
-    end_date_bs = forms.CharField(
-        label="Case end date (BS)",
-        required=False,
-        widget=forms.TextInput(
-            attrs={
-                "placeholder": "YYYY-MM-DD",
-                "class": "vTextField nepali-date-picker",
-                "autocomplete": "off",
-                "readonly": "readonly",
-                "style": "cursor: pointer;",
-            }
-        ),
-    )
-
     class Meta:
         model = Case
         fields = "__all__"
@@ -153,8 +126,10 @@ class CaseAdminForm(forms.ModelForm):
             "description": ToastUIEditorWidget(),
             "notes": ToastUIEditorWidget(),
             "state": forms.RadioSelect(),
-            "case_start_date": forms.DateInput(attrs={"type": "date"}),
-            "case_end_date": forms.DateInput(attrs={"type": "date"}),
+            "trial_start_date": forms.DateInput(attrs={"type": "date"}),
+            "trial_end_date": forms.DateInput(attrs={"type": "date"}),
+            "appeal_start_date": forms.DateInput(attrs={"type": "date"}),
+            "appeal_end_date": forms.DateInput(attrs={"type": "date"}),
         }
         help_texts = {
             "state": "Current workflow state: DRAFT (editable), IN_REVIEW (pending approval), PUBLISHED (public), CLOSED (archived)",
@@ -177,17 +152,6 @@ class CaseAdminForm(forms.ModelForm):
 
         # v3 authz model: the single content-staff role (Caseworker) may
         # transition to any state, so there is no state-field restriction here.
-
-    class Media:
-        css = {
-            "all": (
-                "https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/css/nepali.datepicker.v5.0.6.min.css",
-            )
-        }
-        js = (
-            "https://nepalidatepicker.sajanmaharjan.com.np/v5/nepali.datepicker/js/nepali.datepicker.v5.0.6.min.js",
-            "cases/js/date_converter.js",
-        )
 
     def clean_court_cases(self):
         """Each row must be a canonical court-case @id IRI (surface per-row
@@ -579,10 +543,10 @@ class CaseAdmin(UserFullNameAdminMixin, admin.ModelAdmin):
             "Dates",
             {
                 "fields": (
-                    "case_start_date",
-                    "start_date_bs",
-                    "case_end_date",
-                    "end_date_bs",
+                    "trial_start_date",
+                    "trial_end_date",
+                    "appeal_start_date",
+                    "appeal_end_date",
                 )
             },
         ),

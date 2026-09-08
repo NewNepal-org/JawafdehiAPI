@@ -19,6 +19,7 @@ from jawafdehi_shared.entities.ids import (
     is_valid_material_iri,
 )
 
+from .chronology import date_chronology_errors
 from .fields import (
     AuthorLinkListField,
     EditHistoryListField,
@@ -944,14 +945,25 @@ class Case(models.Model):
         help_text="DEPRECATED. External URL for the hero image; use banner_image",
     )
     # Date fields
-    case_start_date = models.DateField(
-        null=True, blank=True, help_text="When the alleged incident began"
+    trial_start_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Registration date at the first-instance court (Special Court for "
+            "CIAA cases)"
+        ),
     )
-    case_end_date = models.DateField(
-        null=True, blank=True, help_text="When the alleged incident ended"
+    trial_end_date = models.DateField(
+        null=True, blank=True, help_text="Verdict date at the first-instance court"
+    )
+    appeal_start_date = models.DateField(
+        null=True, blank=True, help_text="Registration date of the Supreme Court appeal"
+    )
+    appeal_end_date = models.DateField(
+        null=True, blank=True, help_text="Verdict date of the Supreme Court appeal"
     )
     # The date the case was FIRST published on jawafdehi.org — about our
-    # publication, not about the alleged incident (case_start_date/case_end_date
+    # publication, not about the court proceedings (the trial_* / appeal_* dates
     # above). Nullable at the column so DRAFTs can exist without one; required
     # before a case may leave DRAFT (see validate()). Deliberately NOT derived
     # from created_at or from the first PUBLISHED CaseStateChange: cases are
@@ -1124,6 +1136,31 @@ class Case(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        # The database half of the ``cases.chronology`` rule (migration 0065).
+        # Nullable-aware: a case that knows only some of its dates is valid.
+        # Pairwise only — the transitive comparison against "the verdict, else
+        # the registration" has no clean NULL-safe spelling here, so it stays a
+        # validation-layer rule.
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(trial_start_date__isnull=True)
+                | models.Q(trial_end_date__isnull=True)
+                | models.Q(trial_end_date__gte=models.F("trial_start_date")),
+                name="case_trial_end_not_before_start",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(appeal_start_date__isnull=True)
+                | models.Q(appeal_end_date__isnull=True)
+                | models.Q(appeal_end_date__gte=models.F("appeal_start_date")),
+                name="case_appeal_end_not_before_start",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(trial_end_date__isnull=True)
+                | models.Q(appeal_start_date__isnull=True)
+                | models.Q(appeal_start_date__gte=models.F("trial_end_date")),
+                name="case_appeal_start_not_before_trial_end",
+            ),
+        ]
 
     # Pending (assigned but not yet saved) court-case reference list. Class
     # default None = "not assigned"; the ``court_cases`` setter replaces it on
@@ -1437,11 +1474,31 @@ class Case(models.Model):
         if self._pending_authors is not None:
             self._sync_author_credits()
 
+    def _date_chronology_errors(self):
+        """This case's trial/appeal date errors, from the one rule in ``cases.chronology``."""
+        return date_chronology_errors(
+            self.trial_start_date,
+            self.trial_end_date,
+            self.appeal_start_date,
+            self.appeal_end_date,
+        )
+
+    def clean(self):
+        """Defensive hook: enforce the date chronology for any ``full_clean()`` caller.
+
+        The Case admin is view-only (``has_change_permission`` is False), so no
+        production form reaches this — the live writers are ``validate()`` and
+        the write serializer, with migration 0065's constraints underneath.
+        """
+        errors = self._date_chronology_errors()
+        if errors:
+            raise ValidationError(errors)
+
     def validate(self):
         """
         Validate case data based on current state.
 
-        - DRAFT: Lenient validation (only title required)
+        - Every state: title required, court dates in order
         - IN_REVIEW/PUBLISHED: Strict validation (all required fields must be complete)
         """
         errors = {}
@@ -1449,6 +1506,8 @@ class Case(models.Model):
         # Always require title
         if not self.title or not self.title.strip():
             errors["title"] = "Title is required"
+
+        errors.update(self._date_chronology_errors())
 
         # Strict validation for IN_REVIEW and PUBLISHED states
         if self.state in [CaseState.IN_REVIEW, CaseState.PUBLISHED]:

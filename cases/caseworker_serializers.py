@@ -17,6 +17,7 @@ from jawafdehi_shared.entities.ids import (
     is_valid_material_iri,
 )
 
+from .chronology import date_chronology_errors
 from .fields import edit_history_date_error, parse_edit_history_date
 from .image_serializers import ImageIdField
 from .models import (
@@ -351,7 +352,7 @@ class CaseEntityValidationMixin:
 
 
 class CaseWriteFieldsSerializer(serializers.Serializer):
-    """The 17 field declarations and 2 normalizers common to create and PATCH.
+    """The field declarations and normalizers common to create and PATCH.
 
     Must subclass `serializers.Serializer`: DRF collects declared fields in
     `SerializerMetaclass`, reading `_declared_fields` off each base, so fields
@@ -359,8 +360,8 @@ class CaseWriteFieldsSerializer(serializers.Serializer):
     silently disappear from the subclasses.
 
     Field ORDER does change as a result. `_get_declared_fields` returns
-    ``dict(base_fields + fields)``, so these 17 now come first and each
-    subclass's own declarations follow:
+    ``dict(base_fields + fields)``, so these come first and each subclass's own
+    declarations follow:
 
         create: title…bigo, case_type, state, alleged_entities, related_entities
         PATCH : title…bigo, state, case_type, entities
@@ -392,8 +393,14 @@ class CaseWriteFieldsSerializer(serializers.Serializer):
         required=False, allow_blank=True, max_length=500
     )
     banner_url = serializers.URLField(required=False, allow_blank=True, max_length=500)
-    case_start_date = serializers.DateField(required=False, allow_null=True)
-    case_end_date = serializers.DateField(required=False, allow_null=True)
+    # The first-instance court's registration and verdict dates, and the Supreme
+    # Court appeal's. ``allow_null`` because the columns are nullable — a case
+    # that never went to appeal legitimately has no appeal dates. Chronology is
+    # checked in ``validate()`` below.
+    trial_start_date = serializers.DateField(required=False, allow_null=True)
+    trial_end_date = serializers.DateField(required=False, allow_null=True)
+    appeal_start_date = serializers.DateField(required=False, allow_null=True)
+    appeal_end_date = serializers.DateField(required=False, allow_null=True)
     tags = serializers.ListField(child=serializers.CharField(), required=False)
     key_allegations = serializers.ListField(
         child=serializers.CharField(), required=False
@@ -459,6 +466,19 @@ class CaseWriteFieldsSerializer(serializers.Serializer):
         min_value=-2147483648,
         max_value=2147483647,
     )
+
+    def validate(self, attrs):
+        """Reject a backwards trial, a backwards appeal, or a premature appeal."""
+        attrs = super().validate(attrs)
+        errors = date_chronology_errors(
+            attrs.get("trial_start_date"),
+            attrs.get("trial_end_date"),
+            attrs.get("appeal_start_date"),
+            attrs.get("appeal_end_date"),
+        )
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
     def validate_missing_details(self, value):
         """Normalize empty/whitespace missing_details to None."""
